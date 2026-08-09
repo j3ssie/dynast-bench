@@ -48,6 +48,71 @@ The per-stack **design docs live in [`benchmark-plans/`](benchmark-plans/)** -
 start there for the full vulnerability catalog of each app. This README is the
 operational guide: how the repo is laid out and how to run and score an app.
 
+## Vulnerability classes covered
+
+Every planted bug carries a CWE and an OWASP category. Rolled up by class - each
+bug counted once, under its primary CWE - the 480 bugs break down as:
+
+| Class | CWEs | Bugs | Apps |
+|-------|------|-----:|-----:|
+| Sensitive data exposure (errors, logs, debug endpoints, backups, source) | 200, 209, 489, 524, 532, 538, 540, 548 | 39 | 16 |
+| Default / hardcoded / leaked credentials | 321, 522, 798, 1104, 1392 | 38 | 18 |
+| Missing or broken authorization (BFLA, vertical + horizontal) | 269, 284, 285, 668, 862, 863 | 37 | 18 |
+| Cross-site scripting (reflected · stored · DOM) | 79 | 28 | 16 |
+| Authentication bypass · weak session · JWT verification | 287, 288, 290, 306, 347, 384, 613, 614, 1385 | 28 | 13 |
+| SQL injection (incl. second-order, ORDER BY, NoSQL) | 89, 943 | 27 | 17 |
+| Proxy / parser interpretation conflicts (path confusion, header trust) | 345, 348, 349, 436, 441, 693, 697, 706, 807 | 27 | 10 |
+| SSRF (incl. blind, redirect chains, internal-only sinks) | 918 | 20 | 17 |
+| IDOR / BOLA (user-controlled object key) | 639 | 19 | 17 |
+| Path traversal · LFI/RFI · zip slip | 22, 98 | 19 | 16 |
+| Mass assignment / over-posting · prototype pollution | 915, 1321 | 18 | 16 |
+| Brute force · missing rate limiting · resource exhaustion | 307, 400, 406, 674, 770 | 17 | 11 |
+| Business-logic, pricing and quota abuse | 625, 840 | 15 | 14 |
+| OS command / argument injection | 78 | 14 | 12 |
+| Insecure deserialization (pickle · PHP · Java · YAML) | 470, 502 | 14 | 11 |
+| CORS misconfiguration | 942 | 14 | 14 |
+| Race conditions / TOCTOU | 362 | 14 | 14 |
+| Open redirect | 601 | 14 | 14 |
+| User & resource enumeration (observable response discrepancy) | 204, 598 | 13 | 12 |
+| Code injection · SSTI · expression language | 94, 917, 1059, 1336 | 11 | 10 |
+| Weak crypto & randomness · cleartext transport | 295, 319, 327, 330, 338 | 11 | 6 |
+| Password reset + account recovery flaws | 184, 640 | 9 | 9 |
+| Unrestricted / unsafe file upload | 434 | 9 | 9 |
+| CSRF (incl. cross-site WebSocket hijacking) | 352 | 8 | 8 |
+| Prompt injection & LLM tool abuse (direct · indirect · RAG) | 1427 | 7 | 2 |
+| XXE / XML external entity | 611 | 5 | 5 |
+| Supply chain & integrity (unsigned updates, vulnerable deps) | 494, 1035 | 2 | 2 |
+| Insecure network exposure (binding, service misconfiguration) | 1327 | 2 | 1 |
+| Insufficient logging / log injection | 117 | 1 | 1 |
+
+By OWASP category (2021 Top 10 for the web apps, API Top 10 2023 where the app is
+API-only):
+
+| OWASP | Bugs | | OWASP API | Bugs |
+|-------|-----:|-|-----------|-----:|
+| A01 Broken Access Control | 118 | | API8 Security Misconfiguration | 21 |
+| A03 Injection | 89 | | API5 Broken Function Level Authorization | 6 |
+| A05 Security Misconfiguration | 72 | | API1 Broken Object Level/Property Authorization | 4 |
+| A07 Identification & Authentication Failures | 65 | | API2 Broken Authentication | 4 |
+| A04 Insecure Design | 34 | | API7 Server Side Request Forgery | 4 |
+| A08 Software & Data Integrity Failures | 17 | | API9 Improper Inventory Management | 3 |
+| A10 SSRF | 15 | | API3 Broken Object Property Level Authorization | 2 |
+| A02 Cryptographic Failures | 15 | | API4 Unrestricted Resource Consumption | 2 |
+| A09 Logging & Monitoring Failures | 4 | | API6 Unrestricted Access to Sensitive Business Flows | 1 |
+| A06 Vulnerable & Outdated Components | 3 | | API10 Unsafe Consumption of APIs | 1 |
+
+Two non-web tracks sit alongside these: the **network** app plants 32 host/port
+and service-level findings for network scanners, and the two **LLM** apps
+(`llmchat`, `llmagent`) plant prompt-injection, tool-abuse and RAG-poisoning bugs
+scored on a separate injection-channel track.
+
+Each bug is also tagged with a **detection difficulty** (118 `E`, 60 `E-M`, 177
+`M`, 52 `M-H`, 73 `H`), a **taint distance** (291 `in-file`, 75 `cross-file`, 86
+`cross-service`, 28 `config`) and a **reachability** (301 `pre-auth`, 179
+`user`), so recall can be broken down along each of those axes instead of
+reported as one number. The per-app catalogs live in
+[`benchmark-plans/`](benchmark-plans/).
+
 ## Repository structure
 
 ```
@@ -339,3 +404,9 @@ dynast-bench score nextjs zap.json --safe safe.json
 output - the format is sniffed. See
 [`dynast-bench/README.md`](dynast-bench/README.md#scoring) for the schema, the
 matching tiers and every metric.
+
+## License
+
+`dynast-bench` is made with ♥ by [@j3ssie](https://github.com/j3ssie) to benchmark
+**Vigolium** and **Gimora** (an autonomous offensive-security agent), and it is
+released under the [MIT license](LICENSE).
