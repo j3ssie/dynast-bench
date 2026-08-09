@@ -1,0 +1,262 @@
+# Ground-truth answer key for the gin vulnerable app (Go + Gin).
+# This file lives outside both build contexts and is never baked into an image.
+# The `match:` blocks are GENERATED - run:
+#   bun dynast-bench/tools/derive-match.ts gin --write
+
+app: gin
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex (tenants). user2@bench.local is in Globex for cross-tenant
+  IDOR. A Globex DRAFT ("globex-internal") carries GLOBEX-CONFIDENTIAL-MARKER-7f3a,
+  reachable only via the multi-step IDOR grant flow or the second-order SQLi. The
+  vulnerable variant also seeds a weak default service credential admin/admin and
+  leaks APP_SECRET=GIN-DEBUG-SECRET-9c2e via the debug endpoint.
+
+vulnerabilities:
+  - id: INFO-001
+    variant_paths: { vuln: vuln/main.go, safe: safe/main.go }
+    symbol: debugInfo
+    route: "GET /api/debug/info"
+    cwe: CWE-200
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-INFO-001
+    match:
+      http: { method: GET, path: "/api/debug/info" }
+      file: { path: vuln/main.go, symbol: debugInfo, lines: [393, 403] }
+      markers: [GIN-DEBUG-SECRET-9c2e]
+    poc: ground-truth/verify/info_001.sh
+    notes: >
+      The debug endpoint dumps the full process environment (DB credentials,
+      APP_SECRET). The nearby /api/version returns only safe build info.
+
+  - id: DEFAULT-CREDS-001
+    variant_paths: { vuln: vuln/main.go, safe: safe/main.go }
+    symbol: seedDB
+    route: "POST /api/auth/login"
+    cwe: CWE-1392
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/main.go, symbol: seedDB, lines: [194, 254] }
+    poc: ground-truth/verify/default_creds_001.sh
+    notes: "Seeded service account uses the weak default credential admin/admin."
+
+  - id: IDOR-001
+    variant_paths: { vuln: vuln/main.go, safe: safe/main.go }
+    symbol: readGrant
+    route: "GET /api/grants/{token}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-IDOR-001
+    match:
+      http: { method: GET, path: "/api/grants/" }
+      http_alt: ["/api/grants/{token}"]
+      file: { path: vuln/main.go, symbol: readGrant, lines: [441, 451] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/idor_001.sh
+    notes: >
+      Multi-step IDOR: POST /api/posts/{id}/grant mints an access grant for ANY
+      post id, then GET /api/grants/{token} returns the body with no org check,
+      leaking a cross-tenant Globex draft. Direct GET /api/posts/{id} is org-scoped.
+
+  - id: MASSASSIGN-001
+    variant_paths: { vuln: vuln/main.go, safe: safe/main.go }
+    symbol: updateMe
+    route: "PATCH /api/users/me"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: PATCH, path: "/api/users/me" }
+      file: { path: vuln/main.go, symbol: updateMe, lines: [491, 513] }
+    poc: ground-truth/verify/massassign_001.sh
+    notes: "Profile update binds role/isAdmin from the request body (ShouldBindJSON)."
+
+  - id: SQLI-001
+    variant_paths: { vuln: vuln/main.go, safe: safe/main.go }
+    symbol: reportTimeline
+    route: "GET /api/reports/timeline"
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-SQL-001
+    match:
+      http: { method: GET, path: "/api/reports/timeline" }
+      file: { path: vuln/main.go, symbol: reportTimeline, lines: [514, 533] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/second_sqli_001.sh
+    notes: >
+      Second-order SQLi: display_name is stored safely via PATCH /api/users/me,
+      then interpolated with fmt.Sprintf into a raw query on a later request.
+
+  - id: RCE-001
+    variant_paths: { vuln: vuln/main.go, safe: safe/main.go }
+    symbol: thumbnail
+    route: "POST /api/images/thumbnail"
+    cwe: CWE-78
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-RCE-001
+    match:
+      http: { method: POST, path: "/api/images/thumbnail" }
+      file: { path: vuln/main.go, symbol: thumbnail, lines: [565, 573] }
+    poc: ground-truth/verify/imagemagick_rce_001.sh
+    notes: >
+      The thumbnail geometry is concatenated into sh -c "convert ...", so it is
+      OS command injection through ImageMagick. The safe sibling uses an arg slice.
+
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/main.go, safe: safe/main.go }
+    symbol: renderPDF
+    route: "POST /api/render/pdf"
+    cwe: CWE-918
+    owasp: "A10:2021-Server-Side Request Forgery (SSRF)"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-SSRF-001
+    match:
+      http: { method: POST, path: "/api/render/pdf" }
+      file: { path: vuln/main.go, symbol: renderPDF, lines: [604, 624] }
+    poc: ground-truth/verify/ssrf_pdf_001.sh
+    notes: >
+      A user-supplied URL is rendered to PDF by server-side headless chromium with
+      no destination validation, so chrome fetches internal/loopback URLs.
+
+  - id: DOS-001
+    variant_paths: { vuln: vuln/main.go, safe: safe/main.go }
+    symbol: importPreview
+    route: "POST /api/import/preview"
+    cwe: CWE-400
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-DOS-001
+    match:
+      http: { method: POST, path: "/api/import/preview" }
+      file: { path: vuln/main.go, symbol: importPreview, lines: [674, 680] }
+    poc: ground-truth/verify/dos_001.sh
+    notes: >
+      A gzip body is decompressed with no size cap (decompression bomb -> DoS).
+      The safe sibling bounds the input with io.LimitReader.
+
+  - id: AUTHZ-001
+    variant_paths: { vuln: vuln/main.go, safe: safe/main.go }
+    symbol: adminUsers
+    route: "GET /api/admin/users"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/admin/users" }
+      file: { path: vuln/main.go, symbol: adminUsers, lines: [701, 723] }
+    poc: ground-truth/verify/authz_001.sh
+    notes: "Admin user listing only requires authentication, not the admin role."
+
+  - id: REDIRECT-001
+    variant_paths: { vuln: vuln/main.go, safe: safe/main.go }
+    symbol: gotoNext
+    route: "GET /goto?next="
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/goto", params: [next] }
+      file: { path: vuln/main.go, symbol: gotoNext, lines: [724, 735] }
+    poc: ground-truth/verify/redirect_001.sh
+    notes: "The /goto redirect trusts an absolute external next URL."
+
+  - id: XSS-REFLECT-001
+    variant_paths: { vuln: vuln/main.go, safe: safe/main.go }
+    symbol: searchPage
+    route: "GET /search?q="
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/search", params: [q] }
+      file: { path: vuln/main.go, symbol: searchPage, lines: [736, 740] }
+    poc: ground-truth/verify/xss_reflect_001.sh
+    notes: "The search page reflects q into HTML without escaping."
+
+near_misses:
+  - id: NM-INFO-001
+    path: vuln/main.go
+    symbol: versionInfo
+    of: INFO-001
+    match:
+      file: { path: vuln/main.go, symbol: versionInfo, lines: [404, 440] }
+    notes: "Version endpoint returns only non-sensitive build info."
+  - id: NM-IDOR-001
+    path: vuln/main.go
+    symbol: getPost
+    of: IDOR-001
+    match:
+      file: { path: vuln/main.go, symbol: getPost, lines: [452, 490] }
+    notes: "Direct post fetch enforces org ownership for non-published posts."
+  - id: NM-SQL-001
+    path: vuln/main.go
+    symbol: searchPosts
+    of: SQLI-001
+    match:
+      file: { path: vuln/main.go, symbol: searchPosts, lines: [534, 564] }
+    notes: "Published-post search of the same shape uses a pgx placeholder."
+  - id: NM-RCE-001
+    path: vuln/main.go
+    symbol: thumbnailSafe
+    of: RCE-001
+    match:
+      file: { path: vuln/main.go, symbol: thumbnailSafe, lines: [574, 603] }
+    notes: "Thumbnail conversion invokes convert with an argument slice (no shell)."
+  - id: NM-SSRF-001
+    path: vuln/main.go
+    symbol: linkPreview
+    of: SSRF-001
+    match:
+      file: { path: vuln/main.go, symbol: linkPreview, lines: [625, 673] }
+    notes: "Link preview blocks internal/loopback/link-local destinations before fetching."
+  - id: NM-DOS-001
+    path: vuln/main.go
+    symbol: importText
+    of: DOS-001
+    match:
+      file: { path: vuln/main.go, symbol: importText, lines: [681, 700] }
+    notes: "Text import is bounded by io.LimitReader."

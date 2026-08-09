@@ -1,0 +1,39 @@
+name: vuln-rails
+services:
+  app:
+    build: .
+    ports: ["127.0.0.1:${DYNAST_PORT:-13311}:3000"]
+    environment:
+      DATABASE_URL: postgres://bench:bench@postgres:5432/bench
+      RAILS_ENV: production
+      RACK_ENV: production
+      SECRET_KEY_BASE: rails-hardcoded-secret-key-base-000000000000000000000000000000
+      VERIFY_TOKEN: benchsecret
+      INTERNAL_SINK_URL: http://internal-sink:8025/metadata
+      RAILS_LOG_LEVEL: debug
+    depends_on:
+      postgres: { condition: service_healthy }
+      internal-sink: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/api/_verify/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+  postgres:
+    image: postgres:16.4
+    environment: { POSTGRES_USER: bench, POSTGRES_PASSWORD: bench, POSTGRES_DB: bench }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bench"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  internal-sink:
+    image: ruby:3.3-slim
+    volumes: ["./internal-sink.rb:/internal-sink.rb:ro"]
+    command: ["ruby", "/internal-sink.rb"]
+    healthcheck:
+      test: ["CMD", "ruby", "-rsocket", "-e", "TCPSocket.new('127.0.0.1',8025).close"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

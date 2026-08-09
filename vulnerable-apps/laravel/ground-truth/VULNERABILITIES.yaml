@@ -1,0 +1,471 @@
+# Ground-truth answer key for the laravel vulnerable app.
+# Lives outside both build contexts and is never baked into an image.
+
+app: laravel
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Modern Laravel 11 (PHP 8.3, Apache, MySQL). Orgs Acme + Globex (tenants).
+  user2@bench.local is in Globex for cross-tenant IDOR. A Globex DRAFT
+  ("globex-internal") carries GLOBEX-CONFIDENTIAL-MARKER-7f3a, returned only via
+  SQLi/IDOR. A weak service account admin/admin exists only in vuln/. Seed users:
+  admin@bench.local/Admin123!, editor@bench.local/Editor123!,
+  user1@bench.local/User123! (Acme), user2@bench.local/User123! (Globex).
+  CSRF is enabled app-wide (PoCs scrape the _token); one route is the planted
+  exception. TrimStrings is active, so SQLi PoCs comment with `#`, not `-- `.
+
+vulnerabilities:
+  - id: SQLI-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/PostController.php, safe: safe/app/Http/Controllers/PostController.php }
+    symbol: PostController@search
+    route: "GET /search?q="
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SQL-001
+    match:
+      http: { method: GET, path: "/search", params: [q] }
+      file: { path: vuln/app/Http/Controllers/PostController.php, symbol: "PostController@search", lines: [17, 52] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_001.sh
+    notes: "Search term concatenated into a raw DB::select string; index() nearby binds the same shape."
+  - id: SQLI-002
+    variant_paths: { vuln: vuln/app/Http/Controllers/ReportController.php, safe: safe/app/Http/Controllers/ReportController.php }
+    symbol: ReportController@titles
+    route: "GET /reports/titles"
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/reports/titles" }
+      file: { path: vuln/app/Http/Controllers/ReportController.php, symbol: "ReportController@titles", lines: [17, 33] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_002.sh
+    notes: "Second-order: a stored post title (from PostController@store) is concatenated into a raw query."
+  - id: XSS-REFLECT-001
+    variant_paths: { vuln: vuln/resources/views/search.blade.php, safe: safe/resources/views/search.blade.php }
+    symbol: search.blade.php {!! $q !!}
+    route: "GET /search?q="
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-XSS-001
+    match:
+      http: { method: GET, path: "/search", params: [q] }
+      file: { path: vuln/resources/views/search.blade.php, symbol: "search.blade.php {!! $q !!}", lines: [6, 7] }
+    poc: ground-truth/verify/xss_reflect_001.sh
+    notes: "The raw query is echoed via Blade's unescaped {!! !!}."
+  - id: XSS-STORED-001
+    variant_paths: { vuln: vuln/resources/views/post_show.blade.php, safe: safe/resources/views/post_show.blade.php }
+    symbol: post_show.blade.php {!! $c->body !!}
+    route: "POST /posts/{id}/comments then GET /posts/{id}"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E-M
+    taint: cross-file
+    reachability: user
+    near_miss: NM-XSS-001
+    match:
+      http: { method: POST, path: "/posts/{id}/comments" }
+      http_alt: ["/posts/{id}"]
+      file: { path: vuln/resources/views/post_show.blade.php, symbol: "post_show.blade.php {!! $c->body !!}", lines: [13, 25] }
+    poc: ground-truth/verify/xss_stored_001.sh
+    notes: "Stored comment body rendered unescaped; the post title beside it uses the escaping {{ }}."
+  - id: SSTI-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/ToolsController.php, safe: safe/app/Http/Controllers/ToolsController.php }
+    symbol: ToolsController@preview
+    route: "GET /tools/preview?tpl="
+    cwe: CWE-1336
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SSTI-001
+    match:
+      http: { method: GET, path: "/tools/preview", params: [tpl] }
+      file: { path: vuln/app/Http/Controllers/ToolsController.php, symbol: "ToolsController@preview", lines: [50, 96] }
+    poc: ground-truth/verify/ssti_001.sh
+    notes: "Blade::render() on attacker input; the mode=greet branch renders a static template with bound data."
+  - id: CMD-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/ToolsController.php, safe: safe/app/Http/Controllers/ToolsController.php }
+    symbol: ToolsController@export
+    route: "GET /tools/export?format="
+    cwe: CWE-78
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/tools/export", params: [format] }
+      file: { path: vuln/app/Http/Controllers/ToolsController.php, symbol: "ToolsController@export", lines: [38, 49] }
+    poc: ground-truth/verify/cmd_001.sh
+    notes: "format is interpolated into shell_exec()."
+  - id: UPLOAD-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/ProfileController.php, safe: safe/app/Http/Controllers/ProfileController.php }
+    symbol: ProfileController@avatar
+    route: "POST /profile/avatar"
+    cwe: CWE-434
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/profile/avatar" }
+      file: { path: vuln/app/Http/Controllers/ProfileController.php, symbol: "ProfileController@avatar", lines: [32, 65] }
+    poc: ground-truth/verify/upload_001.sh
+    notes: "Client filename trusted; a .php avatar lands under the Apache web root and executes."
+  - id: IDOR-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/PostController.php, safe: safe/app/Http/Controllers/PostController.php }
+    symbol: PostController@show
+    route: "GET /posts/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: NM-IDOR-001
+    match:
+      http: { method: GET, path: "/posts/{id}" }
+      file: { path: vuln/app/Http/Controllers/PostController.php, symbol: "PostController@show", lines: [10, 16] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/idor_001.sh
+    notes: "Route-model binding with no org/owner/status check; audit() beside it authorizes correctly."
+  - id: AUTHZ-001
+    variant_paths: { vuln: vuln/routes/web.php, safe: safe/routes/web.php }
+    symbol: "GET /admin/users route"
+    route: "GET /admin/users"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-AUTHZ-001
+    match:
+      http: { method: GET, path: "/admin/users" }
+      file: { path: vuln/routes/web.php, symbol: "GET /admin/users route", lines: [49, 64] }
+    poc: ground-truth/verify/authz_001.sh
+    notes: "Route is behind auth but not the admin middleware; /admin/audit beside it is gated."
+  - id: MASSASSIGN-001
+    variant_paths: { vuln: vuln/app/Models/User.php, safe: safe/app/Models/User.php }
+    symbol: "User $guarded"
+    route: "POST /profile"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/profile" }
+      file: { path: vuln/app/Models/User.php, symbol: "User $guarded", lines: [16, 39] }
+    poc: ground-truth/verify/massassign_001.sh
+    notes: "User model has $guarded = [], so ProfileController@update lets a user set is_admin/role."
+  - id: TRAVERSAL-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/ToolsController.php, safe: safe/app/Http/Controllers/ToolsController.php }
+    symbol: ToolsController@download
+    route: "GET /tools/download?file="
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/tools/download", params: [file] }
+      file: { path: vuln/app/Http/Controllers/ToolsController.php, symbol: "ToolsController@download", lines: [26, 37] }
+    poc: ground-truth/verify/traversal_001.sh
+    notes: "file is joined to a base dir with no containment check and read with file_get_contents()."
+  - id: REDIRECT-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/ToolsController.php, safe: safe/app/Http/Controllers/ToolsController.php }
+    symbol: ToolsController@go
+    route: "GET /go?next="
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-REDIRECT-001
+    match:
+      http: { method: GET, path: "/go", params: [next] }
+      file: { path: vuln/app/Http/Controllers/ToolsController.php, symbol: "ToolsController@go", lines: [9, 12] }
+    poc: ground-truth/verify/redirect_001.sh
+    notes: "next is passed to redirect()->away() verbatim; an allowlist branch sits beside it."
+  - id: CSRF-001
+    variant_paths: { vuln: vuln/bootstrap/app.php, safe: safe/bootstrap/app.php }
+    symbol: validateCsrfTokens except
+    route: "POST /account/name"
+    cwe: CWE-352
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/account/name" }
+      file: { path: vuln/bootstrap/app.php, symbol: "validateCsrfTokens except", lines: [22, 29] }
+    poc: ground-truth/verify/csrf_001.sh
+    notes: "The route is in the CSRF except list; a tokenless authenticated POST succeeds (200 not 419)."
+  - id: DESER-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/ToolsController.php, safe: safe/app/Http/Controllers/ToolsController.php }
+    symbol: ToolsController@import
+    route: "POST /tools/import mode=php"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: critical
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-DESER-001
+    match:
+      http: { method: POST, path: "/tools/import" }
+      file: { path: vuln/app/Http/Controllers/ToolsController.php, symbol: "ToolsController@import", lines: [97, 112] }
+    poc: ground-truth/verify/deser_001.sh
+    notes: "unserialize() on attacker data; an App\\Support\\Backup __destruct writes a file. mode=json decodes safely."
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/ToolsController.php, safe: safe/app/Http/Controllers/ToolsController.php }
+    symbol: ToolsController@fetch
+    route: "GET /tools/fetch?url="
+    cwe: CWE-918
+    owasp: "A10:2021-SSRF"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/tools/fetch", params: [url] }
+      file: { path: vuln/app/Http/Controllers/ToolsController.php, symbol: "ToolsController@fetch", lines: [14, 25] }
+    poc: ground-truth/verify/ssrf_001.sh
+    notes: "Http::get() on an attacker URL reaches the internal-only mail service."
+  - id: DEBUG-001
+    variant_paths: { vuln: vuln/.env, safe: safe/.env }
+    symbol: APP_DEBUG
+    route: "GET /diagnostics"
+    cwe: CWE-489
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/diagnostics" }
+      file: { path: vuln/.env, symbol: APP_DEBUG, lines: [4, 52] }
+    poc: ground-truth/verify/debug_001.sh
+    notes: "APP_DEBUG=true in production; an uncaught error renders a full stack trace + framework paths."
+  - id: CORS-001
+    variant_paths: { vuln: vuln/config/cors.php, safe: safe/config/cors.php }
+    symbol: cors config
+    route: "GET /api/_verify/health"
+    cwe: CWE-942
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/_verify/health" }
+      file: { path: vuln/config/cors.php, symbol: "cors config", lines: [3, 23] }
+    poc: ground-truth/verify/cors_001.sh
+    notes: "allowed_origins_patterns matches any origin AND supports_credentials is true."
+  - id: SECRET-001
+    variant_paths: { vuln: vuln/public/.env.backup, safe: safe/public/.env.backup }
+    symbol: public/.env.backup
+    route: "GET /.env.backup"
+    cwe: CWE-538
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/.env.backup" }
+      file: { path: vuln/public/.env.backup, symbol: public/.env.backup, lines: [2, 9] }
+    poc: ground-truth/verify/secret_001.sh
+    notes: "A leftover .env backup served from the web root leaks app secrets; safe/ does not ship it."
+  - id: PHPMYADMIN-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: phpmyadmin service
+    route: "http://127.0.0.1:13312/"
+    cwe: CWE-798
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { path: "/", port: 13312 }
+      file: { path: vuln/docker-compose.yml, symbol: "phpmyadmin service", lines: [19, 48] }
+    poc: ground-truth/verify/phpmyadmin_001.sh
+    notes: "phpMyAdmin published on localhost with bench/bench DB credentials in vuln compose."
+  - id: RESET-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/AuthController.php, safe: safe/app/Http/Controllers/AuthController.php }
+    symbol: AuthController@sendReset
+    route: "POST /password/email"
+    cwe: CWE-640
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/password/email" }
+      file: { path: vuln/app/Http/Controllers/AuthController.php, symbol: "AuthController@sendReset", lines: [77, 110] }
+    poc: ground-truth/verify/reset_001.sh
+    notes: "Reset token is md5(email + static salt) and returned to the caller; doReset compares with loose !=."
+  - id: ENUM-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/AuthController.php, safe: safe/app/Http/Controllers/AuthController.php }
+    symbol: AuthController@login
+    route: "POST /login"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/login" }
+      file: { path: vuln/app/Http/Controllers/AuthController.php, symbol: "AuthController@login", lines: [27, 76] }
+    poc: ground-truth/verify/enum_001.sh
+    notes: "Distinct messages for unknown email vs wrong password."
+  - id: RATELIMIT-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/AuthController.php, safe: safe/app/Http/Controllers/AuthController.php }
+    symbol: AuthController@login
+    route: "POST /login"
+    cwe: CWE-307
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/login" }
+      file: { path: vuln/app/Http/Controllers/AuthController.php, symbol: "AuthController@login" }
+    poc: ground-truth/verify/ratelimit_001.sh
+    notes: "login() has no attempt limiting; the safe twin adds a per-identity failure limiter (429)."
+  - id: DEFAULT-CREDS-001
+    variant_paths: { vuln: vuln/database/seeders/DatabaseSeeder.php, safe: safe/database/seeders/DatabaseSeeder.php }
+    symbol: DatabaseSeeder
+    route: "POST /login"
+    cwe: CWE-1392
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/login" }
+      file: { path: vuln/database/seeders/DatabaseSeeder.php, symbol: DatabaseSeeder, lines: [14, 59] }
+    poc: ground-truth/verify/default_creds_001.sh
+    notes: "Seeded service account uses admin/admin (vuln/ only)."
+  - id: RACE-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/BillingController.php, safe: safe/app/Http/Controllers/BillingController.php }
+    symbol: BillingController@invite
+    route: "POST /billing/invite"
+    cwe: CWE-362
+    owasp: "A04:2021-Insecure Design"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/billing/invite" }
+      file: { path: vuln/app/Http/Controllers/BillingController.php, symbol: "BillingController@invite", lines: [40, 61] }
+    poc: ground-truth/verify/race_001.sh
+    notes: "Seat check-then-act with no lock; concurrent invites exceed the seat limit."
+  - id: BILLING-001
+    variant_paths: { vuln: vuln/app/Http/Controllers/BillingController.php, safe: safe/app/Http/Controllers/BillingController.php }
+    symbol: BillingController@topup
+    route: "POST /billing/topup"
+    cwe: CWE-840
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/billing/topup" }
+      file: { path: vuln/app/Http/Controllers/BillingController.php, symbol: "BillingController@topup", lines: [26, 39] }
+    poc: ground-truth/verify/billing_001.sh
+    notes: "Negative top-up amount accepted; drives the balance below zero."
+
+near_misses:
+  - id: NM-SQL-001
+    path: vuln/app/Http/Controllers/PostController.php
+    symbol: PostController@index
+    of: SQLI-001
+    match:
+      file: { path: vuln/app/Http/Controllers/PostController.php, symbol: "PostController@index" }
+    notes: "Same substring-filter feature bound with placeholders (org-scoped)."
+  - id: NM-XSS-001
+    path: vuln/resources/views/post_show.blade.php
+    symbol: "{{ $post->title }}"
+    of: XSS-STORED-001
+    match:
+      file: { path: vuln/resources/views/post_show.blade.php, symbol: "{{ $post->title }}", lines: [3, 12] }
+    notes: "The post title beside the raw comment output is rendered with the escaping {{ }}."
+  - id: NM-IDOR-001
+    path: vuln/app/Http/Controllers/PostController.php
+    symbol: PostController@audit
+    of: IDOR-001
+    match:
+      file: { path: vuln/app/Http/Controllers/PostController.php, symbol: "PostController@audit", lines: [53, 78] }
+    notes: "Same object viewed through an org/owner-authorized route."
+  - id: NM-AUTHZ-001
+    path: vuln/routes/web.php
+    symbol: "GET /admin/audit route"
+    of: AUTHZ-001
+    match:
+      file: { path: vuln/routes/web.php, symbol: "GET /admin/audit route" }
+    notes: "A sibling admin listing correctly gated by the admin middleware."
+  - id: NM-DESER-001
+    path: vuln/app/Http/Controllers/ToolsController.php
+    symbol: import mode=json branch
+    of: DESER-001
+    match:
+      file: { path: vuln/app/Http/Controllers/ToolsController.php, symbol: "import mode=json branch" }
+    notes: "Nearby import path uses json_decode instead of unserialize."
+  - id: NM-SSTI-001
+    path: vuln/app/Http/Controllers/ToolsController.php
+    symbol: preview mode=greet branch
+    of: SSTI-001
+    match:
+      file: { path: vuln/app/Http/Controllers/ToolsController.php, symbol: "preview mode=greet branch" }
+    notes: "Renders a static Blade template with the input as escaped, bound data."
+  - id: NM-REDIRECT-001
+    path: vuln/app/Http/Controllers/ToolsController.php
+    symbol: go allowlist branch
+    of: REDIRECT-001
+    match:
+      file: { path: vuln/app/Http/Controllers/ToolsController.php, symbol: "go allowlist branch", lines: [13, 13] }
+    notes: "An allowlisted internal redirect of the same next parameter."

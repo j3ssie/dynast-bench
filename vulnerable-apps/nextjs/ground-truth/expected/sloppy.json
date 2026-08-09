@@ -1,0 +1,133 @@
+{
+  "schema": "dynast-bench.findings/v1",
+  "tool": { "name": "sloppy", "version": "0.1.0", "mode": "hybrid" },
+  "run": { "app": "nextjs", "variant": "vuln", "target": "http://127.0.0.1:13311" },
+  "_comment": [
+    "A deliberately mediocre tool. Every finding below exercises ONE scoring rule,",
+    "and test/fixtures.test.ts asserts the exact resulting numbers - so a change in",
+    "how the scorer grades shows up as a failing assertion rather than a silent",
+    "shift in everyone's benchmark results. Keep the two in sync.",
+    "Expected: 4 tp (SQLI-001 proof, IDOR-001 half credit, TRAVERSAL-001 quarter,",
+    "PROTO-001 source), 2 duplicates, 3 fp (1 near-miss, 2 other), 1 informational,",
+    "19 fn. precision 4/7, recall 4/23, noise 2/10."
+  ],
+  "findings": [
+    {
+      "id": "s-01",
+      "title": "SQL injection in post search (proved with the seed marker)",
+      "cwe": "CWE-89",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/posts/search?q=%27%20OR%201%3D1%20--%20",
+          "path": "/api/posts/search",
+          "param": "q",
+          "param_in": "query"
+        }
+      },
+      "evidence": {
+        "markers": ["GLOBEX-CONFIDENTIAL-MARKER-7f3a"],
+        "request": "GET /api/posts/search?q=%27%20OR%201%3D1%20--%20 HTTP/1.1",
+        "response_excerpt": "{\"posts\":[{\"status\":\"DRAFT\",\"body\":\"...GLOBEX-CONFIDENTIAL-MARKER-7f3a...\"}]}",
+        "note": "cross-tenant DRAFT returned; tier: proof"
+      },
+      "exploited": true
+    },
+    {
+      "id": "s-02",
+      "title": "SQL injection in post search (second payload - a duplicate)",
+      "cwe": "CWE-89",
+      "severity": "high",
+      "confidence": "firm",
+      "location": {
+        "http": { "method": "GET", "path": "/api/posts/search", "param": "q" }
+      },
+      "exploited": false
+    },
+    {
+      "id": "s-03",
+      "title": "SQL injection in post search (third payload - a duplicate)",
+      "cwe": "CWE-89",
+      "severity": "high",
+      "confidence": "tentative",
+      "location": {
+        "http": { "method": "GET", "url": "http://127.0.0.1:13311/api/posts/search?q=1%27" }
+      },
+      "exploited": false
+    },
+    {
+      "id": "s-04",
+      "title": "Broken access control reading any post",
+      "cwe": "CWE-862",
+      "severity": "high",
+      "confidence": "firm",
+      "location": { "http": { "method": "GET", "path": "/api/posts/7" } },
+      "evidence": { "note": "sibling CWE (authz family) - counts, at half credit" },
+      "exploited": true
+    },
+    {
+      "id": "s-05",
+      "title": "Untrusted input reaches a file read",
+      "cwe": "CWE-20",
+      "severity": "medium",
+      "confidence": "tentative",
+      "location": {
+        "http": { "method": "GET", "path": "/api/attachments/download", "param": "name" }
+      },
+      "evidence": { "note": "generic parent CWE - counts, at quarter credit" }
+    },
+    {
+      "id": "s-06",
+      "title": "Prototype pollution in the recursive merge",
+      "cwe": "CWE-1321",
+      "severity": "high",
+      "confidence": "firm",
+      "location": {
+        "file": {
+          "path": "vuln/src/lib/merge.ts",
+          "line": 8,
+          "symbol": "deepMerge",
+          "snippet": "deepMerge(target[key], source[key]);"
+        }
+      },
+      "evidence": { "note": "source-anchored, inside the bug's own line range" }
+    },
+    {
+      "id": "s-07",
+      "title": "Weak cryptography on the redirect endpoint",
+      "cwe": "CWE-327",
+      "severity": "low",
+      "confidence": "tentative",
+      "location": { "http": { "method": "GET", "path": "/goto", "param": "next" } },
+      "evidence": { "note": "right route, unrelated CWE - a wrong answer, so a false positive" }
+    },
+    {
+      "id": "s-08",
+      "title": "SSRF in the internal preview fetch",
+      "cwe": "CWE-918",
+      "severity": "high",
+      "confidence": "firm",
+      "location": { "http": { "method": "GET", "path": "/api/preview-internal" } },
+      "evidence": { "note": "NM-FETCH-001: fixed allow-listed URL - the near-miss trap" }
+    },
+    {
+      "id": "s-09",
+      "title": "Reflected XSS on a page that does not exist",
+      "cwe": "CWE-79",
+      "severity": "high",
+      "confidence": "tentative",
+      "location": { "http": { "method": "GET", "path": "/totally/made/up", "param": "x" } },
+      "evidence": { "note": "pure invention - a false positive" }
+    },
+    {
+      "id": "s-10",
+      "title": "Port 31337 is closed",
+      "severity": "info",
+      "confidence": "certain",
+      "location": { "net": { "host": "127.0.0.1", "port": 31337, "proto": "tcp", "state": "closed" } },
+      "evidence": { "note": "a negative observation - informational, not scored" }
+    }
+  ]
+}

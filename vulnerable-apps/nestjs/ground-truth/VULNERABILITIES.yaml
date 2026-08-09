@@ -1,0 +1,455 @@
+# Ground-truth answer key for the nestjs vulnerable app.
+# This file lives outside both build contexts and is never baked into an image.
+
+app: nestjs
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex (tenants). user2@bench.local is in Globex for cross-tenant
+  IDOR. A Globex DRAFT ("globex-internal") carries GLOBEX-CONFIDENTIAL-MARKER-7f3a,
+  returned only via SQLi/IDOR. Weak default service credential admin/admin.
+
+vulnerabilities:
+  - id: AUTH-ENUM-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: login
+    route: "POST /api/auth/login"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/src/app.controller.ts, symbol: login, lines: [203, 216] }
+    poc: ground-truth/verify/auth_enum_001.sh
+    notes: "Login returns distinct user-not-found vs bad-password errors."
+
+  - id: DEFAULT-CREDS-001
+    variant_paths: { vuln: vuln/src/seed.ts, safe: safe/src/seed.ts }
+    symbol: seed users
+    route: "POST /api/auth/login"
+    cwe: CWE-1392
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/src/seed.ts, symbol: "seed users", lines: [10, 44] }
+    poc: ground-truth/verify/default_creds_001.sh
+    notes: "Seeded service account uses admin/admin."
+
+  - id: SESSION-FIX-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: login
+    route: "POST /api/auth/login"
+    cwe: CWE-384
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/src/app.controller.ts, symbol: login }
+    poc: ground-truth/verify/session_fix_001.sh
+    notes: "Login writes user data into the pre-auth session without regenerating the session id."
+
+  - id: JWT-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: parseNoneJwt
+    route: "GET /api/reports/admin-summary (Bearer)"
+    cwe: CWE-347
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/reports/admin-summary" }
+      file: { path: vuln/src/app.controller.ts, symbol: parseNoneJwt, lines: [44, 88] }
+    poc: ground-truth/verify/jwt_001.sh
+    notes: "JWT verification accepts alg:none and ignores expiration."
+
+  - id: RESET-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: reset
+    route: "POST /api/auth/reset"
+    cwe: CWE-640
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/reset" }
+      file: { path: vuln/src/app.controller.ts, symbol: reset, lines: [137, 164] }
+    poc: ground-truth/verify/reset_001.sh
+    notes: "Reset token is md5(email + current Unix second) and is returned to the caller."
+
+  - id: SQLI-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: search
+    route: "GET /api/posts/search?q="
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SQL-001
+    match:
+      http: { method: GET, path: "/api/posts/search", params: [q] }
+      file: { path: vuln/src/app.controller.ts, symbol: search, lines: [166, 169] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_001.sh
+    notes: "q is interpolated into a raw Postgres query; safe twin uses a bound parameter."
+
+  - id: IDOR-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: getPost
+    route: "GET /api/posts/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/posts/{id}" }
+      file: { path: vuln/src/app.controller.ts, symbol: getPost, lines: [170, 192] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/idor_001.sh
+    notes: "Any authenticated user can read any post ID across tenants, including a Globex draft."
+
+  - id: OVERPOST-001
+    variant_paths: { vuln: vuln/src/main.ts, safe: safe/src/main.ts }
+    symbol: updateMe
+    route: "PATCH /api/users/me"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: cross-file
+    reachability: user
+    near_miss: NM-OVERPOST-001
+    match:
+      http: { method: PATCH, path: "/api/users/me" }
+      file: { path: vuln/src/main.ts, symbol: updateMe }
+    poc: ground-truth/verify/overpost_001.sh
+    notes: "Global ValidationPipe lacks whitelist/forbidNonWhitelisted and the body is applied to user fields, allowing role changes."
+
+  - id: AUTHZ-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: adminUsers
+    route: "GET /api/admin/users"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/admin/users" }
+      file: { path: vuln/src/app.controller.ts, symbol: adminUsers, lines: [201, 202] }
+    poc: ground-truth/verify/authz_001.sh
+    notes: "Admin user listing only requires login, not an admin role."
+
+  - id: XFF-001
+    variant_paths: { vuln: vuln/src/main.ts, safe: safe/src/main.ts }
+    symbol: xffAdmin
+    route: "GET /api/admin/internal-health"
+    cwe: CWE-348
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/admin/internal-health" }
+      file: { path: vuln/src/main.ts, symbol: xffAdmin }
+    poc: ground-truth/verify/xff_001.sh
+    notes: "trust proxy plus X-Forwarded-For is used for local-only authorization."
+
+  - id: HBS-SSTI-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: renderReport
+    route: "POST /api/reports/render"
+    cwe: CWE-1336
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: M-H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-HBS-001
+    match:
+      http: { method: POST, path: "/api/reports/render" }
+      file: { path: vuln/src/app.controller.ts, symbol: renderReport, lines: [217, 223] }
+      markers: [HBS-SSTI-SECRET]
+    poc: ground-truth/verify/hbs_ssti_001.sh
+    notes: "User-controlled Handlebars template is compiled and can triple-stache server context."
+
+  - id: XSS-STORED-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: postHtml
+    route: "GET /posts/{id}/html"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E-M
+    taint: cross-file
+    reachability: user
+    near_miss: NM-HBS-001
+    match:
+      http: { method: GET, path: "/posts/{id}/html" }
+      file: { path: vuln/src/app.controller.ts, symbol: postHtml, lines: [239, 247] }
+    poc: ground-truth/verify/xss_stored_001.sh
+    notes: "Stored comment bodies render through Handlebars triple-stache."
+
+  - id: XSS-REFLECT-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: reflectedSearch
+    route: "GET /search?q="
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/search", params: [q] }
+      file: { path: vuln/src/app.controller.ts, symbol: reflectedSearch, lines: [165, 165] }
+    poc: ground-truth/verify/xss_reflect_001.sh
+    notes: "Search page reflects q directly into HTML."
+
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: webhook
+    route: "POST /api/webhooks/test"
+    cwe: CWE-918
+    owasp: "A10:2021-SSRF"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/webhooks/test" }
+      file: { path: vuln/src/app.controller.ts, symbol: webhook, lines: [248, 257] }
+      markers: [NESTJS-INTERNAL-SINK]
+    poc: ground-truth/verify/ssrf_001.sh
+    notes: "Webhook tester fetches arbitrary URLs and reaches an internal service by compose hostname."
+
+  - id: DESER-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: importReport
+    route: "POST /api/reports/import"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: critical
+    difficulty: M-H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-DESER-001
+    match:
+      http: { method: POST, path: "/api/reports/import" }
+      file: { path: vuln/src/app.controller.ts, symbol: importReport, lines: [258, 267] }
+    poc: ground-truth/verify/deser_001.sh
+    notes: "node-serialize-style _$$ND_FUNC$$_ payloads are evaled."
+
+  - id: CORS-001
+    variant_paths: { vuln: vuln/src/main.ts, safe: safe/src/main.ts }
+    symbol: enableCors
+    route: "GET /api/posts/search (Origin reflected)"
+    cwe: CWE-942
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/posts/search" }
+      file: { path: vuln/src/main.ts, symbol: enableCors, lines: [14, 43] }
+    poc: ground-truth/verify/cors_001.sh
+    notes: "CORS reflects arbitrary Origin while allowing credentials."
+
+  - id: CSRF-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: csrfSettings
+    route: "POST /api/settings/email"
+    cwe: CWE-352
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/settings/email" }
+      file: { path: vuln/src/app.controller.ts, symbol: csrfSettings, lines: [274, 279] }
+    poc: ground-truth/verify/csrf_001.sh
+    notes: "State-changing session-cookie endpoint accepts a cross-site form without a CSRF token."
+
+  - id: REDIRECT-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: loginPage
+    route: "GET /login?next="
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/login", params: [next] }
+      file: { path: vuln/src/app.controller.ts, symbol: loginPage, lines: [109, 136] }
+    poc: ground-truth/verify/redirect_001.sh
+    notes: "Login next parameter accepts absolute external URLs."
+
+  - id: TRAVERSAL-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: download
+    route: "GET /api/attachments/download?name="
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-TRAVERSAL-001
+    match:
+      http: { method: GET, path: "/api/attachments/download", params: [name] }
+      file: { path: vuln/src/app.controller.ts, symbol: download, lines: [280, 286] }
+      markers: [NESTJS-ATTACHMENT-SECRET]
+    poc: ground-truth/verify/traversal_001.sh
+    notes: "Attachment download joins user filename without containment checking."
+
+  - id: NGINX-ALIAS-001
+    variant_paths: { vuln: vuln/infra/nginx.conf, safe: safe/infra/nginx.conf }
+    symbol: location /uploads
+    route: "GET /uploads../secret.txt"
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-NGINX-001
+    match:
+      http: { method: GET, path: "/uploads../secret.txt" }
+      file: { path: vuln/infra/nginx.conf, symbol: "location /uploads", lines: [10, 24] }
+      markers: [NESTJS-ATTACHMENT-SECRET, NGINX-ALIAS-TRAVERSAL-SECRET]
+    poc: ground-truth/verify/nginx_alias_001.sh
+    notes: "nginx alias trailing-slash mismatch lets /uploads../ escape the upload directory."
+
+  - id: UPLOAD-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: uploadAvatar
+    route: "POST /api/avatar"
+    cwe: CWE-434
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/avatar" }
+      file: { path: vuln/src/app.controller.ts, symbol: uploadAvatar, lines: [295, 301] }
+    poc: ground-truth/verify/upload_001.sh
+    notes: "Avatar upload accepts SVG and serves it back from nginx without validation."
+
+  - id: BILLING-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: billing
+    route: "POST /api/billing/seats"
+    cwe: CWE-840
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/billing/seats" }
+      file: { path: vuln/src/app.controller.ts, symbol: billing, lines: [302, 325] }
+    poc: ground-truth/verify/billing_001.sh
+    notes: "Seat quantity accepts negative and huge values."
+
+  - id: RACE-001
+    variant_paths: { vuln: vuln/src/app.controller.ts, safe: safe/src/app.controller.ts }
+    symbol: invite
+    route: "POST /api/invites"
+    cwe: CWE-362
+    owasp: "A04:2021-Insecure Design"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/invites" }
+      file: { path: vuln/src/app.controller.ts, symbol: invite, lines: [89, 108] }
+    poc: ground-truth/verify/race_001.sh
+    notes: "Invite seat check and insert are not atomic under concurrent requests."
+
+near_misses:
+  - id: NM-SQL-001
+    path: vuln/src/app.controller.ts
+    symbol: updateProfileNearMiss
+    of: SQLI-001
+    match:
+      file: { path: vuln/src/app.controller.ts, symbol: updateProfileNearMiss, lines: [193, 200] }
+    notes: "Nearby data access uses fixed SQL and bound parameters rather than interpolating user input."
+  - id: NM-OVERPOST-001
+    path: vuln/src/app.controller.ts
+    symbol: updateProfileNearMiss
+    of: OVERPOST-001
+    match:
+      file: { path: vuln/src/app.controller.ts, symbol: updateProfileNearMiss }
+    notes: "Profile update copies only displayName to a known column."
+  - id: NM-HBS-001
+    path: vuln/src/app.controller.ts
+    symbol: renderSafePreview
+    of: HBS-SSTI-001
+    match:
+      file: { path: vuln/src/app.controller.ts, symbol: renderSafePreview, lines: [224, 238] }
+    notes: "Renders a fixed Handlebars template with double-stache escaping."
+  - id: NM-DESER-001
+    path: vuln/src/app.controller.ts
+    symbol: importJsonNearMiss
+    of: DESER-001
+    match:
+      file: { path: vuln/src/app.controller.ts, symbol: importJsonNearMiss, lines: [268, 273] }
+    notes: "Accepts JSON.parse input rather than executable node-serialize function markers."
+  - id: NM-TRAVERSAL-001
+    path: vuln/src/app.controller.ts
+    symbol: downloadNearMiss
+    of: TRAVERSAL-001
+    match:
+      file: { path: vuln/src/app.controller.ts, symbol: downloadNearMiss, lines: [287, 294] }
+    notes: "Uses basename and containment-style resolution for the preview download."
+  - id: NM-NGINX-001
+    path: vuln/infra/nginx.conf
+    symbol: location /static/
+    of: NGINX-ALIAS-001
+    match:
+      file: { path: vuln/infra/nginx.conf, symbol: "location /static/" }
+    notes: "A normalized slash-terminated static location sits next to the vulnerable upload alias."
+
+# Deferred NestJS-plan catalog rows for later expansion: full Prisma Client model
+# coverage, dedicated rate-limit brute-force telemetry, and second-order report SQLi.
+# This representative subset exercises the main Nest/proxy/session/upload classes end-to-end.

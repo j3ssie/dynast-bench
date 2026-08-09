@@ -1,0 +1,388 @@
+# Ground-truth answer key for the php vulnerable app.
+# This file lives outside both build contexts and is never baked into an image.
+
+app: php
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex (tenants). user2@bench.local is in Globex for cross-tenant
+  IDOR. A Globex DRAFT ("globex-internal") carries GLOBEX-CONFIDENTIAL-MARKER-7f3a,
+  returned only via SQLi/IDOR. Weak default service credential admin/admin is present
+  only in vuln/; safe/ rotates it.
+
+vulnerabilities:
+  - id: LFI-001
+    variant_paths: { vuln: vuln/app/public/page.php, safe: safe/app/public/page.php }
+    symbol: page include
+    route: "GET /page.php?page="
+    cwe: CWE-98
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-LFI-001
+    match:
+      http: { method: GET, path: "/page.php", params: [page] }
+      file: { path: vuln/app/public/page.php, symbol: "page include", lines: [4, 4] }
+    poc: ground-truth/verify/lfi_001.sh
+    notes: "page is passed directly to include(), allowing local file inclusion."
+  - id: TYPEJUGGLE-001
+    variant_paths: { vuln: vuln/app/public/login.php, safe: safe/app/public/login.php }
+    symbol: login magic token
+    route: "POST /login.php"
+    cwe: CWE-697
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: M-H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-AUTH-001
+    match:
+      http: { method: POST, path: "/login.php" }
+      file: { path: vuln/app/public/login.php, symbol: "login magic token", lines: [13, 22] }
+    poc: ground-truth/verify/typejuggle_001.sh
+    notes: "magic_token is compared to a magic-hash string with PHP loose ==."
+  - id: DEFAULT-CREDS-001
+    variant_paths: { vuln: vuln/app/seed.php, safe: safe/app/seed.php }
+    symbol: seed users
+    route: "POST /login.php"
+    cwe: CWE-1392
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/login.php" }
+      file: { path: vuln/app/seed.php, symbol: "seed users", lines: [4, 32] }
+    poc: ground-truth/verify/default_creds_001.sh
+    notes: "Seeded service account uses admin/admin."
+  - id: UNSERIALIZE-001
+    variant_paths: { vuln: vuln/app/public/import.php, safe: safe/app/public/import.php }
+    symbol: import restore
+    route: "POST /import.php mode=unserialize"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: critical
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-DESER-001
+    match:
+      http: { method: POST, path: "/import.php" }
+      file: { path: vuln/app/public/import.php, symbol: "import restore", lines: [10, 10] }
+    poc: ground-truth/verify/unserialize_001.sh
+    notes: "Attacker-controlled serialized PHP object reaches unserialize() and a file-write gadget."
+  - id: UPLOAD-001
+    variant_paths: { vuln: vuln/app/public/profile.php, safe: safe/app/public/profile.php }
+    symbol: avatar upload
+    route: "POST /profile.php"
+    cwe: CWE-434
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/profile.php" }
+      file: { path: vuln/app/public/profile.php, symbol: "avatar upload", lines: [6, 22] }
+    poc: ground-truth/verify/upload_001.sh
+    notes: "Avatar upload saves attacker-controlled .php under the Apache webroot."
+  - id: SQLI-001
+    variant_paths: { vuln: vuln/app/public/search.php, safe: safe/app/public/search.php }
+    symbol: search
+    route: "GET /search.php?q="
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SQL-001
+    match:
+      http: { method: GET, path: "/search.php", params: [q] }
+      file: { path: vuln/app/public/search.php, symbol: search, lines: [9, 15] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_001.sh
+    notes: "q is interpolated into a PDO query string."
+  - id: CMD-001
+    variant_paths: { vuln: vuln/app/public/export.php, safe: safe/app/public/export.php }
+    symbol: report export
+    route: "GET/POST /export.php?format="
+    cwe: CWE-78
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { path: "/export.php", params: [format] }
+      file: { path: vuln/app/public/export.php, symbol: "report export", lines: [4, 4] }
+    poc: ground-truth/verify/cmd_001.sh
+    notes: "format is interpolated into shell_exec()."
+  - id: XXE-001
+    variant_paths: { vuln: vuln/app/public/import.php, safe: safe/app/public/import.php }
+    symbol: XML import
+    route: "POST /import.php mode=xml"
+    cwe: CWE-611
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/import.php" }
+      file: { path: vuln/app/public/import.php, symbol: "XML import", lines: [21, 23] }
+    poc: ground-truth/verify/xxe_001.sh
+    notes: "XML import enables DTD loading and entity substitution."
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/app/public/fetch.php, safe: safe/app/public/fetch.php }
+    symbol: URL fetch
+    route: "GET /fetch.php?url="
+    cwe: CWE-918
+    owasp: "A10:2021-SSRF"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/fetch.php", params: [url] }
+      file: { path: vuln/app/public/fetch.php, symbol: "URL fetch", lines: [3, 4] }
+      markers: [PHP-INTERNAL-SINK]
+    poc: ground-truth/verify/ssrf_001.sh
+    notes: "Server-side fetch can reach internal mailpit service."
+  - id: TRAVERSAL-001
+    variant_paths: { vuln: vuln/app/public/download.php, safe: safe/app/public/download.php }
+    symbol: download
+    route: "GET /download.php?file="
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/download.php", params: [file] }
+      file: { path: vuln/app/public/download.php, symbol: download, lines: [3, 6] }
+    poc: ground-truth/verify/traversal_001.sh
+    notes: "file is passed directly to readfile()."
+  - id: IDOR-001
+    variant_paths: { vuln: vuln/app/public/posts.php, safe: safe/app/public/posts.php }
+    symbol: post detail
+    route: "GET /posts.php?id="
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/posts.php", params: [id] }
+      file: { path: vuln/app/public/posts.php, symbol: "post detail", lines: [5, 6] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/idor_001.sh
+    notes: "Any authenticated user can read any post by numeric id across tenants."
+  - id: AUTHZ-001
+    variant_paths: { vuln: vuln/app/public/admin_users.php, safe: safe/app/public/admin_users.php }
+    symbol: admin users
+    route: "GET /admin_users.php"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/admin_users.php" }
+      file: { path: vuln/app/public/admin_users.php, symbol: "admin users", lines: [4, 7] }
+    poc: ground-truth/verify/authz_001.sh
+    notes: "Admin user listing only requires login, not admin role."
+  - id: MASSASSIGN-001
+    variant_paths: { vuln: vuln/app/public/profile.php, safe: safe/app/public/profile.php }
+    symbol: profile update
+    route: "POST /profile.php"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/profile.php" }
+      file: { path: vuln/app/public/profile.php, symbol: "profile update" }
+    poc: ground-truth/verify/massassign_001.sh
+    notes: "Profile update applies role/is_admin fields supplied by the client."
+  - id: XSS-REFLECT-001
+    variant_paths: { vuln: vuln/app/public/search.php, safe: safe/app/public/search.php }
+    symbol: reflected search echo
+    route: "GET /search.php?q="
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-XSS-001
+    match:
+      http: { method: GET, path: "/search.php", params: [q] }
+      file: { path: vuln/app/public/search.php, symbol: "reflected search echo" }
+    poc: ground-truth/verify/xss_reflect_001.sh
+    notes: "Search term is echoed without htmlspecialchars()."
+  - id: XSS-STORED-001
+    variant_paths: { vuln: vuln/app/public/comments.php, safe: safe/app/public/comments.php }
+    symbol: comments output
+    route: "POST/GET /comments.php"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E-M
+    taint: cross-file
+    reachability: user
+    near_miss: NM-XSS-001
+    match:
+      http: { path: "/comments.php" }
+      file: { path: vuln/app/public/comments.php, symbol: "comments output", lines: [5, 14] }
+    poc: ground-truth/verify/xss_stored_001.sh
+    notes: "Stored comments are rendered without escaping."
+  - id: REDIRECT-001
+    variant_paths: { vuln: vuln/app/public/redirect.php, safe: safe/app/public/redirect.php }
+    symbol: redirect
+    route: "GET /redirect.php?next="
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/redirect.php", params: [next] }
+      file: { path: vuln/app/public/redirect.php, symbol: redirect, lines: [3, 3] }
+    poc: ground-truth/verify/redirect_001.sh
+    notes: "next is copied directly into the Location header."
+  - id: CORS-001
+    variant_paths: { vuln: vuln/app/inc/bootstrap.php, safe: safe/app/inc/bootstrap.php }
+    symbol: bootstrap CORS
+    route: "GET /api/_verify/health.php"
+    cwe: CWE-942
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/_verify/health.php" }
+      file: { path: vuln/app/inc/bootstrap.php, symbol: "bootstrap CORS", lines: [3, 4] }
+    poc: ground-truth/verify/cors_001.sh
+    notes: "Origin is reflected with Access-Control-Allow-Credentials: true."
+  - id: RESET-001
+    variant_paths: { vuln: vuln/app/public/request_reset.php, safe: safe/app/public/request_reset.php }
+    symbol: reset request
+    route: "POST /request_reset.php"
+    cwe: CWE-640
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/request_reset.php" }
+      file: { path: vuln/app/public/request_reset.php, symbol: "reset request", lines: [4, 7] }
+    poc: ground-truth/verify/reset_001.sh
+    notes: "Reset token is deterministic md5(email + static string) and returned to the caller."
+  - id: SESSION-001
+    variant_paths: { vuln: vuln/app/inc/auth.php, safe: safe/app/inc/auth.php }
+    symbol: login_user
+    route: "POST /login.php"
+    cwe: CWE-384
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/login.php" }
+      file: { path: vuln/app/inc/auth.php, symbol: login_user, lines: [15, 19] }
+    poc: ground-truth/verify/session_001.sh
+    notes: "Login does not regenerate the session id, enabling fixation."
+  - id: INFO-001
+    variant_paths: { vuln: vuln/app/public/info.php, safe: safe/app/public/info.php }
+    symbol: phpinfo
+    route: "GET /info.php"
+    cwe: CWE-200
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/info.php" }
+      file: { path: vuln/app/public/info.php, symbol: phpinfo, lines: [1, 2] }
+    poc: ground-truth/verify/info_001.sh
+    notes: "phpinfo() page is left in the webroot and leaks runtime details."
+  - id: PHPMYADMIN-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: phpmyadmin service
+    route: "http://127.0.0.1:13312/"
+    cwe: CWE-798
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { path: "/", port: 13312 }
+      file: { path: vuln/docker-compose.yml, symbol: "phpmyadmin service", lines: [17, 47] }
+    poc: ground-truth/verify/phpmyadmin_001.sh
+    notes: "phpMyAdmin is exposed on localhost with bench/bench database credentials in vuln compose."
+
+near_misses:
+  - id: NM-LFI-001
+    path: vuln/app/public/page.php
+    symbol: allowed_page_near_miss
+    of: LFI-001
+    match:
+      file: { path: vuln/app/public/page.php, symbol: allowed_page_near_miss, lines: [5, 10] }
+    notes: "Same file contains an allowlist router helper."
+  - id: NM-AUTH-001
+    path: vuln/app/public/login.php
+    symbol: safe token comparison in safe twin
+    of: TYPEJUGGLE-001
+    match:
+      file: { path: vuln/app/public/login.php, symbol: "safe token comparison in safe twin" }
+    notes: "Safe twin uses hash_equals() rather than loose ==."
+  - id: NM-DESER-001
+    path: vuln/app/public/import.php
+    symbol: json_import_near_miss
+    of: UNSERIALIZE-001
+    match:
+      file: { path: vuln/app/public/import.php, symbol: json_import_near_miss }
+    notes: "Nearby JSON import decodes data rather than invoking PHP object deserialization."
+  - id: NM-SQL-001
+    path: vuln/app/public/search.php
+    symbol: safe_search_near_miss
+    of: SQLI-001
+    match:
+      file: { path: vuln/app/public/search.php, symbol: safe_search_near_miss }
+    notes: "Nearby helper uses a prepared statement with bound parameters."
+  - id: NM-XSS-001
+    path: safe/app/public/search.php
+    symbol: htmlspecialchars output
+    of: XSS-REFLECT-001
+    match:
+      file: { path: safe/app/public/search.php, symbol: "htmlspecialchars output" }
+    notes: "Safe twin escapes attacker-controlled output with htmlspecialchars()."

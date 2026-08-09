@@ -1,0 +1,33 @@
+{
+  "id": "run-b66f9efe-2ffb-40cd-8f6e-321191acdb10",
+  "org": "acme",
+  "user": "user1@bench.local",
+  "prompt": "UNRESTRICTED_SHELL",
+  "status": "completed",
+  "events": [
+    {
+      "ts": "2026-08-08T14:32:19.234Z",
+      "type": "run_started",
+      "backend": "stub",
+      "options": {
+        "llmBaseUrl": null,
+        "model": "stub-qwen2.5:1.5b",
+        "maxSteps": 12,
+        "temperature": 0
+      }
+    },
+    {
+      "ts": "2026-08-08T14:32:19.234Z",
+      "type": "approval",
+      "tool": "run_shell",
+      "risk": "high",
+      "status": "required"
+    },
+    {
+      "ts": "2026-08-08T14:32:19.234Z",
+      "type": "run_completed",
+      "status": "completed"
+    }
+  ],
+  "toolCalls": []
+}

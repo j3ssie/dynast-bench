@@ -1,0 +1,46 @@
+name: vuln-php
+services:
+  app:
+    build: .
+    ports: ["127.0.0.1:${DYNAST_PORT:-13311}:80"]
+    environment:
+      DB_HOST: mysql
+      DB_NAME: bench
+      DB_USER: bench
+      DB_PASS: bench
+      VERIFY_TOKEN: benchsecret
+      SMTP_HOST: mailpit
+      APP_URL: "http://127.0.0.1:${DYNAST_PORT:-13311}"
+      PHP_DISPLAY_ERRORS: "On"
+    depends_on:
+      mysql: { condition: service_healthy }
+      phpmyadmin: { condition: service_started }
+      mailpit: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/api/_verify/health.php"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: bench
+      MYSQL_USER: bench
+      MYSQL_PASSWORD: bench
+      MYSQL_ROOT_PASSWORD: root
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  phpmyadmin:
+    image: phpmyadmin:5.2.1
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: bench
+      PMA_PASSWORD: bench
+    ports: ["127.0.0.1:${DYNAST_PORT_PHPMYADMIN_80:-13312}:80"]
+  mailpit:
+    image: axllent/mailpit:v1.20
+    ports: ["127.0.0.1:${DYNAST_PORT_MAILPIT_8025:-13313}:8025", "127.0.0.1:${DYNAST_PORT_MAILPIT_1025:-13314}:1025"]

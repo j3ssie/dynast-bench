@@ -1,0 +1,561 @@
+# Ground-truth answer key for the wordpress vulnerable app.
+# PoCs exit 0 when the target is vulnerable and non-zero when fixed.
+app: wordpress
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex. user2@bench.local is in Globex for cross-tenant IDOR.
+  The Globex draft task contains GLOBEX-CONFIDENTIAL-MARKER-7f3a.
+  Vulnerable variant also accepts the weak default credential admin/admin.
+
+vulnerabilities:
+  - id: SQLI-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_sqli_route
+    route: "GET /wp-json/bench-tasks/v1/task?id="
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SQL-001
+    match:
+      http: { method: GET, path: "/wp-json/bench-tasks/v1/task", params: [id] }
+      file: { path: vuln/src/app.php, symbol: bench_sqli_route, lines: [143, 150] }
+    poc: ground-truth/verify/sqli_001.sh
+    notes: >
+      wpdb-style query concatenates id into SQL.
+
+  - id: SQLI-002
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_second_order_report
+    route: "GET /wp-json/bench-tasks/v1/report"
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-SQL-002
+    match:
+      http: { method: GET, path: "/wp-json/bench-tasks/v1/report" }
+      file: { path: vuln/src/app.php, symbol: bench_second_order_report, lines: [153, 161] }
+    poc: ground-truth/verify/sqli_second_002.sh
+    notes: >
+      Stored report title filter is later concatenated into SQL.
+
+  - id: CSRF-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_admin_post_route
+    route: "POST /wp-admin/admin-post.php?action=bench_set_webhook"
+    cwe: CWE-352
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-CSRF-001
+    match:
+      http: { method: POST, path: "/wp-admin/admin-post.php", query: { action: bench_set_webhook } }
+      file: { path: vuln/src/app.php, symbol: bench_admin_post_route, lines: [253, 257] }
+    poc: ground-truth/verify/csrf_001.sh
+    notes: >
+      State-changing admin-post action lacks nonce.
+
+  - id: AUTHZ-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_admin_post_route
+    route: "POST /wp-admin/admin-post.php?action=bench_admin_export"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-AUTHZ-001
+    match:
+      http: { method: POST, path: "/wp-admin/admin-post.php", query: { action: bench_admin_export } }
+      file: { path: vuln/src/app.php, symbol: bench_admin_post_route, lines: [258, 263] }
+      markers: [BENCH_ADMIN_REPORT_SECRET]
+    poc: ground-truth/verify/authz_001.sh
+    notes: >
+      Privileged export lacks current_user_can check.
+
+  - id: NOPRIV-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_ajax_route
+    route: "GET /wp-admin/admin-ajax.php?action=bench_promote_user"
+    cwe: CWE-306
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/wp-admin/admin-ajax.php", query: { action: bench_promote_user } }
+      file: { path: vuln/src/app.php, symbol: bench_ajax_route, lines: [231, 240] }
+    poc: ground-truth/verify/nopriv_001.sh
+    notes: >
+      Unauthenticated wp_ajax_nopriv-style action promotes users.
+
+  - id: DESER-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_unserialize_import
+    route: "POST /wp-json/bench-tasks/v1/import"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: critical
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/wp-json/bench-tasks/v1/import" }
+      file: { path: vuln/src/app.php, symbol: bench_unserialize_import, lines: [162, 167] }
+    poc: ground-truth/verify/deser_001.sh
+    notes: >
+      Import endpoint unserializes user-controlled PHP objects.
+
+  - id: UPLOAD-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_ajax_route
+    route: "POST /wp-admin/admin-ajax.php?action=bench_upload"
+    cwe: CWE-434
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M-H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/wp-admin/admin-ajax.php", query: { action: bench_upload } }
+      file: { path: vuln/src/app.php, symbol: bench_ajax_route, lines: [241, 247] }
+    poc: ground-truth/verify/upload_001.sh
+    notes: >
+      Upload endpoint allows PHP webshell and serves it.
+
+  - id: LFI-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_admin_page_route
+    route: "GET /wp-admin/admin.php?page=bench_tasks&view="
+    cwe: CWE-98
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-LFI-001
+    match:
+      http: { method: GET, path: "/wp-admin/admin.php", query: { page: bench_tasks }, params: [view] }
+      file: { path: vuln/src/app.php, symbol: bench_admin_page_route, lines: [268, 275] }
+    poc: ground-truth/verify/lfi_001.sh
+    notes: >
+      Admin page view parameter controls include/read target.
+
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_ssrf_fetch
+    route: "GET /wp-json/bench-tasks/v1/fetch?url="
+    cwe: CWE-918
+    owasp: "A10:2021-SSRF"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/wp-json/bench-tasks/v1/fetch", params: [url] }
+      file: { path: vuln/src/app.php, symbol: bench_ssrf_fetch, lines: [168, 173] }
+      markers: [INTERNAL-SINK]
+    poc: ground-truth/verify/ssrf_001.sh
+    notes: >
+      Server-side fetch reaches internal-sink service.
+
+  - id: XSS-STORED-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_task_page
+    route: "GET /tasks?id="
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E-M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-XSS-001
+    match:
+      http: { method: GET, path: "/tasks", params: [id] }
+      file: { path: vuln/src/app.php, symbol: bench_task_page, lines: [284, 288] }
+    poc: ground-truth/verify/xss_stored_001.sh
+    notes: >
+      Stored task body rendered without escaping.
+
+  - id: XSS-REFLECT-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_search_page
+    route: "GET /search?q="
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/search", params: [q] }
+      file: { path: vuln/src/app.php, symbol: bench_search_page, lines: [289, 298] }
+    poc: ground-truth/verify/xss_reflect_001.sh
+    notes: >
+      Search term reflected into HTML without escaping.
+
+  - id: IDOR-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_idor_task
+    route: "GET /wp-json/bench-tasks/v1/private-task?id="
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/wp-json/bench-tasks/v1/private-task", params: [id] }
+      file: { path: vuln/src/app.php, symbol: bench_idor_task, lines: [174, 181] }
+    poc: ground-truth/verify/idor_001.sh
+    notes: >
+      Task read ignores org boundary.
+
+  - id: ROLE-ESC-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_profile_update
+    route: "POST /wp-json/bench-tasks/v1/profile"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/wp-json/bench-tasks/v1/profile" }
+      file: { path: vuln/src/app.php, symbol: bench_profile_update, lines: [182, 189] }
+    poc: ground-truth/verify/role_esc_001.sh
+    notes: >
+      Profile update over-posts role field.
+
+  - id: CMD-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_command_export
+    route: "GET /wp-json/bench-tasks/v1/export?format="
+    cwe: CWE-78
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/wp-json/bench-tasks/v1/export", params: [format] }
+      file: { path: vuln/src/app.php, symbol: bench_command_export, lines: [190, 195] }
+    poc: ground-truth/verify/cmd_001.sh
+    notes: >
+      Export command embeds format parameter in shell command.
+
+  - id: REDIRECT-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_dispatch
+    route: "GET /go?to="
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/go", params: [to] }
+      file: { path: vuln/src/app.php, symbol: bench_dispatch, lines: [65, 116] }
+    poc: ground-truth/verify/redirect_001.sh
+    notes: >
+      Redirect route trusts external destination.
+
+  - id: SECRET-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_admin_page_route
+    route: "GET /wp-admin/admin.php?page=bench_options"
+    cwe: CWE-200
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: medium
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/wp-admin/admin.php", query: { page: bench_options } }
+      file: { path: vuln/src/app.php, symbol: bench_admin_page_route, lines: [276, 280] }
+      markers: [BENCH_WEBHOOK_SECRET]
+    poc: ground-truth/verify/secret_001.sh
+    notes: >
+      Plugin options page echoes webhook secret to non-admin users.
+
+  - id: RESET-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_login_route
+    route: "GET /wp-login.php?action=rp"
+    cwe: CWE-640
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/wp-login.php", query: { action: rp } }
+      file: { path: vuln/src/app.php, symbol: bench_login_route, lines: [117, 142] }
+    poc: ground-truth/verify/reset_001.sh
+    notes: >
+      Password reset token is deterministic md5(email:date).
+
+  - id: REST-ENUM-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_dispatch
+    route: "GET /wp-json/wp/v2/users"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/wp-json/wp/v2/users" }
+      file: { path: vuln/src/app.php, symbol: bench_dispatch }
+    poc: ground-truth/verify/rest_enum_001.sh
+    notes: >
+      REST users endpoint enumerates seeded usernames.
+
+  - id: AUTHOR-ENUM-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_dispatch
+    route: "GET /?author=1"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/", query: { author: 1 } }
+      file: { path: vuln/src/app.php, symbol: bench_dispatch }
+    poc: ground-truth/verify/author_enum_001.sh
+    notes: >
+      Author archive redirect reveals username slug.
+
+  - id: XMLRPC-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_xmlrpc_route
+    route: "POST /xmlrpc.php pingback.ping"
+    cwe: CWE-918
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/xmlrpc.php" }
+      file: { path: vuln/src/app.php, symbol: bench_xmlrpc_route, lines: [299, 309] }
+      markers: [INTERNAL-SINK]
+    poc: ground-truth/verify/xmlrpc_001.sh
+    notes: >
+      XML-RPC pingback analog fetches internal URL.
+
+  - id: WEAK-SALTS-001
+    variant_paths: { vuln: vuln/public/wp-config.php.bak, safe: safe/public/wp-config.php.bak }
+    symbol: static config
+    route: "GET /wp-config.php.bak"
+    cwe: CWE-321
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: medium
+    difficulty: E-M
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/wp-config.php.bak" }
+      file: { path: vuln/public/wp-config.php.bak, symbol: "static config" }
+    poc: ground-truth/verify/weak_salts_001.sh
+    notes: >
+      Backup config exposes duplicated weak salts.
+
+  - id: BACKUP-001
+    variant_paths: { vuln: vuln/public/wp-config.php.bak, safe: safe/public/wp-config.php.bak }
+    symbol: static config
+    route: "GET /wp-config.php.bak"
+    cwe: CWE-538
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/wp-config.php.bak" }
+      file: { path: vuln/public/wp-config.php.bak, symbol: "static config" }
+    poc: ground-truth/verify/backup_001.sh
+    notes: >
+      Web-reachable wp-config backup leaks DB password.
+
+  - id: DEBUG-001
+    variant_paths: { vuln: vuln/public/wp-content/debug.log, safe: safe/public/wp-content/debug.log }
+    symbol: static log
+    route: "GET /wp-content/debug.log"
+    cwe: CWE-532
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: low
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/wp-content/debug.log" }
+      file: { path: vuln/public/wp-content/debug.log, symbol: "static log", lines: [1, 2] }
+    poc: ground-truth/verify/debug_001.sh
+    notes: >
+      Debug log is web-reachable.
+
+  - id: BILLING-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_billing_route
+    route: "POST /wp-json/bench-tasks/v1/billing"
+    cwe: CWE-840
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/wp-json/bench-tasks/v1/billing" }
+      file: { path: vuln/src/app.php, symbol: bench_billing_route, lines: [203, 211] }
+    poc: ground-truth/verify/billing_001.sh
+    notes: >
+      Billing seats accepts negative values.
+
+  - id: RACE-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_invite_route
+    route: "POST /wp-json/bench-tasks/v1/invite"
+    cwe: CWE-362
+    owasp: "A04:2021-Insecure Design"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/wp-json/bench-tasks/v1/invite" }
+      file: { path: vuln/src/app.php, symbol: bench_invite_route, lines: [212, 230] }
+    poc: ground-truth/verify/race_001.sh
+    notes: >
+      Invite seat check uses unlocked read/check/write and trusts requested slots.
+
+  - id: CORS-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_cors_route
+    route: "GET /wp-json/bench-tasks/v1/cors"
+    cwe: CWE-942
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/wp-json/bench-tasks/v1/cors" }
+      file: { path: vuln/src/app.php, symbol: bench_cors_route, lines: [196, 202] }
+    poc: ground-truth/verify/cors_001.sh
+    notes: >
+      CORS endpoint reflects arbitrary Origin with credentials.
+
+  - id: DEP-001
+    variant_paths: { vuln: vuln/public/wp-content/plugins/bench-tasks/vendor/vulnerable-lib.js, safe: safe/public/wp-content/plugins/bench-tasks/vendor/vulnerable-lib.js }
+    symbol: bundled dependency
+    route: "GET /wp-content/plugins/bench-tasks/vendor/vulnerable-lib.js"
+    cwe: CWE-1035
+    owasp: "A06:2021-Vulnerable and Outdated Components"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/wp-content/plugins/bench-tasks/vendor/vulnerable-lib.js" }
+      file: { path: vuln/public/wp-content/plugins/bench-tasks/vendor/vulnerable-lib.js, symbol: "bundled dependency", lines: [1, 2] }
+    poc: ground-truth/verify/dep_001.sh
+    notes: >
+      Plugin bundles vulnerable lodash 4.17.11 marker.
+
+  - id: DEFAULT-CREDS-001
+    variant_paths: { vuln: vuln/src/app.php, safe: safe/src/app.php }
+    symbol: bench_login_route
+    route: "POST /wp-login.php"
+    cwe: CWE-798
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/wp-login.php" }
+      file: { path: vuln/src/app.php, symbol: bench_login_route }
+    poc: ground-truth/verify/default_admin_001.sh
+    notes: >
+      Default admin/admin credential succeeds in vulnerable variant.
+
+near_misses:
+  - id: NM-SQL-001
+    path: vuln/src/app.php
+    symbol: BenchWpdb::prepare
+    of: SQLI-001
+    match:
+      file: { path: vuln/src/app.php, symbol: "BenchWpdb::prepare", lines: [7, 64] }
+    notes: "Adjacent wpdb prepare helper models the safe SQL construction scanners should prefer."
+  - id: NM-SQL-002
+    path: safe/src/app.php
+    symbol: bench_second_order_report
+    of: SQLI-002
+    match:
+      file: { path: safe/src/app.php, symbol: bench_second_order_report, lines: [151, 152] }
+    notes: "Safe twin keeps the report feature but uses prepare and literal filtering."
+  - id: NM-CSRF-001
+    path: safe/src/app.php
+    symbol: bench_admin_post_route
+    of: CSRF-001
+    match:
+      file: { path: safe/src/app.php, symbol: bench_admin_post_route, lines: [248, 252] }
+    notes: "State-changing action requires the static benchmark nonce bench-nonce."
+  - id: NM-AUTHZ-001
+    path: safe/src/app.php
+    symbol: bench_admin_post_route
+    of: AUTHZ-001
+    match:
+      file: { path: safe/src/app.php, symbol: bench_admin_post_route }
+    notes: "Admin export keeps the route but checks the admin role."
+  - id: NM-LFI-001
+    path: safe/src/app.php
+    symbol: bench_admin_page_route
+    of: LFI-001
+    match:
+      file: { path: safe/src/app.php, symbol: bench_admin_page_route, lines: [264, 267] }
+    notes: "Safe view loader uses an allowlist rather than including the requested path."
+  - id: NM-XSS-001
+    path: safe/src/app.php
+    symbol: bench_task_page
+    of: XSS-STORED-001
+    match:
+      file: { path: safe/src/app.php, symbol: bench_task_page, lines: [281, 283] }
+    notes: "Safe twin renders the same task body through htmlspecialchars."

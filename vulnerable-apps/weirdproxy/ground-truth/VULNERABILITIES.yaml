@@ -1,0 +1,308 @@
+# Ground-truth answer key for the weirdproxy vulnerable app.
+# Lives outside both build contexts and is never baked into an image.
+#
+# Shape: ONE internal origin behind THREE reverse proxies at once — nginx (the
+# app-under-test on 13311), Apache (13312), Traefik (13313). The origin has no
+# ACL of its own; each proxy is supposed to block /admin, /internal/*, /metrics,
+# which hold GLOBEX-CONFIDENTIAL-MARKER-7f3a. Each planted bug is a request the
+# proxy forwards but the origin normalizes back to a protected path (or a client
+# header the proxy fails to strip). The vuln<->safe delta is CONFIG ONLY: the
+# three proxy config files. The origin is byte-identical in both variants.
+
+app: weirdproxy
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Internal Node origin (never published) normalizes paths permissively (decode,
+  resolve ./.., collapse //, strip ;params, case-fold). nginx=13311 (app under
+  test), apache=13312, traefik=13313. Protected paths /admin, /internal/*,
+  /metrics carry GLOBEX-CONFIDENTIAL-MARKER-7f3a. The origin also trusts an
+  X-Internal-Auth: trusted header that a correct proxy must strip. PoCs use
+  curl --path-as-is so the crafted path reaches the proxy unmodified.
+
+vulnerabilities:
+  - id: NGINX-ADMIN-SLASH
+    variant_paths: { vuln: vuln/nginx/default.conf, safe: safe/nginx/default.conf }
+    symbol: "location = /admin"
+    route: "GET /admin/ (nginx :13311)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-NGINX-DOTSEG
+    match:
+      http: { method: GET, path: "/admin/" }
+      file: { path: vuln/nginx/default.conf, symbol: "location = /admin", lines: [3, 30] }
+    poc: ground-truth/verify/nginx_admin_slash.sh
+    notes: "Exact-match `location = /admin` blocks only the literal path; /admin/ falls through and the origin normalizes it back to /admin."
+  - id: NGINX-ADMIN-ENCSLASH
+    variant_paths: { vuln: vuln/nginx/default.conf, safe: safe/nginx/default.conf }
+    symbol: "location = /admin"
+    route: "GET /admin%2f (nginx :13311)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/admin%2f" }
+      file: { path: vuln/nginx/default.conf, symbol: "location = /admin" }
+    poc: ground-truth/verify/nginx_admin_encslash.sh
+    notes: "nginx keeps %2f encoded so /admin%2f misses the exact match; the origin decodes %2f and normalizes to /admin."
+  - id: NGINX-METRICS-SLASH
+    variant_paths: { vuln: vuln/nginx/default.conf, safe: safe/nginx/default.conf }
+    symbol: "location = /metrics"
+    route: "GET /metrics/ (nginx :13311)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/metrics/" }
+      file: { path: vuln/nginx/default.conf, symbol: "location = /metrics" }
+    poc: ground-truth/verify/nginx_metrics_slash.sh
+    notes: "Same exact-match pitfall on /metrics; /metrics/ bypasses it."
+  - id: NGINX-INTERNAL-CASE
+    variant_paths: { vuln: vuln/nginx/default.conf, safe: safe/nginx/default.conf }
+    symbol: "location /internal"
+    route: "GET /INTERNAL (nginx :13311)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/INTERNAL" }
+      file: { path: vuln/nginx/default.conf, symbol: "location /internal" }
+    poc: ground-truth/verify/nginx_internal_case.sh
+    notes: "Prefix `location /internal` is case-sensitive; /INTERNAL bypasses and the origin case-folds it."
+  - id: NGINX-HEADER-TRUST
+    variant_paths: { vuln: vuln/nginx/default.conf, safe: safe/nginx/default.conf }
+    symbol: "location / (no proxy_set_header)"
+    route: "GET / + X-Internal-Auth: trusted (nginx :13311)"
+    cwe: CWE-807
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/" }
+      file: { path: vuln/nginx/default.conf, symbol: "location / (no proxy_set_header)", lines: [31, 36] }
+    poc: ground-truth/verify/nginx_header_trust.sh
+    notes: "nginx forwards a client-supplied X-Internal-Auth header the backend trusts; the safe twin clears it."
+  - id: APACHE-ADMIN-SLASH
+    variant_paths: { vuln: vuln/apache/proxy-bench.conf, safe: safe/apache/proxy-bench.conf }
+    symbol: "LocationMatch ^/admin$"
+    route: "GET /admin/ (apache :13312)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-APACHE-DOTSEG
+    match:
+      http: { method: GET, path: "/admin/" }
+      file: { path: vuln/apache/proxy-bench.conf, symbol: "LocationMatch ^/admin$", lines: [3, 27] }
+    poc: ground-truth/verify/apache_admin_slash.sh
+    notes: "Anchored <LocationMatch \"^/admin$\"> blocks only the literal path; /admin/ bypasses."
+  - id: APACHE-ADMIN-CASE
+    variant_paths: { vuln: vuln/apache/proxy-bench.conf, safe: safe/apache/proxy-bench.conf }
+    symbol: "LocationMatch ^/admin$"
+    route: "GET /ADMIN (apache :13312)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/ADMIN" }
+      file: { path: vuln/apache/proxy-bench.conf, symbol: "LocationMatch ^/admin$" }
+    poc: ground-truth/verify/apache_admin_case.sh
+    notes: "LocationMatch is case-sensitive; /ADMIN bypasses and the origin case-folds it."
+  - id: APACHE-INTERNAL-CASE
+    variant_paths: { vuln: vuln/apache/proxy-bench.conf, safe: safe/apache/proxy-bench.conf }
+    symbol: "Location /internal"
+    route: "GET /INTERNAL (apache :13312)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/INTERNAL" }
+      file: { path: vuln/apache/proxy-bench.conf, symbol: "Location /internal" }
+    poc: ground-truth/verify/apache_internal_case.sh
+    notes: "Case-sensitive <Location \"/internal\">; /INTERNAL bypasses."
+  - id: APACHE-METRICS-SLASH
+    variant_paths: { vuln: vuln/apache/proxy-bench.conf, safe: safe/apache/proxy-bench.conf }
+    symbol: "LocationMatch ^/metrics$"
+    route: "GET /metrics/ (apache :13312)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/metrics/" }
+      file: { path: vuln/apache/proxy-bench.conf, symbol: "LocationMatch ^/metrics$" }
+    poc: ground-truth/verify/apache_metrics_slash.sh
+    notes: "Anchored ^/metrics$ misses /metrics/."
+  - id: APACHE-HEADER-TRUST
+    variant_paths: { vuln: vuln/apache/proxy-bench.conf, safe: safe/apache/proxy-bench.conf }
+    symbol: "ProxyPass (no RequestHeader unset)"
+    route: "GET / + X-Internal-Auth: trusted (apache :13312)"
+    cwe: CWE-807
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/" }
+      file: { path: vuln/apache/proxy-bench.conf, symbol: "ProxyPass (no RequestHeader unset)" }
+    poc: ground-truth/verify/apache_header_trust.sh
+    notes: "Apache forwards the client X-Internal-Auth header; the safe twin unsets it."
+  - id: TRAEFIK-ADMIN-DOUBLESLASH
+    variant_paths: { vuln: vuln/traefik/dynamic.yml, safe: safe/traefik/dynamic.yml }
+    symbol: "PathPrefix(`/admin`)"
+    route: "GET //admin (traefik :13313)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-TRAEFIK-TRAILSLASH
+    match:
+      http: { method: GET, path: "//admin" }
+      file: { path: vuln/traefik/dynamic.yml, symbol: "PathPrefix(`/admin`)", lines: [3, 12] }
+    poc: ground-truth/verify/traefik_admin_doubleslash.sh
+    notes: "Traefik does not collapse //, so //admin misses PathPrefix(`/admin`); the origin collapses it."
+  - id: TRAEFIK-ADMIN-DOTSEG
+    variant_paths: { vuln: vuln/traefik/dynamic.yml, safe: safe/traefik/dynamic.yml }
+    symbol: "PathPrefix(`/admin`)"
+    route: "GET /./admin (traefik :13313)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/./admin" }
+      file: { path: vuln/traefik/dynamic.yml, symbol: "PathPrefix(`/admin`)" }
+    poc: ground-truth/verify/traefik_admin_dotseg.sh
+    notes: "Traefik does not resolve /./ ; /./admin bypasses and the origin resolves it."
+  - id: TRAEFIK-ADMIN-ENCDOT
+    variant_paths: { vuln: vuln/traefik/dynamic.yml, safe: safe/traefik/dynamic.yml }
+    symbol: "PathPrefix(`/admin`)"
+    route: "GET /%2e/admin (traefik :13313)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/%2e/admin" }
+      file: { path: vuln/traefik/dynamic.yml, symbol: "PathPrefix(`/admin`)" }
+    poc: ground-truth/verify/traefik_admin_encdot.sh
+    notes: "Traefik does not decode %2e; /%2e/admin bypasses and the origin decodes+resolves it."
+  - id: TRAEFIK-INTERNAL-DOUBLESLASH
+    variant_paths: { vuln: vuln/traefik/dynamic.yml, safe: safe/traefik/dynamic.yml }
+    symbol: "PathPrefix(`/internal`)"
+    route: "GET //internal (traefik :13313)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "//internal" }
+      file: { path: vuln/traefik/dynamic.yml, symbol: "PathPrefix(`/internal`)" }
+    poc: ground-truth/verify/traefik_internal_doubleslash.sh
+    notes: "//internal misses PathPrefix(`/internal`)."
+  - id: TRAEFIK-ADMIN-CASE
+    variant_paths: { vuln: vuln/traefik/dynamic.yml, safe: safe/traefik/dynamic.yml }
+    symbol: "PathPrefix(`/admin`)"
+    route: "GET /ADMIN (traefik :13313)"
+    cwe: CWE-436
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/ADMIN" }
+      file: { path: vuln/traefik/dynamic.yml, symbol: "PathPrefix(`/admin`)" }
+    poc: ground-truth/verify/traefik_admin_case.sh
+    notes: "PathPrefix is case-sensitive; /ADMIN bypasses."
+  - id: TRAEFIK-HEADER-TRUST
+    variant_paths: { vuln: vuln/traefik/dynamic.yml, safe: safe/traefik/dynamic.yml }
+    symbol: "catchall router (no strip middleware)"
+    route: "GET / + X-Internal-Auth: trusted (traefik :13313)"
+    cwe: CWE-807
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/" }
+      file: { path: vuln/traefik/dynamic.yml, symbol: "catchall router (no strip middleware)", lines: [13, 35] }
+    poc: ground-truth/verify/traefik_header_trust.sh
+    notes: "Traefik forwards the client X-Internal-Auth header; the safe twin strips it with a headers middleware."
+
+near_misses:
+  - id: NM-NGINX-DOTSEG
+    path: vuln/nginx/default.conf
+    symbol: "location = /admin (nginx normalization)"
+    of: NGINX-ADMIN-SLASH
+    match:
+      file: { path: vuln/nginx/default.conf, symbol: "location = /admin (nginx normalization)" }
+    notes: "nginx resolves /./ before matching, so /./admin IS correctly blocked on nginx — flagging it as a bypass is a false positive."
+  - id: NM-NGINX-MERGESLASH
+    path: vuln/nginx/default.conf
+    symbol: "merge_slashes (nginx default)"
+    of: NGINX-ADMIN-SLASH
+    match:
+      file: { path: vuln/nginx/default.conf, symbol: "merge_slashes (nginx default)" }
+    notes: "nginx collapses // by default, so //admin IS correctly blocked on nginx."
+  - id: NM-APACHE-DOTSEG
+    path: vuln/apache/proxy-bench.conf
+    symbol: "Apache path normalization"
+    of: APACHE-ADMIN-SLASH
+    match:
+      file: { path: vuln/apache/proxy-bench.conf, symbol: "Apache path normalization" }
+    notes: "Apache resolves /./ and collapses // before Location matching, so /./admin and //admin ARE correctly blocked on Apache."
+  - id: NM-TRAEFIK-TRAILSLASH
+    path: vuln/traefik/dynamic.yml
+    symbol: "PathPrefix(`/admin`)"
+    of: TRAEFIK-ADMIN-DOUBLESLASH
+    match:
+      file: { path: vuln/traefik/dynamic.yml, symbol: "PathPrefix(`/admin`)" }
+    notes: "PathPrefix is a prefix match, so /admin/ IS correctly blocked on Traefik — the trailing-slash trick that beats nginx/Apache does not beat Traefik."

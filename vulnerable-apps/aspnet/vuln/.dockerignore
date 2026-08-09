@@ -1,0 +1,5 @@
+bin/
+obj/
+.git/
+ground-truth/
+**/ground-truth/

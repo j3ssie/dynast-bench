@@ -1,0 +1,645 @@
+app: graphql
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex; user2 in Globex; a Globex DRAFT carries
+  GLOBEX-CONFIDENTIAL-MARKER-7f3a; weak admin/admin service credential in vuln.
+vulnerabilities:
+  - id: GQL-INTROSPECT-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: ALLOW_INTROSPECTION
+    route: "POST /graphql { __schema }"
+    graphql_op: __schema
+    graphql_kind: query
+    cwe: CWE-200
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-GQL-PUBLIC-001
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: ALLOW_INTROSPECTION, lines: [2, 2] }
+      graphql: { op: __schema, kind: query }
+    poc: ground-truth/verify/introspect_001.sh
+    notes: Production GraphQL endpoint allows full schema introspection.
+  - id: GQL-SUGGEST-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: SHOW_SUGGESTIONS
+    route: "POST /graphql typo field"
+    graphql_op: validation
+    graphql_kind: query
+    cwe: CWE-200
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: low
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-GQL-PUBLIC-001
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: SHOW_SUGGESTIONS, lines: [3, 3] }
+      graphql: { op: validation, kind: query }
+    poc: ground-truth/verify/suggest_001.sh
+    notes: Validation suggestions leak sensitive field names such as passwordHash.
+  - id: GQL-DEPTH-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: ENFORCE_DEPTH_LIMIT
+    route: "POST /graphql deeply nested query"
+    graphql_op: me.organization.posts
+    graphql_kind: query
+    cwe: CWE-770
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: NM-GQL-PUBLIC-001
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: ENFORCE_DEPTH_LIMIT, lines: [4, 4] }
+      graphql: { op: me.organization.posts, kind: query }
+    poc: ground-truth/verify/depth_001.sh
+    notes: Recursive type graph can be queried without a depth cap.
+  - id: GQL-COST-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: ENFORCE_COST_LIMIT
+    route: "POST /graphql posts(first:)"
+    graphql_op: posts
+    graphql_kind: query
+    cwe: CWE-400
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-GQL-PUBLIC-001
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: ENFORCE_COST_LIMIT, lines: [5, 5] }
+      graphql: { op: posts, kind: query }
+    poc: ground-truth/verify/cost_001.sh
+    notes: first argument is unbounded on the primary GraphQL endpoint.
+  - id: GQL-ALIAS-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: LIMIT_ALIASES
+    route: "POST /graphql aliased login mutations"
+    graphql_op: login
+    graphql_kind: mutation
+    cwe: CWE-307
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: LIMIT_ALIASES, lines: [6, 6] }
+      graphql: { op: login, kind: mutation }
+    poc: ground-truth/verify/alias_001.sh
+    notes: Many aliased login mutations execute in one request without per-operation limits.
+  - id: GQL-BATCH-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: LIMIT_BATCH
+    route: "POST /graphql JSON array batch"
+    graphql_op: batch transport
+    graphql_kind: query
+    cwe: CWE-770
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M-H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: LIMIT_BATCH, lines: [7, 7] }
+      graphql: { op: "batch transport", kind: query }
+    poc: ground-truth/verify/batch_001.sh
+    notes: JSON array batching is accepted on the main endpoint.
+  - id: GQL-BATCHAUTH-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: PER_OPERATION_CONTEXT
+    route: "POST /graphql batched auth carry-over"
+    graphql_op: users
+    graphql_kind: query
+    cwe: CWE-863
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: PER_OPERATION_CONTEXT, lines: [8, 8] }
+      graphql: { op: users, kind: query }
+    poc: ground-truth/verify/batchauth_001.sh
+    notes: Viewer is resolved once per request and reused by later batched operations.
+  - id: GQL-APQ-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: VERIFY_APQ_HASH
+    route: "POST /graphql persistedQuery.sha256Hash"
+    graphql_op: persistedQuery
+    graphql_kind: mutation
+    cwe: CWE-345
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: high
+    difficulty: H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: VERIFY_APQ_HASH, lines: [9, 9] }
+      graphql: { op: persistedQuery, kind: mutation }
+    poc: ground-truth/verify/apq_001.sh
+    notes: APQ cache stores a query under an attacker-supplied hash without verifying the digest.
+  - id: GQL-CSRF-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: ALLOW_GET_MUTATIONS
+    route: "GET /graphql?query=mutation"
+    graphql_op: login
+    graphql_kind: mutation
+    cwe: CWE-352
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/graphql", query: { query: mutation } }
+      file: { path: vuln/src/security.ts, symbol: ALLOW_GET_MUTATIONS, lines: [10, 10] }
+      graphql: { op: login, kind: mutation }
+    poc: ground-truth/verify/csrf_001.sh
+    notes: Mutations are accepted over GET with CSRF prevention disabled.
+  - id: GQL-ERROR-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: VERBOSE_ERRORS
+    route: "POST /graphql malformed SQL-backed query"
+    graphql_op: posts
+    graphql_kind: query
+    cwe: CWE-209
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: VERBOSE_ERRORS, lines: [11, 11] }
+      graphql: { op: posts, kind: query }
+    poc: ground-truth/verify/errors_001.sh
+    notes: Error formatter exposes stack and SQL context.
+  - id: GQL-LANDING-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: EXPOSE_LANDING
+    route: "GET /"
+    graphql_op: landing
+    graphql_kind: query
+    cwe: CWE-489
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: low
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/" }
+      file: { path: vuln/src/security.ts, symbol: EXPOSE_LANDING, lines: [12, 12] }
+      graphql: { op: landing, kind: query }
+    poc: ground-truth/verify/landing_001.sh
+    notes: Production exposes an Apollo-style landing/tracing page.
+  - id: GQL-NODE-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: NODE_CHECK_ORG
+    route: "POST /graphql node(id:)"
+    graphql_op: node
+    graphql_kind: query
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: NM-GQL-POSTS-001
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: NODE_CHECK_ORG, lines: [13, 13] }
+      graphql: { op: node, kind: query }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/node_idor_001.sh
+    notes: Opaque global IDs are decoded without re-checking tenant ownership.
+  - id: GQL-FIELDAUTHZ-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: MASK_USER_SECRETS
+    route: "POST /graphql posts.author.passwordHash"
+    graphql_op: User.passwordHash
+    graphql_kind: query
+    cwe: CWE-863
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M-H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-GQL-EMAIL-001
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: MASK_USER_SECRETS, lines: [14, 14] }
+      graphql: { op: User.passwordHash, kind: query }
+    poc: ground-truth/verify/fieldauthz_001.sh
+    notes: Field resolvers expose passwordHash/resetToken/email even when only the object path was authorized.
+  - id: GQL-NESTEDAUTHZ-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: FILTER_ORG_POSTS_FIELD
+    route: "POST /graphql me.organization.posts"
+    graphql_op: Organization.posts
+    graphql_kind: query
+    cwe: CWE-863
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-GQL-POSTS-001
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: FILTER_ORG_POSTS_FIELD, lines: [15, 15] }
+      graphql: { op: Organization.posts, kind: query }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/nested_authz_001.sh
+    notes: Nested Organization.posts resolver omits the root posts org/status filter.
+  - id: GQL-MISSINGAUTH-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: REQUIRE_ADMIN_DELETE_ORG
+    route: "POST /graphql deleteOrganization"
+    graphql_op: deleteOrganization
+    graphql_kind: mutation
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: REQUIRE_ADMIN_DELETE_ORG, lines: [16, 16] }
+      graphql: { op: deleteOrganization, kind: mutation }
+    poc: ground-truth/verify/missing_auth_001.sh
+    notes: Admin-only mutation lacks the admin authorization directive equivalent.
+  - id: GQL-MASSASSIGN-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: MASS_ASSIGN_PROFILE
+    route: "POST /graphql updateProfile"
+    graphql_op: updateProfile
+    graphql_kind: mutation
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-GQL-UPDATEEMAIL-001
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: MASS_ASSIGN_PROFILE, lines: [17, 17] }
+      graphql: { op: updateProfile, kind: mutation }
+    poc: ground-truth/verify/massassign_001.sh
+    notes: Profile input is spread into the user update and allows role/isAdmin changes.
+  - id: GQL-SUBAUTH-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: SUBSCRIBE_AUTH_IN_SUBSCRIBE
+    route: "WS /graphql/ws postUpdated(orgId:)"
+    graphql_op: postUpdated
+    graphql_kind: subscription
+    cwe: CWE-863
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: H
+    taint: cross-service
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/graphql/ws" }
+      file: { path: vuln/src/security.ts, symbol: SUBSCRIBE_AUTH_IN_SUBSCRIBE, lines: [18, 18] }
+      graphql: { op: postUpdated, kind: subscription }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/subscription_001.sh
+    notes: Subscription authorizes too late and allows subscribing to another tenant.
+  - id: GQL-SQLI-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: USE_SAFE_SQL
+    route: "POST /graphql posts(filter:)"
+    graphql_op: posts
+    graphql_kind: query
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: NM-GQL-SQL-001
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: USE_SAFE_SQL, lines: [19, 19] }
+      graphql: { op: posts, kind: query }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_001.sh
+    notes: Raw SQL concatenates filter/orderBy into a Postgres query.
+  - id: GQL-SECONDSQLI-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: USE_SAFE_SQL
+    route: "POST /graphql reportRun"
+    graphql_op: reportRun
+    graphql_kind: query
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-GQL-SQL-001
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: USE_SAFE_SQL }
+      graphql: { op: reportRun, kind: query }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/second_sqli_001.sh
+    notes: Stored report name is later concatenated into SQL by reportRun.
+  - id: GQL-JSON-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: VALIDATE_JSON_SCALAR
+    route: "POST /graphql searchPosts(where:)"
+    graphql_op: searchPosts
+    graphql_kind: query
+    cwe: CWE-943
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: M-H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-GQL-SQL-001
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: VALIDATE_JSON_SCALAR, lines: [20, 20] }
+      graphql: { op: searchPosts, kind: query }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/json_001.sh
+    notes: JSONObject raw operator bypasses intended query builder restrictions.
+  - id: GQL-CMD-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: SAFE_EXPORT_COMMAND
+    route: "POST /graphql exportReport(format:)"
+    graphql_op: exportReport
+    graphql_kind: mutation
+    cwe: CWE-78
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: SAFE_EXPORT_COMMAND, lines: [21, 21] }
+      graphql: { op: exportReport, kind: mutation }
+    poc: ground-truth/verify/cmd_001.sh
+    notes: Export format is interpolated into a shell command.
+  - id: GQL-XSS-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: ESCAPE_HTML_EXPORT
+    route: "GET /api/export?format=html"
+    graphql_op: addComment
+    graphql_kind: mutation
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: M
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/export", query: { format: html } }
+      file: { path: vuln/src/security.ts, symbol: ESCAPE_HTML_EXPORT, lines: [22, 22] }
+      graphql: { op: addComment, kind: mutation }
+    poc: ground-truth/verify/xss_001.sh
+    notes: Stored comment body is returned as text/html without escaping.
+  - id: GQL-JWT-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: STRICT_JWT
+    route: "POST /graphql Authorization Bearer JWT"
+    graphql_op: users
+    graphql_kind: query
+    cwe: CWE-347
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: STRICT_JWT, lines: [23, 23] }
+      graphql: { op: users, kind: query }
+    poc: ground-truth/verify/jwt_001.sh
+    notes: JWT decoder accepts alg:none and ignores expiration when not in strict mode.
+  - id: GQL-LOGIN-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: RATE_LIMIT_LOGIN
+    route: "POST /graphql login"
+    graphql_op: login
+    graphql_kind: mutation
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: RATE_LIMIT_LOGIN, lines: [24, 24] }
+      graphql: { op: login, kind: mutation }
+    poc: ground-truth/verify/login_001.sh
+    notes: Login errors enumerate users and no effective per-operation rate limit is enabled.
+  - id: GQL-SSRF-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: BLOCK_SSRF
+    route: "POST /graphql linkPreview(url:)"
+    graphql_op: linkPreview
+    graphql_kind: query
+    cwe: CWE-918
+    owasp: "A10:2021-Server-Side Request Forgery"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-GQL-SSRF-001
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: BLOCK_SSRF, lines: [25, 25] }
+      graphql: { op: linkPreview, kind: query }
+      markers: [BILLING-INTERNAL-SECRET-8d12]
+    poc: ground-truth/verify/ssrf_001.sh
+    notes: linkPreview fetches arbitrary URLs including internal billing-svc.
+  - id: GQL-UPLOAD-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: SAFE_UPLOAD
+    route: "POST /graphql uploadAvatar"
+    graphql_op: uploadAvatar
+    graphql_kind: mutation
+    cwe: CWE-22
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: SAFE_UPLOAD, lines: [26, 26] }
+      graphql: { op: uploadAvatar, kind: mutation }
+    poc: ground-truth/verify/upload_001.sh
+    notes: Upload filename is joined directly, allowing directory traversal.
+  - id: GQL-REDIRECT-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: SAFE_REDIRECT
+    route: "GET /auth/callback?next="
+    graphql_op: auth callback
+    graphql_kind: query
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/auth/callback", params: [next] }
+      file: { path: vuln/src/security.ts, symbol: SAFE_REDIRECT, lines: [27, 27] }
+      graphql: { op: "auth callback", kind: query }
+    poc: ground-truth/verify/redirect_001.sh
+    notes: Auth callback redirects to arbitrary next URL.
+  - id: GQL-CORS-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: LOCK_CORS
+    route: "OPTIONS /graphql"
+    graphql_op: transport
+    graphql_kind: query
+    cwe: CWE-942
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: OPTIONS, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: LOCK_CORS, lines: [28, 28] }
+      graphql: { op: transport, kind: query }
+    poc: ground-truth/verify/cors_001.sh
+    notes: CORS reflects arbitrary Origin while allowing credentials.
+  - id: GQL-SEATS-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: VALIDATE_SEATS
+    route: "POST /graphql purchaseSeats(quantity:)"
+    graphql_op: purchaseSeats
+    graphql_kind: mutation
+    cwe: CWE-840
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: VALIDATE_SEATS, lines: [29, 29] }
+      graphql: { op: purchaseSeats, kind: mutation }
+    poc: ground-truth/verify/seats_001.sh
+    notes: Negative seat purchases are accepted.
+  - id: GQL-RACE-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: ATOMIC_INVITES
+    route: "POST /graphql inviteUser"
+    graphql_op: inviteUser
+    graphql_kind: mutation
+    cwe: CWE-362
+    owasp: "A04:2021-Insecure Design"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: ATOMIC_INVITES, lines: [30, 30] }
+      graphql: { op: inviteUser, kind: mutation }
+    poc: ground-truth/verify/race_001.sh
+    notes: Invite seat check and insert/update are not atomic.
+  - id: GQL-CREDS-001
+    variant_paths: { vuln: vuln/src/security.ts, safe: safe/src/security.ts }
+    symbol: ROTATE_SERVICE_CREDS
+    route: "POST /graphql login(admin/admin)"
+    graphql_op: login
+    graphql_kind: mutation
+    cwe: CWE-798
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/graphql" }
+      file: { path: vuln/src/security.ts, symbol: ROTATE_SERVICE_CREDS, lines: [31, 33] }
+      graphql: { op: login, kind: mutation }
+    poc: ground-truth/verify/default_creds_001.sh
+    notes: Seed includes a default admin/admin service credential.
+near_misses:
+  - id: NM-GQL-PUBLIC-001
+    path: vuln/src/main.ts
+    symbol: /graphql/public
+    of: GQL-INTROSPECT-001
+    match:
+      file: { path: vuln/src/main.ts, symbol: "/graphql/public", lines: [305, 364] }
+    notes: Public endpoint forces introspection off and applies depth/cost/alias checks.
+  - id: NM-GQL-POSTS-001
+    path: vuln/src/main.ts
+    symbol: Query.posts
+    of: GQL-NESTEDAUTHZ-001
+    match:
+      file: { path: vuln/src/main.ts, symbol: Query.posts, lines: [365, 425] }
+    notes: Root posts query filters by viewer org and published status.
+  - id: NM-GQL-EMAIL-001
+    path: vuln/src/main.ts
+    symbol: me.email
+    of: GQL-FIELDAUTHZ-001
+    match:
+      file: { path: vuln/src/main.ts, symbol: me.email, lines: [117, 176] }
+    notes: Viewer can read its own email, unlike sideways User field traversal.
+  - id: NM-GQL-SQL-001
+    path: safe/src/main.ts
+    symbol: parameterized pool.query
+    of: GQL-SQLI-001
+    match:
+      file: { path: safe/src/main.ts, symbol: "parameterized pool.query" }
+    notes: Safe twin uses parameterized SQL for posts/report/search.
+  - id: NM-GQL-SSRF-001
+    path: safe/src/main.ts
+    symbol: safeFetch
+    of: GQL-SSRF-001
+    match:
+      file: { path: safe/src/main.ts, symbol: safeFetch, lines: [177, 237] }
+    notes: Safe twin allowlists external hosts and blocks billing-svc.
+  - id: NM-GQL-UPDATEEMAIL-001
+    path: vuln/src/main.ts
+    symbol: updateEmail
+    of: GQL-MASSASSIGN-001
+    match:
+      file: { path: vuln/src/main.ts, symbol: updateEmail, lines: [268, 304] }
+    notes: updateEmail copies exactly one allowed field.

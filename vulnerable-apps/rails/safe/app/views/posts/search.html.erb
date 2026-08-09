@@ -1,0 +1,8 @@
+<!doctype html>
+<html>
+  <head><title>Search</title></head>
+  <body>
+    <h1>Search</h1>
+    <div id="query"><%= @q %></div> <!-- SAFE XSS-REFLECT-001: reflected query is escaped -->
+  </body>
+</html>

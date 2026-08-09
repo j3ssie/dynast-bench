@@ -1,0 +1,45 @@
+# --- secrets / local env ---
+.env
+*.env.local
+!.env.example
+
+# --- scanner output & scoring artifacts (not checked in) ---
+findings.json
+findings/
+scores/
+*.sarif
+
+# --- Node / bench tooling ---
+node_modules/
+bench/dist/
+# `make build` output (compiled CLI binary)
+dynast-bench/dist/
+*.tsbuildinfo
+
+# --- per-stack build artifacts ---
+# Python
+__pycache__/
+*.pyc
+.venv/
+# Java / Maven / Gradle
+target/
+build/
+*.war
+*.class
+# .NET
+bin/
+obj/
+# Ruby
+vendor/bundle/
+# Go
+*.exe
+
+# --- docker / volumes leftovers ---
+*.pid
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

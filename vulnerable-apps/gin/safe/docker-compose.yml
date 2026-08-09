@@ -1,0 +1,26 @@
+name: safe-gin
+services:
+  app:
+    build: .
+    ports: ["127.0.0.1:${DYNAST_PORT:-13311}:3000"]
+    environment:
+      DATABASE_URL: postgres://bench:bench@postgres:5432/bench?sslmode=disable
+      VERIFY_TOKEN: benchsecret
+      APP_SECRET: GIN-DEBUG-SECRET-9c2e
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/api/_verify/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  postgres:
+    image: postgres:16.4
+    ports: ["127.0.0.1:${DYNAST_PORT_POSTGRES_5432:-13312}:5432"]
+    environment: { POSTGRES_USER: bench, POSTGRES_PASSWORD: bench, POSTGRES_DB: bench }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bench"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

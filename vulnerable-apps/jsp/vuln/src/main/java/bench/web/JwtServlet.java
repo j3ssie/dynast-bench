@@ -1,0 +1,3 @@
+package bench.web;
+import bench.util.Util; import jakarta.servlet.http.*; import java.io.*; import java.nio.charset.StandardCharsets;
+public class JwtServlet extends HttpServlet { protected void doGet(HttpServletRequest req,HttpServletResponse resp)throws IOException{ String h=req.getHeader("Authorization"); if(h==null||!h.startsWith("Bearer ")){resp.sendError(401);return;} String[] parts=h.substring(7).split("\\."); String header=new String(Util.b64urlDecode(parts[0]), StandardCharsets.UTF_8); String payload=new String(Util.b64urlDecode(parts[1]), StandardCharsets.UTF_8); if(header.contains("\"alg\":\"none\"")){ Util.text(resp,"jwt accepted "+payload); return; } resp.sendError(401); } }

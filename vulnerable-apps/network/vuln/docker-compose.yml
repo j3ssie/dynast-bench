@@ -1,0 +1,134 @@
+name: vuln-network
+services:
+  scanner:
+    build: .
+    environment: { ROLE: scanner, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    ports: ["127.0.0.1:${DYNAST_PORT:-13311}:3000"]
+    networks:
+      edge: { ipv4_address: 10.89.1.200 }
+      app: {}
+      data: {}
+      mgmt: {}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:3000/api/_verify/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  edge-proxy:
+    build: .
+    environment: { ROLE: edge-proxy, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    ports: ["127.0.0.1:${DYNAST_PORT_EDGE_PROXY_80:-13312}:80", "127.0.0.1:${DYNAST_PORT_EDGE_PROXY_443:-13313}:443", "127.0.0.1:${DYNAST_PORT_EDGE_PROXY_8443:-13314}:8443"]
+    networks:
+      edge: { ipv4_address: 10.89.1.10 }
+      data: {}   # planted edge->data segmentation break
+
+  edge-bastion:
+    build: .
+    environment: { ROLE: edge-bastion, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      edge: { ipv4_address: 10.89.1.11 }
+
+  edge-ftp:
+    build: .
+    environment: { ROLE: edge-ftp, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      edge: { ipv4_address: 10.89.1.12 }
+
+  edge-mail:
+    build: .
+    environment: { ROLE: edge-mail, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      edge: { ipv4_address: 10.89.1.13 }
+
+  app-web:
+    build: .
+    environment: { ROLE: app-web, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      app: { ipv4_address: 10.89.2.10 }
+
+  app-legacy:
+    build: .
+    environment: { ROLE: app-legacy, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      app: { ipv4_address: 10.89.2.11 }
+
+  data-postgres:
+    build: .
+    environment: { ROLE: data-postgres, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      data: { ipv4_address: 10.89.3.10 }
+
+  data-redis:
+    build: .
+    environment: { ROLE: data-redis, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      data: { ipv4_address: 10.89.3.11 }
+
+  data-redis-secure:
+    build: .
+    environment: { ROLE: data-redis-secure, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      data: { ipv4_address: 10.89.3.12 }
+
+  data-mongo:
+    build: .
+    environment: { ROLE: data-mongo, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      data: { ipv4_address: 10.89.3.13 }
+
+  data-elastic:
+    build: .
+    environment: { ROLE: data-elastic, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      data: { ipv4_address: 10.89.3.14 }
+
+  data-memcached:
+    build: .
+    environment: { ROLE: data-memcached, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      data: { ipv4_address: 10.89.3.15 }
+
+  mgmt-jenkins:
+    build: .
+    environment: { ROLE: mgmt-jenkins, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      mgmt: { ipv4_address: 10.89.4.10 }
+
+  mgmt-grafana:
+    build: .
+    environment: { ROLE: mgmt-grafana, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      mgmt: { ipv4_address: 10.89.4.11 }
+      app: {}    # planted app->mgmt reachability break
+
+  mgmt-rabbitmq:
+    build: .
+    environment: { ROLE: mgmt-rabbitmq, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      mgmt: { ipv4_address: 10.89.4.12 }
+
+  mgmt-phpmyadmin:
+    build: .
+    environment: { ROLE: mgmt-phpmyadmin, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      mgmt: { ipv4_address: 10.89.4.13 }
+
+  mgmt-minio:
+    build: .
+    environment: { ROLE: mgmt-minio, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      mgmt: { ipv4_address: 10.89.4.14 }
+
+  mgmt-snmp:
+    build: .
+    environment: { ROLE: mgmt-snmp, VARIANT: vuln, VERIFY_TOKEN: benchsecret }
+    networks:
+      mgmt: { ipv4_address: 10.89.4.15 }
+
+networks:
+  edge: { driver: bridge, ipam: { config: [{ subnet: 10.89.1.0/24 }] } }
+  app:  { driver: bridge, ipam: { config: [{ subnet: 10.89.2.0/24 }] } }
+  data: { driver: bridge, ipam: { config: [{ subnet: 10.89.3.0/24 }] } }
+  mgmt: { driver: bridge, ipam: { config: [{ subnet: 10.89.4.0/24 }] } }

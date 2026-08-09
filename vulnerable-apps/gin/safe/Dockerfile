@@ -1,0 +1,20 @@
+FROM golang:1.23-bookworm AS build
+WORKDIR /src
+COPY go.mod go.sum* ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o /out/gin-app .
+
+FROM debian:bookworm-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl imagemagick chromium fonts-liberation \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=build /out/gin-app /app/gin-app
+COPY entrypoint.sh /app/entrypoint.sh
+COPY internal-sink.mjs /app/internal-sink.mjs
+RUN chmod +x /app/entrypoint.sh
+EXPOSE 3000
+HEALTHCHECK --interval=10s --timeout=5s --retries=30 --start-period=60s \
+  CMD curl -sf http://localhost:3000/api/_verify/health || exit 1
+CMD ["/app/entrypoint.sh"]

@@ -1,0 +1,42 @@
+name: safe-aspnet
+services:
+  app:
+    build: .
+    platform: linux/amd64
+    ports: ["127.0.0.1:${DYNAST_PORT:-13311}:8080"]
+    environment:
+      ConnectionStrings__Default: "Server=sqlserver;Database=bench;User Id=sa;Password=Bench12345!;TrustServerCertificate=True"
+      ASPNETCORE_ENVIRONMENT: "Production"
+      SMTP_HOST: mailpit
+      JWT_SECRET: "hardcoded-weak-secret"
+      APP_URL: http://localhost:3000
+      VERIFY_TOKEN: benchsecret
+    volumes: [uploads:/data/uploads]
+    depends_on:
+      sqlserver: { condition: service_healthy }
+      mailpit: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/_verify/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 120s
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "Bench12345!"
+      MSSQL_PID: Developer
+    ports: ["127.0.0.1:${DYNAST_PORT_SQLSERVER_1433:-13312}:1433"]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Bench12345!' -Q 'SELECT 1' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  mailpit:
+    image: axllent/mailpit:v1.20
+    ports: ["127.0.0.1:${DYNAST_PORT_MAILPIT_8025:-13313}:8025", "127.0.0.1:${DYNAST_PORT_MAILPIT_1025:-13314}:1025"]
+volumes:
+  uploads: {}

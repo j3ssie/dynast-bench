@@ -1,0 +1,618 @@
+app: llmchat
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Acme and Globex tenants with shared benchmark users. user2 is in Globex. A
+  Globex seeded document and conversation contain GLOBEX-CONFIDENTIAL-MARKER-7f3a.
+  A dormant injected document contains INJECTED-PAYLOAD-9c21. Weak service
+  credential admin/admin is present in vuln only.
+vulnerabilities:
+  - id: PI-001
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_DIRECT_PROMPT_INJECTION
+    route: "POST /api/chat"
+    cwe: CWE-1427
+    owasp: "A03:2021-Injection"
+    llm_owasp: "LLM01:2025-Prompt Injection"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: NM-CHAT-V2
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/chat" }
+      file: { path: vuln/app.py, symbol: VULN_DIRECT_PROMPT_INJECTION, lines: [34, 34] }
+      llm: { channel: user }
+    poc: ground-truth/verify/pi_001.sh
+    notes: User prompt is f-stringed into the flat system prompt and can override behavior.
+  - id: RAGPI-002
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_RAG_PROMPT_INJECTION
+    route: "POST /api/chat"
+    cwe: CWE-1427
+    owasp: "A03:2021-Injection"
+    llm_owasp: "LLM01:2025-Prompt Injection"
+    severity: critical
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-CHAT-V2
+    injection_channel: document
+    match:
+      http: { method: POST, path: "/api/chat" }
+      file: { path: vuln/app.py, symbol: VULN_RAG_PROMPT_INJECTION, lines: [35, 35] }
+      llm: { channel: document }
+    poc: ground-truth/verify/ragpi_002.sh
+    notes: Retrieved document chunks are concatenated as instructions without provenance or escaping.
+  - id: URLPI-003
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_FETCHED_PAGE_PROMPT_INJECTION
+    route: "POST /api/chat"
+    cwe: CWE-1427
+    owasp: "A03:2021-Injection"
+    llm_owasp: "LLM01:2025-Prompt Injection"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: user
+    near_miss: NM-CHAT-V2
+    injection_channel: url
+    match:
+      http: { method: POST, path: "/api/chat" }
+      file: { path: vuln/app.py, symbol: VULN_FETCHED_PAGE_PROMPT_INJECTION, lines: [36, 36] }
+      llm: { channel: url }
+    poc: ground-truth/verify/urlpi_003.sh
+    notes: Remote/fetched page text is inserted into the prompt as trusted context.
+  - id: ROLE-004
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_FORGED_ROLES
+    route: "POST /api/chat"
+    cwe: CWE-807
+    owasp: "A07:2021-Identification and Authentication Failures"
+    llm_owasp: "LLM01:2025-Prompt Injection"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-CHAT-V2
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/chat" }
+      file: { path: vuln/app.py, symbol: VULN_FORGED_ROLES, lines: [37, 37] }
+      llm: { channel: user }
+    poc: ground-truth/verify/role_004.sh
+    notes: Client-supplied system and assistant messages are trusted as prior roles.
+  - id: PROMPTLEAK-005
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_PROMPT_LEAK
+    route: "POST /api/chat"
+    cwe: CWE-200
+    owasp: "A05:2021-Security Misconfiguration"
+    llm_owasp: "LLM07:2025-System Prompt Leakage"
+    severity: medium
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/chat" }
+      file: { path: vuln/app.py, symbol: VULN_PROMPT_LEAK, lines: [38, 38] }
+      llm: { channel: user }
+    poc: ground-truth/verify/promptleak_005.sh
+    notes: System prompt contains internal URLs, weak service credential, and API key material.
+  - id: DEBUG-006
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_DEBUG_CONFIG
+    route: "GET /api/chat/config"
+    cwe: CWE-200
+    owasp: "A05:2021-Security Misconfiguration"
+    llm_owasp: "LLM07:2025-System Prompt Leakage"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: null
+    injection_channel: user
+    match:
+      http: { method: GET, path: "/api/chat/config" }
+      file: { path: vuln/app.py, symbol: VULN_DEBUG_CONFIG, lines: [39, 39] }
+      llm: { channel: user }
+    poc: ground-truth/verify/debug_006.sh
+    notes: Debug config route returns raw prompt template, model options, internal URL, and credential.
+  - id: GUARD-007
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_WEAK_GUARDRAIL
+    route: "POST /api/chat"
+    cwe: CWE-184
+    owasp: "A03:2021-Injection"
+    llm_owasp: "LLM01:2025-Prompt Injection"
+    severity: medium
+    difficulty: M-H
+    taint: in-file
+    reachability: user
+    near_miss: NM-GUARD-001
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/chat" }
+      file: { path: vuln/app.py, symbol: VULN_WEAK_GUARDRAIL, lines: [40, 40] }
+      llm: { channel: user }
+    poc: ground-truth/verify/guard_007.sh
+    notes: Regex blocklist misses encoded jailbreak instructions.
+  - id: XSS-008
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_LLM_OUTPUT_XSS
+    route: "GET /api/conversations/{id}/html"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    llm_owasp: "LLM05:2025-Improper Output Handling"
+    severity: high
+    difficulty: M
+    taint: cross-file
+    reachability: user
+    near_miss: NM-XSS-001
+    injection_channel: tool-result
+    match:
+      http: { method: GET, path: "/api/conversations/{id}/html" }
+      file: { path: vuln/app.py, symbol: VULN_LLM_OUTPUT_XSS, lines: [41, 41] }
+      llm: { channel: tool-result }
+    poc: ground-truth/verify/xss_008.sh
+    notes: Model output is rendered as HTML without escaping.
+  - id: STREAM-XSS-009
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_REFLECTED_XSS
+    route: "POST /api/stream"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/stream" }
+      file: { path: vuln/app.py, symbol: VULN_REFLECTED_XSS, lines: [42, 42] }
+    poc: ground-truth/verify/stream_xss_009.sh
+    notes: Stream error page reflects the conversation title as raw HTML.
+  - id: NLSQL-010
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_NL_TO_SQL
+    route: "POST /api/analytics/ask"
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    llm_owasp: "LLM05:2025-Improper Output Handling"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-SQL-001
+    injection_channel: tool-result
+    match:
+      http: { method: POST, path: "/api/analytics/ask" }
+      file: { path: vuln/app.py, symbol: VULN_NL_TO_SQL, lines: [43, 43] }
+      llm: { channel: tool-result }
+    poc: ground-truth/verify/nlsql_010.sh
+    notes: Model-authored SQL is executed raw with access to seeded user data.
+  - id: EXEC-011
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_EXEC_TOOL
+    route: "POST /api/tools/calc"
+    cwe: CWE-94
+    owasp: "A03:2021-Injection"
+    llm_owasp: "LLM05:2025-Improper Output Handling"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-EXEC-001
+    injection_channel: tool-result
+    match:
+      http: { method: POST, path: "/api/tools/calc" }
+      file: { path: vuln/app.py, symbol: VULN_EXEC_TOOL, lines: [44, 44] }
+      llm: { channel: tool-result }
+    poc: ground-truth/verify/exec_011.sh
+    notes: Calculator tool evaluates model output with Python eval.
+  - id: SSRF-012
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_CITATION_SSRF
+    route: "POST /api/citations/fetch"
+    cwe: CWE-918
+    owasp: "A10:2021-Server-Side Request Forgery"
+    llm_owasp: "LLM05:2025-Improper Output Handling"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: user
+    near_miss: NM-SSRF-001
+    injection_channel: tool-result
+    match:
+      http: { method: POST, path: "/api/citations/fetch" }
+      file: { path: vuln/app.py, symbol: VULN_CITATION_SSRF, lines: [45, 45] }
+      llm: { channel: tool-result }
+    poc: ground-truth/verify/ssrf_012.sh
+    notes: Citation URL sink can reach internal-svc, ollama, and metadata hosts.
+  - id: REDIRECT-013
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_OPEN_REDIRECT
+    route: "GET /api/citations/render?url="
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    llm_owasp: "LLM09:2025-Misinformation"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/citations/render", params: [url] }
+      file: { path: vuln/app.py, symbol: VULN_OPEN_REDIRECT, lines: [46, 46] }
+    poc: ground-truth/verify/redirect_013.sh
+    notes: Fabricated external citation link is rendered clickable.
+  - id: VECTOR-014
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_VECTOR_CROSS_TENANT
+    route: "POST /api/chat"
+    cwe: CWE-863
+    owasp: "A01:2021-Broken Access Control"
+    llm_owasp: "LLM08:2025-Vector and Embedding Weaknesses"
+    severity: critical
+    difficulty: M-H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-VECTOR-001
+    injection_channel: document
+    match:
+      http: { method: POST, path: "/api/chat" }
+      file: { path: vuln/app.py, symbol: VULN_VECTOR_CROSS_TENANT, lines: [47, 47] }
+      llm: { channel: document }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/vector_014.sh
+    notes: Vector retrieval accepts collection_id without joining back to viewer org.
+  - id: BOLA-015
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_COLLECTION_BOLA
+    route: "GET /api/rag/search"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    llm_owasp: "LLM08:2025-Vector and Embedding Weaknesses"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: NM-VECTOR-001
+    injection_channel: document
+    match:
+      http: { method: GET, path: "/api/rag/search" }
+      file: { path: vuln/app.py, symbol: VULN_COLLECTION_BOLA, lines: [48, 48] }
+      llm: { channel: document }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/bola_015.sh
+    notes: RAG search returns raw chunks from any collection id.
+  - id: CACHE-016
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_PROMPT_CACHE_GLOBAL
+    route: "POST /api/chat"
+    cwe: CWE-524
+    owasp: "A01:2021-Broken Access Control"
+    llm_owasp: "LLM02:2025-Sensitive Information Disclosure"
+    severity: high
+    difficulty: H
+    taint: cross-service
+    reachability: user
+    near_miss: NM-CACHE-001
+    injection_channel: cache
+    match:
+      http: { method: POST, path: "/api/chat" }
+      file: { path: vuln/app.py, symbol: VULN_PROMPT_CACHE_GLOBAL, lines: [49, 49] }
+      llm: { channel: cache }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/cache_016.sh
+    notes: Prompt cache key omits org/user scope, enabling cross-tenant answer leak and poisoning.
+  - id: TRACE-017
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_TRACE_LEAK
+    route: "GET /api/_debug/traces"
+    cwe: CWE-532
+    owasp: "A09:2021-Security Logging and Monitoring Failures"
+    llm_owasp: "LLM02:2025-Sensitive Information Disclosure"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/_debug/traces" }
+      file: { path: vuln/app.py, symbol: VULN_TRACE_LEAK, lines: [50, 50] }
+      markers: [hardcoded-weak-secret, jwt_secret]
+    poc: ground-truth/verify/trace_017.sh
+    notes: Debug traces expose full prompts, bearer tokens, JWT secret, and database URL.
+  - id: IDOR-018
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_CONVERSATION_IDOR
+    route: "GET /api/conversations/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/conversations/{id}" }
+      file: { path: vuln/app.py, symbol: VULN_CONVERSATION_IDOR, lines: [51, 51] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/idor_018.sh
+    notes: Conversation read lacks owner/org authorization.
+  - id: BFLA-019
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_SYSTEM_PROMPT_BFLA
+    route: "PUT /api/admin/system-prompt"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    llm_owasp: "LLM04:2025-Data and Model Poisoning"
+    severity: critical
+    difficulty: M
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    injection_channel: user
+    match:
+      http: { method: PUT, path: "/api/admin/system-prompt" }
+      file: { path: vuln/app.py, symbol: VULN_SYSTEM_PROMPT_BFLA, lines: [52, 52] }
+      llm: { channel: user }
+    poc: ground-truth/verify/bfla_019.sh
+    notes: Non-admin users can persistently replace the global system prompt.
+  - id: TRAVERSAL-020
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_DOCUMENT_TRAVERSAL
+    route: "GET /api/documents/{id}/raw"
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/documents/{id}/raw" }
+      file: { path: vuln/app.py, symbol: VULN_DOCUMENT_TRAVERSAL, lines: [53, 54] }
+      markers: [LLM_INTERNAL_SECRET_FILE]
+    poc: ground-truth/verify/traversal_020.sh
+    notes: Raw document endpoint trusts stored/requested filenames and permits traversal.
+  - id: SHARE-021
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_WEAK_SHARE_CODES
+    route: "GET /share/{code}"
+    cwe: CWE-330
+    owasp: "A01:2021-Broken Access Control"
+    llm_owasp: "LLM02:2025-Sensitive Information Disclosure"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/share/" }
+      http_alt: ["/share/{code}"]
+      file: { path: vuln/app.py, symbol: VULN_WEAK_SHARE_CODES, lines: [112, 172] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/share_021.sh
+    notes: Share codes are four-digit incrementing counters and seeded code 1001 opens Globex content.
+  - id: OPTIONS-022
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_CLIENT_OPTIONS
+    route: "POST /api/chat"
+    cwe: CWE-915
+    owasp: "A04:2021-Insecure Design"
+    llm_owasp: "LLM10:2025-Unbounded Consumption"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-OPTIONS-001
+    match:
+      http: { method: POST, path: "/api/chat" }
+      file: { path: vuln/app.py, symbol: VULN_CLIENT_OPTIONS, lines: [55, 55] }
+    poc: ground-truth/verify/options_022.sh
+    notes: Client-supplied num_predict/options are passed through to the model backend.
+  - id: QUOTA-023
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_QUOTA_RACE
+    route: "POST /api/chat"
+    cwe: CWE-362
+    owasp: "A04:2021-Insecure Design"
+    llm_owasp: "LLM10:2025-Unbounded Consumption"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/chat" }
+      file: { path: vuln/app.py, symbol: VULN_QUOTA_RACE, lines: [56, 56] }
+    poc: ground-truth/verify/quota_023.sh
+    notes: Quota is checked/decremented after generation, allowing more than the quota budget.
+  - id: MODEL-024
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_CLIENT_MODEL
+    route: "POST /api/chat"
+    cwe: CWE-915
+    owasp: "A05:2021-Security Misconfiguration"
+    llm_owasp: "LLM10:2025-Unbounded Consumption"
+    severity: medium
+    difficulty: M-H
+    taint: cross-service
+    reachability: user
+    near_miss: NM-OPTIONS-001
+    match:
+      http: { method: POST, path: "/api/chat" }
+      file: { path: vuln/app.py, symbol: VULN_CLIENT_MODEL, lines: [57, 57] }
+    poc: ground-truth/verify/model_024.sh
+    notes: Client can choose model and keep_alive=-1 behavior.
+  - id: RECURSION-025
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_RECURSIVE_SUMMARY
+    route: "POST /api/summarize/{id}"
+    cwe: CWE-674
+    owasp: "A04:2021-Insecure Design"
+    llm_owasp: "LLM10:2025-Unbounded Consumption"
+    severity: medium
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/summarize/{id}" }
+      file: { path: vuln/app.py, symbol: VULN_RECURSIVE_SUMMARY, lines: [58, 58] }
+    poc: ground-truth/verify/recursion_025.sh
+    notes: Auto-summarization recursively summarizes its own summary without a practical depth cap.
+  - id: OLLAMA-026
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_OLLAMA_PASSTHROUGH
+    route: "POST /api/llm/{path}"
+    cwe: CWE-284
+    owasp: "A05:2021-Security Misconfiguration"
+    llm_owasp: "LLM03:2025-Supply Chain"
+    severity: critical
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/llm/" }
+      http_alt: ["/api/llm/{path}"]
+      file: { path: vuln/app.py, symbol: VULN_OLLAMA_PASSTHROUGH, lines: [59, 59] }
+    poc: ground-truth/verify/ollama_026.sh
+    notes: Unauthenticated passthrough exposes internal Ollama admin paths.
+  - id: PICKLE-027
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_PICKLE_CONFIG
+    route: "POST /api/retriever/config"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    llm_owasp: "LLM03:2025-Supply Chain"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/retriever/config" }
+      file: { path: vuln/app.py, symbol: VULN_PICKLE_CONFIG, lines: [60, 60] }
+    poc: ground-truth/verify/pickle_027.sh
+    notes: Uploaded retriever config is deserialized with pickle.load semantics.
+  - id: CORS-028
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_CORS_REFLECT
+    route: "OPTIONS /api/chat"
+    cwe: CWE-942
+    owasp: "A05:2021-Security Misconfiguration"
+    llm_owasp: "LLM02:2025-Sensitive Information Disclosure"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: OPTIONS, path: "/api/chat" }
+      file: { path: vuln/app.py, symbol: VULN_CORS_REFLECT, lines: [61, 61] }
+    poc: ground-truth/verify/cors_028.sh
+    notes: CORS reflects arbitrary Origin and allows credentials on chat APIs.
+  - id: ERRORS-029
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_VERBOSE_ERRORS
+    route: "GET /api/errors/langchain"
+    cwe: CWE-209
+    owasp: "A05:2021-Security Misconfiguration"
+    llm_owasp: "LLM07:2025-System Prompt Leakage"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/errors/langchain" }
+      file: { path: vuln/app.py, symbol: VULN_VERBOSE_ERRORS, lines: [62, 62] }
+      markers: [hardcoded-weak-secret]
+    poc: ground-truth/verify/errors_029.sh
+    notes: Verbose traceback discloses prompt template and database URL.
+  - id: SECRETS-030
+    variant_paths: { vuln: vuln/app.py, safe: safe/app.py }
+    symbol: VULN_HARDCODED_SECRETS
+    route: "POST /api/auth/login"
+    cwe: CWE-798
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/app.py, symbol: VULN_HARDCODED_SECRETS, lines: [63, 111] }
+    poc: ground-truth/verify/secrets_030.sh
+    notes: Hardcoded JWT/API secrets and weak service credential admin/admin are accepted.
+near_misses:
+  - id: NM-CHAT-V2
+    path: vuln/app.py
+    symbol: chat_v2
+    of: PI-001
+    match:
+      file: { path: vuln/app.py, symbol: chat_v2, lines: [468, 506] }
+    notes: Structured chat endpoint labels context as untrusted and ignores forged client roles.
+  - id: NM-GUARD-001
+    path: vuln/app.py
+    symbol: is_safe_prompt safe branch
+    of: GUARD-007
+    match:
+      file: { path: vuln/app.py, symbol: "is_safe_prompt safe branch", lines: [270, 283] }
+    notes: Safe branch decodes encoded text and blocks jailbreak terminology beyond the raw regex.
+  - id: NM-XSS-001
+    path: vuln/app.py
+    symbol: render_markdown_safe
+    of: XSS-008
+    match:
+      file: { path: vuln/app.py, symbol: render_markdown_safe, lines: [325, 346] }
+    notes: HTML escapes model output before rendering.
+  - id: NM-SQL-001
+    path: vuln/app.py
+    symbol: run_readonly_sql
+    of: NLSQL-010
+    match:
+      file: { path: vuln/app.py, symbol: run_readonly_sql, lines: [347, 353] }
+    notes: Allows only safe aggregate SELECT statements.
+  - id: NM-EXEC-001
+    path: vuln/app.py
+    symbol: safe_eval_expr
+    of: EXEC-011
+    match:
+      file: { path: vuln/app.py, symbol: safe_eval_expr, lines: [354, 414] }
+    notes: Parses arithmetic AST instead of evaluating arbitrary Python.
+  - id: NM-SSRF-001
+    path: vuln/app.py
+    symbol: citation_fetch safe branch
+    of: SSRF-012
+    match:
+      file: { path: vuln/app.py, symbol: "citation_fetch safe branch", lines: [507, 567] }
+    notes: Restricts citation fetching to local allowlisted hosts.
+  - id: NM-VECTOR-001
+    path: vuln/app.py
+    symbol: search_chunks_scoped
+    of: VECTOR-014
+    match:
+      file: { path: vuln/app.py, symbol: search_chunks_scoped, lines: [251, 269] }
+    notes: Filters retrieved chunks to the viewer's organization.
+  - id: NM-CACHE-001
+    path: vuln/app.py
+    symbol: cache_key safe branch
+    of: CACHE-016
+    match:
+      file: { path: vuln/app.py, symbol: "cache_key safe branch", lines: [284, 324] }
+    notes: Includes tenant/org scope in cache keys.
+  - id: NM-OPTIONS-001
+    path: vuln/app.py
+    symbol: generate safe options branch
+    of: OPTIONS-022
+    match:
+      file: { path: vuln/app.py, symbol: "generate safe options branch" }
+    notes: Server fixes model and clamps num_predict instead of honoring client options.

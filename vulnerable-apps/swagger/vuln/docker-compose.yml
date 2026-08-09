@@ -1,0 +1,44 @@
+name: vuln-swagger
+services:
+  app:
+    build: ./
+    ports: ["127.0.0.1:${DYNAST_PORT:-13311}:3000"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://bench:bench@postgres:5432/bench
+      REDIS_URL: redis://redis:6379/0
+      SMTP_HOST: mailpit
+      PARTNER_URL: http://partner-api:9099
+      DJANGO_SECRET_KEY: django-insecure-swagger-hardcoded-SWAGGER-SECRET
+      VERIFY_TOKEN: benchsecret
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      mailpit: { condition: service_started }
+      partner-api: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/api/_verify/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  postgres:
+    image: postgres:16.4
+    environment: { POSTGRES_USER: bench, POSTGRES_PASSWORD: bench, POSTGRES_DB: bench }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bench"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  redis:
+    image: redis:7.4.0
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  mailpit:
+    image: axllent/mailpit:v1.20
+    ports: ["127.0.0.1:${DYNAST_PORT_MAILPIT_8025:-13312}:8025", "127.0.0.1:${DYNAST_PORT_MAILPIT_1025:-13313}:1025"]
+  partner-api:
+    build: ./partner
+    expose: ["9099"]

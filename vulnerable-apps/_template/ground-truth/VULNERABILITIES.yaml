@@ -1,0 +1,40 @@
+# Ground-truth answer key for this app. One entry per planted bug.
+# CI asserts: (1) diff -ru vuln safe touches only the lines referenced here,
+# (2) every `poc` PASSes vs vuln/ and FAILs vs safe/, (3) this file validates
+# against bench/src/schema. NEVER copied into any image (it lives outside the
+# vuln/ and safe/ build contexts).
+#
+# Copy an entry and fill it in. Remove these examples in a real app.
+
+- id: SQLI-001                       # unique, uppercase CLASS-NNN
+  variant_paths:
+    vuln: vuln/app/routes/search.py  # same relative path in both variants
+    safe: safe/app/routes/search.py
+  symbol: search_posts               # function / method / route handler
+  route: "GET /posts/search?q="      # how a DAST tool reaches it (or "" for source-only)
+  cwe: CWE-89
+  owasp: "A03:2021-Injection"
+  severity: high                     # info | low | medium | high | critical
+  difficulty: E                      # E | E-M | M | M-H | H  (detection difficulty)
+  taint: in-file                     # in-file | cross-file | cross-service
+  reachability: pre-auth             # pre-auth | user | admin
+  near_miss: SAFE-SQLI-001           # id of the safe-shaped sibling planted nearby
+  poc: ground-truth/verify/sqli_001.sh
+  notes: >
+    String-concatenated query; a correctly parameterized query of the same
+    shape sits ~20 lines below (the near-miss).
+
+- id: SAFE-SQLI-001                  # a near-miss: SAFE code a good tool must NOT flag
+  variant_paths:
+    vuln: vuln/app/routes/search.py
+    safe: safe/app/routes/search.py
+  symbol: list_posts
+  route: "GET /posts"
+  cwe: null
+  owasp: null
+  severity: info
+  difficulty: E
+  taint: in-file
+  reachability: user
+  is_near_miss: true                 # flagging this in results counts as a false positive
+  notes: "Correctly parameterized query. Present in BOTH variants; never a finding."

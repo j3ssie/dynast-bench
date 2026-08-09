@@ -1,0 +1,16 @@
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY BenchAspNet.csproj ./
+RUN dotnet restore
+COPY . ./
+RUN dotnet publish -c Release -o /out --no-restore
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates nodejs && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=build /out ./
+COPY entrypoint.standalone.sh /app/entrypoint.standalone.sh
+COPY internal-sink.mjs /app/internal-sink.mjs
+RUN chmod +x /app/entrypoint.standalone.sh && mkdir -p /data/uploads /data/files && printf 'public report\n' > /data/files/readme.txt
+EXPOSE 3000
+HEALTHCHECK --interval=10s --timeout=5s --retries=30 --start-period=60s CMD curl -sf http://localhost:3000/api/_verify/health || exit 1
+ENTRYPOINT ["/app/entrypoint.standalone.sh"]

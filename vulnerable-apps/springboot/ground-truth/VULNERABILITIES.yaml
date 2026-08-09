@@ -1,0 +1,586 @@
+# Ground-truth answer key for the springboot vulnerable app.
+# PoCs exit 0 against vuln/ and non-zero against safe/.
+app: springboot
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex; user2@bench.local is in Globex for cross-tenant IDOR.
+  Globex DRAFT post globex-internal carries GLOBEX-CONFIDENTIAL-MARKER-7f3a.
+  Weak default service credential admin/admin is intentionally present in vuln.
+
+vulnerabilities:
+  - id: SPEL-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.eval
+    route: "GET /api/reports/eval?expr="
+    cwe: CWE-917
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-SPEL-001
+    match:
+      http: { method: GET, path: "/api/reports/eval", params: [expr] }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.eval, lines: [104, 164] }
+    poc: ground-truth/verify/spel_001.sh
+    notes: >
+      User-controlled SpEL is evaluated with StandardEvaluationContext.
+
+  - id: ACTUATOR-001
+    variant_paths: { vuln: vuln/src/main/resources/application.yml, safe: safe/src/main/resources/application.yml }
+    symbol: management.endpoints.web.exposure.include
+    route: "GET /actuator/env"
+    cwe: CWE-489
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/actuator/env" }
+      file: { path: vuln/src/main/resources/application.yml, symbol: management.endpoints.web.exposure.include, lines: [21, 32] }
+    poc: ground-truth/verify/actuator_env_001.sh
+    notes: >
+      All Actuator endpoints are exposed and env values reveal secrets.
+
+  - id: ACTUATOR-002
+    variant_paths: { vuln: vuln/src/main/resources/application.yml, safe: safe/src/main/resources/application.yml }
+    symbol: management.endpoints.web.exposure.include
+    route: "GET /actuator/heapdump"
+    cwe: CWE-200
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/actuator/heapdump" }
+      file: { path: vuln/src/main/resources/application.yml, symbol: management.endpoints.web.exposure.include }
+    poc: ground-truth/verify/actuator_heap_001.sh
+    notes: >
+      Heapdump endpoint is exposed pre-auth.
+
+  - id: PROM-001
+    variant_paths: { vuln: vuln/infra/prometheus.yml, safe: safe/infra/prometheus.yml }
+    symbol: prometheus scrape
+    route: "GET /actuator/prometheus"
+    cwe: CWE-200
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/actuator/prometheus" }
+      file: { path: vuln/infra/prometheus.yml, symbol: "prometheus scrape", lines: [5, 8] }
+    poc: ground-truth/verify/prometheus_001.sh
+    notes: >
+      Prometheus metrics are publicly exposed through Actuator.
+
+  - id: DESER-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.importObject
+    route: "POST /api/import/object"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: critical
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-DESER-001
+    match:
+      http: { method: POST, path: "/api/import/object" }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.importObject }
+    poc: ground-truth/verify/deser_001.sh
+    notes: >
+      ObjectInputStream reads attacker-supplied bytes.
+
+  - id: XXE-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.importXml
+    route: "POST /api/import/xml"
+    cwe: CWE-611
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/import/xml" }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.importXml }
+      markers: [SPRINGBOOT-INTERNAL-SINK-SECRET-2d9c]
+    poc: ground-truth/verify/xxe_001.sh
+    notes: >
+      DocumentBuilderFactory allows external entities and reads local files.
+
+  - id: AUTH-MISORDER-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/SecurityConfig.java, safe: safe/src/main/java/com/bench/springboot/SecurityConfig.java }
+    symbol: securityFilterChain
+    route: "GET /api/admin/users"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/admin/users" }
+      file: { path: vuln/src/main/java/com/bench/springboot/SecurityConfig.java, symbol: securityFilterChain, lines: [16, 27] }
+    poc: ground-truth/verify/auth_misorder_001.sh
+    notes: >
+      Broad /api/** permitAll matcher appears before /api/admin/** admin rule.
+
+  - id: CSRF-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/SecurityConfig.java, safe: safe/src/main/java/com/bench/springboot/SecurityConfig.java }
+    symbol: securityFilterChain
+    route: "GET /api/security/csrf"
+    cwe: CWE-352
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/security/csrf" }
+      file: { path: vuln/src/main/java/com/bench/springboot/SecurityConfig.java, symbol: securityFilterChain }
+    poc: ground-truth/verify/csrf_001.sh
+    notes: >
+      CSRF is disabled globally.
+
+  - id: JWT-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/JwtService.java, safe: safe/src/main/java/com/bench/springboot/JwtService.java }
+    symbol: JwtService.parse
+    route: "GET /api/reports/admin-summary"
+    cwe: CWE-347
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/reports/admin-summary" }
+      file: { path: vuln/src/main/java/com/bench/springboot/JwtService.java, symbol: JwtService.parse, lines: [23, 69] }
+    poc: ground-truth/verify/jwt_001.sh
+    notes: >
+      JWT parser accepts alg:none and ignores expiration.
+
+  - id: RATE-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: AuthController.login
+    route: "POST /api/auth/login"
+    cwe: CWE-307
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: AuthController.login, lines: [56, 103] }
+    poc: ground-truth/verify/rate_001.sh
+    notes: >
+      Login records failures but never enforces a rate limit.
+
+  - id: ENUM-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: AuthController.login
+    route: "POST /api/auth/login"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: AuthController.login }
+    poc: ground-truth/verify/enum_001.sh
+    notes: >
+      Login returns distinct no-account and bad-password messages.
+
+  - id: RESET-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: AuthController.resetRequest
+    route: "POST /api/auth/reset/request"
+    cwe: CWE-640
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/reset/request" }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: AuthController.resetRequest }
+    poc: ground-truth/verify/reset_001.sh
+    notes: >
+      Reset tokens are predictable base64(email:bench) and returned in debug JSON.
+
+  - id: IDOR-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.post
+    route: "GET /api/posts/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/posts/{id}" }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.post }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/idor_001.sh
+    notes: >
+      Authenticated users can read cross-tenant posts by id.
+
+  - id: MASSASSIGN-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.updateMe
+    route: "PATCH /api/users/me"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: PATCH, path: "/api/users/me" }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.updateMe }
+    poc: ground-truth/verify/massassign_001.sh
+    notes: >
+      Profile update binds role/isAdmin/enabled from request JSON.
+
+  - id: BFLA-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.promote
+    route: "POST /api/users/{id}/promote"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/users/{id}/promote" }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.promote }
+    poc: ground-truth/verify/bfla_001.sh
+    notes: >
+      Privileged promote action lacks role check.
+
+  - id: SQLI-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.search
+    route: "GET /api/posts/search?q="
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SQL-001
+    match:
+      http: { method: GET, path: "/api/posts/search", params: [q] }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.search }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_001.sh
+    notes: >
+      Native SQL concatenates q into a query.
+
+  - id: SQLI-002
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.runReport
+    route: "GET /api/reports/run/{id}"
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/reports/run/{id}" }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.runReport }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_second_001.sh
+    notes: >
+      Stored report name is later concatenated into native SQL.
+
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.fetch
+    route: "GET /api/fetch?url="
+    cwe: CWE-918
+    owasp: "A10:2021-SSRF"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/fetch", params: [url] }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.fetch }
+      markers: [SPRINGBOOT-INTERNAL-SINK-SECRET-2d9c]
+    poc: ground-truth/verify/ssrf_001.sh
+    notes: >
+      RestTemplate fetches arbitrary URLs including internal services.
+
+  - id: CMD-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.export
+    route: "GET /api/export?format="
+    cwe: CWE-78
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/export", params: [format] }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.export }
+    poc: ground-truth/verify/cmd_001.sh
+    notes: >
+      format is interpolated into sh -c command.
+
+  - id: XSS-STORED-001
+    variant_paths: { vuln: vuln/src/main/resources/templates/post.html, safe: safe/src/main/resources/templates/post.html }
+    symbol: post.html comments
+    route: "GET /posts/{id}/view"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E-M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-XSS-001
+    match:
+      http: { method: GET, path: "/posts/{id}/view" }
+      file: { path: vuln/src/main/resources/templates/post.html, symbol: "post.html comments", lines: [1, 2] }
+    poc: ground-truth/verify/xss_stored_001.sh
+    notes: >
+      Comment body renders through th:utext.
+
+  - id: XSS-REFLECT-001
+    variant_paths: { vuln: vuln/src/main/resources/templates/search.html, safe: safe/src/main/resources/templates/search.html }
+    symbol: search.html q
+    route: "GET /search?q="
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/search", params: [q] }
+      file: { path: vuln/src/main/resources/templates/search.html, symbol: "search.html q", lines: [1, 1] }
+    poc: ground-truth/verify/xss_reflect_001.sh
+    notes: >
+      Search query renders through th:utext.
+
+  - id: TPL-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.template
+    route: "GET /api/template?view="
+    cwe: CWE-1336
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/template", params: [view] }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.template }
+    poc: ground-truth/verify/tpl_001.sh
+    notes: >
+      User-controlled string is processed as a Thymeleaf template.
+
+  - id: CORS-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.cors
+    route: "GET /api/public/cors"
+    cwe: CWE-942
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/public/cors" }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.cors }
+    poc: ground-truth/verify/cors_001.sh
+    notes: >
+      Arbitrary Origin is reflected with credentials allowed.
+
+  - id: TRAVERSAL-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.download
+    route: "GET /api/attachments/download?name="
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/attachments/download", params: [name] }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.download }
+      markers: [SPRINGBOOT-INTERNAL-SINK-SECRET-2d9c]
+    poc: ground-truth/verify/traversal_001.sh
+    notes: >
+      Download resolves user path without containment check.
+
+  - id: SECRETS-001
+    variant_paths: { vuln: vuln/src/main/resources/application.yml, safe: safe/src/main/resources/application.yml }
+    symbol: app.service-credential
+    route: "GET /api/config/public"
+    cwe: CWE-798
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/config/public" }
+      file: { path: vuln/src/main/resources/application.yml, symbol: app.service-credential, lines: [33, 36] }
+      markers: [springboot-public-secret-key-17]
+    poc: ground-truth/verify/secrets_001.sh
+    notes: >
+      Hardcoded public key and default admin/admin credential are returned.
+
+  - id: ERRORS-001
+    variant_paths: { vuln: vuln/src/main/resources/application.yml, safe: safe/src/main/resources/application.yml }
+    symbol: server.error.include-stacktrace
+    route: "GET /api/errors/boom"
+    cwe: CWE-209
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: low
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/errors/boom" }
+      file: { path: vuln/src/main/resources/application.yml, symbol: server.error.include-stacktrace, lines: [5, 20] }
+    poc: ground-truth/verify/errors_001.sh
+    notes: >
+      Verbose errors include stacktraces/messages.
+
+  - id: BILLING-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.billing
+    route: "POST /api/billing/seats"
+    cwe: CWE-840
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/billing/seats" }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.billing }
+    poc: ground-truth/verify/billing_001.sh
+    notes: >
+      Negative seat counts are accepted.
+
+  - id: RACE-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: ApiController.invite
+    route: "POST /api/invites"
+    cwe: CWE-362
+    owasp: "A04:2021-Insecure Design"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/invites" }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.invite }
+    poc: ground-truth/verify/race_001.sh
+    notes: >
+      Seat-limit check and insert are not locked, allowing parallel overbooking.
+
+  - id: REDIRECT-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/Controllers.java, safe: safe/src/main/java/com/bench/springboot/Controllers.java }
+    symbol: PageController.go
+    route: "GET /goto?next="
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/goto", params: [next] }
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: PageController.go, lines: [226, 234] }
+    poc: ground-truth/verify/redirect_001.sh
+    notes: >
+      RedirectView sends users to arbitrary external next URL.
+
+  - id: JENKINS-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: jenkins service
+    route: "http://127.0.0.1:13313"
+    cwe: CWE-798
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: E-M
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { path: "/", port: 13313 }
+      file: { path: vuln/docker-compose.yml, symbol: "jenkins service", lines: [37, 47] }
+    poc: ground-truth/verify/jenkins_001.sh
+    notes: >
+      Compose side-surface documents weak Jenkins admin/admin credential.
+
+near_misses:
+  - id: NM-SPEL-001
+    path: vuln/src/main/java/com/bench/springboot/Controllers.java
+    symbol: ApiController.evalField
+    of: SPEL-001
+    match:
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.evalField }
+    notes: "Field lookup uses a fixed map instead of parsing expressions."
+  - id: NM-DESER-001
+    path: vuln/src/main/java/com/bench/springboot/Controllers.java
+    symbol: typed JSON restore safe twin
+    of: DESER-001
+    match:
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: "typed JSON restore safe twin", lines: [186, 225] }
+    notes: "Safe twin rejects Java serialization and accepts typed JSON only."
+  - id: NM-SQL-001
+    path: vuln/src/main/java/com/bench/springboot/Controllers.java
+    symbol: ApiController.listPosts
+    of: SQLI-001
+    match:
+      file: { path: vuln/src/main/java/com/bench/springboot/Controllers.java, symbol: ApiController.listPosts }
+    notes: "Sibling list endpoint binds :q rather than concatenating SQL."
+  - id: NM-XSS-001
+    path: vuln/src/main/resources/templates/post.html
+    symbol: post.title
+    of: XSS-STORED-001
+    match:
+      file: { path: vuln/src/main/resources/templates/post.html, symbol: post.title }
+    notes: "Post title/body examples use th:text while comment body uses th:utext."

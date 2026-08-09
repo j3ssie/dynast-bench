@@ -1,0 +1,2 @@
+class ServiceCredential < ApplicationRecord
+end

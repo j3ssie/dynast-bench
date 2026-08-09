@@ -1,0 +1,1 @@
+{"scripts":{"start":"node src/app.mjs","build":"node --check src/app.mjs && node --check test/smoke.mjs","test":"node test/smoke.mjs"},"type":"module","engines":{"node":">=22"},"dependencies":{},"devDependencies":{}}

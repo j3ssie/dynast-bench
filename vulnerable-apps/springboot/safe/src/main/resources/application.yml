@@ -1,0 +1,35 @@
+server:
+  port: ${SERVER_PORT:3000}
+  error:
+    include-message: never
+    include-stacktrace: never
+spring:
+  application:
+    name: springboot-benchmark
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://postgres:5432/bench}
+    username: ${SPRING_DATASOURCE_USERNAME:bench}
+    password: ${SPRING_DATASOURCE_PASSWORD:bench}
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        format_sql: false
+  thymeleaf:
+    cache: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "health,info"
+  endpoint:
+    env:
+      show-values: NEVER
+app:
+  variant: safe
+  jwt-secret: ${JWT_SECRET:safe-long-random-development-secret-change-me-32}
+  public-api-key: redacted
+  service-credential: disabled/rotated
+  cors-allowed-origin: "http://127.0.0.1:3000"
+  csrf-disabled-label: false

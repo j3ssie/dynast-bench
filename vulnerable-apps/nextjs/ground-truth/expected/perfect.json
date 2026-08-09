@@ -1,0 +1,497 @@
+{
+  "schema": "dynast-bench.findings/v1",
+  "tool": {
+    "name": "reference",
+    "version": "1.0.0",
+    "mode": "hybrid"
+  },
+  "run": {
+    "app": "nextjs",
+    "variant": "vuln",
+    "target": "http://127.0.0.1:13311",
+    "duration_s": 0
+  },
+  "findings": [
+    {
+      "id": "ref-01",
+      "title": "MW-BYPASS-001",
+      "cwe": "CWE-285",
+      "severity": "critical",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/admin/users",
+          "path": "/api/admin/users"
+        },
+        "file": {
+          "path": "vuln/src/middleware.ts",
+          "line": 19,
+          "symbol": "middleware"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-02",
+      "title": "PROTO-001",
+      "cwe": "CWE-1321",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/settings/import",
+          "path": "/api/settings/import"
+        },
+        "file": {
+          "path": "vuln/src/lib/merge.ts",
+          "line": 4,
+          "symbol": "deepMerge"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-03",
+      "title": "SQLI-001",
+      "cwe": "CWE-89",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/posts/search",
+          "path": "/api/posts/search",
+          "param": "q"
+        },
+        "file": {
+          "path": "vuln/src/app/api/posts/search/route.ts",
+          "line": 19,
+          "symbol": "GET"
+        }
+      },
+      "evidence": {
+        "markers": [
+          "GLOBEX-CONFIDENTIAL-MARKER-7f3a"
+        ]
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-04",
+      "title": "SSRF-001",
+      "cwe": "CWE-918",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/preview",
+          "path": "/api/preview",
+          "param": "url"
+        },
+        "file": {
+          "path": "vuln/src/app/api/preview/route.ts",
+          "line": 6,
+          "symbol": "GET"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-05",
+      "title": "IDOR-001",
+      "cwe": "CWE-639",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/posts/{id}",
+          "path": "/api/posts/{id}"
+        },
+        "file": {
+          "path": "vuln/src/app/api/posts/[id]/route.ts",
+          "line": 8,
+          "symbol": "GET"
+        }
+      },
+      "evidence": {
+        "markers": [
+          "GLOBEX-CONFIDENTIAL-MARKER-7f3a"
+        ]
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-06",
+      "title": "MASSASSIGN-001",
+      "cwe": "CWE-915",
+      "severity": "medium",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "PATCH",
+          "url": "http://127.0.0.1:13311/api/users/me",
+          "path": "/api/users/me"
+        },
+        "file": {
+          "path": "vuln/src/app/api/users/me/route.ts",
+          "line": 15,
+          "symbol": "PATCH"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-07",
+      "title": "AUTHZ-001",
+      "cwe": "CWE-862",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/users/{id}/promote",
+          "path": "/api/users/{id}/promote"
+        },
+        "file": {
+          "path": "vuln/src/app/api/users/[id]/promote/route.ts",
+          "line": 8,
+          "symbol": "POST"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-08",
+      "title": "JWT-001",
+      "cwe": "CWE-347",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/reports/admin-summary",
+          "path": "/api/reports/admin-summary"
+        },
+        "file": {
+          "path": "vuln/src/lib/jwt.ts",
+          "line": 33,
+          "symbol": "verifyJwt"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-09",
+      "title": "XSS-STORED-001",
+      "cwe": "CWE-79",
+      "severity": "medium",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/posts/{id}",
+          "path": "/posts/{id}"
+        },
+        "file": {
+          "path": "vuln/src/app/posts/[id]/page.tsx",
+          "line": 18,
+          "symbol": "PostPage"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-10",
+      "title": "XSS-REFLECT-002",
+      "cwe": "CWE-79",
+      "severity": "medium",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/posts/search",
+          "path": "/posts/search",
+          "param": "q"
+        },
+        "file": {
+          "path": "vuln/src/app/posts/search/page.tsx",
+          "line": 3,
+          "symbol": "SearchPage"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-11",
+      "title": "TRAVERSAL-001",
+      "cwe": "CWE-22",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/attachments/download",
+          "path": "/api/attachments/download",
+          "param": "name"
+        },
+        "file": {
+          "path": "vuln/src/app/api/attachments/download/route.ts",
+          "line": 10,
+          "symbol": "GET"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-12",
+      "title": "CORS-001",
+      "cwe": "CWE-942",
+      "severity": "medium",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/posts/search",
+          "path": "/api/posts/search"
+        },
+        "file": {
+          "path": "vuln/src/lib/cors.ts",
+          "line": 3,
+          "symbol": "withCors"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-13",
+      "title": "REDIRECT-001",
+      "cwe": "CWE-601",
+      "severity": "low",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/goto",
+          "path": "/goto",
+          "param": "next"
+        },
+        "file": {
+          "path": "vuln/src/app/goto/route.ts",
+          "line": 6,
+          "symbol": "GET"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-14",
+      "title": "SECRET-001",
+      "cwe": "CWE-200",
+      "severity": "medium",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/",
+          "path": "/"
+        },
+        "file": {
+          "path": "vuln/src/lib/config.ts",
+          "line": 8,
+          "symbol": "PUBLIC_API_KEY"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-15",
+      "title": "SECRET-002",
+      "cwe": "CWE-798",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/integrations",
+          "path": "/integrations"
+        },
+        "file": {
+          "path": "vuln/src/lib/integrations.ts",
+          "line": 10,
+          "symbol": "OBJECT_STORE_KEY_B64"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-16",
+      "title": "CREDS-BUNDLE-001",
+      "cwe": "CWE-522",
+      "severity": "critical",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/integrations",
+          "path": "/integrations"
+        },
+        "file": {
+          "path": "vuln/src/lib/integrations.ts",
+          "line": 17,
+          "symbol": "SYNC_BASIC_AUTH"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-17",
+      "title": "SOURCEMAP-001",
+      "cwe": "CWE-540",
+      "severity": "medium",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/_next/static/chunks/*.js.map",
+          "path": "/_next/static/chunks/*.js.map"
+        },
+        "file": {
+          "path": "vuln/next.config.js",
+          "line": 9,
+          "symbol": "productionBrowserSourceMaps"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-18",
+      "title": "ENVFILE-001",
+      "cwe": "CWE-538",
+      "severity": "critical",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/env.production",
+          "path": "/env.production"
+        },
+        "file": {
+          "path": "vuln/public/env.production",
+          "line": 1,
+          "symbol": "public/env.production"
+        }
+      },
+      "evidence": {
+        "markers": [
+          "ENVFILE-LEAK-MARKER-5d2c"
+        ]
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-19",
+      "title": "CONFIG-LEAK-001",
+      "cwe": "CWE-200",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/",
+          "path": "/"
+        },
+        "file": {
+          "path": "vuln/src/app/layout.tsx",
+          "line": 12,
+          "symbol": "RootLayout"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-20",
+      "title": "ENUM-001",
+      "cwe": "CWE-204",
+      "severity": "low",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/auth/login",
+          "path": "/api/auth/login"
+        },
+        "file": {
+          "path": "vuln/src/app/api/auth/login/route.ts",
+          "line": 9,
+          "symbol": "POST"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-21",
+      "title": "BILLING-001",
+      "cwe": "CWE-840",
+      "severity": "medium",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/billing/seats",
+          "path": "/api/billing/seats"
+        },
+        "file": {
+          "path": "vuln/src/app/api/billing/seats/route.ts",
+          "line": 8,
+          "symbol": "POST"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-22",
+      "title": "RACE-001",
+      "cwe": "CWE-362",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/invites",
+          "path": "/api/invites"
+        },
+        "file": {
+          "path": "vuln/src/app/api/invites/route.ts",
+          "line": 8,
+          "symbol": "POST"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-23",
+      "title": "CACHE-POISON-001",
+      "cwe": "CWE-349",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/cache",
+          "path": "/api/cache",
+          "param": "key"
+        },
+        "file": {
+          "path": "vuln/src/app/api/cache/route.ts",
+          "line": 7,
+          "symbol": "GET"
+        }
+      },
+      "exploited": true
+    }
+  ]
+}

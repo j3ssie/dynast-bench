@@ -1,0 +1,23 @@
+{
+  "name": "dynast-bench",
+  "version": "0.1.0",
+  "description": "CLI to run and manage the DynAST-Bench vulnerable-app suite",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "dynast-bench": "./dynast-bench.ts"
+  },
+  "scripts": {
+    "dynast-bench": "bun run ./dynast-bench.ts",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "derive-match": "bun run ./tools/derive-match.ts"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "typescript": "^7.0.2"
+  }
+}

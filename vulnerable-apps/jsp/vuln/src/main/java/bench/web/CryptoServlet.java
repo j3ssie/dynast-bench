@@ -1,0 +1,3 @@
+package bench.web;
+import bench.util.Util; import jakarta.servlet.http.*; import javax.crypto.*; import javax.crypto.spec.*; import java.io.*; import java.util.*;
+public class CryptoServlet extends HttpServlet { protected void doGet(HttpServletRequest req,HttpServletResponse resp)throws IOException{ try{ Cipher c=Cipher.getInstance("DES/ECB/PKCS5Padding"); c.init(Cipher.ENCRYPT_MODE,new SecretKeySpec("8bytekey".getBytes(),"DES")); String a=Base64.getEncoder().encodeToString(c.doFinal(req.getParameter("secret").getBytes())); String b=Base64.getEncoder().encodeToString(c.doFinal(req.getParameter("secret").getBytes())); Util.text(resp,a+"\n"+b); }catch(Exception e){resp.setStatus(500);e.printStackTrace(resp.getWriter());} } }

@@ -1,0 +1,3 @@
+package bench.web;
+import bench.util.Util; import jakarta.servlet.http.*; import java.io.*; import java.net.*; import java.nio.charset.StandardCharsets;
+public class FetchServlet extends HttpServlet { protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws IOException { try{ URL u=new URL(req.getParameter("url")); String host=u.getHost(); if(!"example.com".equalsIgnoreCase(host)){resp.sendError(400,"host blocked");return;} try(InputStream in=u.openConnection().getInputStream()){ Util.text(resp,new String(in.readAllBytes(), StandardCharsets.UTF_8)); }} catch(Exception e){ resp.setStatus(400); Util.text(resp,"fetch blocked"); } } }

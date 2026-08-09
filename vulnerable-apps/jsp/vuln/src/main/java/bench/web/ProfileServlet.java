@@ -1,0 +1,3 @@
+package bench.web;
+import bench.db.Db; import bench.util.Util; import jakarta.servlet.http.*; import java.io.*; import java.sql.*;
+public class ProfileServlet extends HttpServlet { protected void doPost(HttpServletRequest req,HttpServletResponse resp)throws IOException{ Integer uid=Util.uid(req); if(uid==null){resp.sendError(401);return;} try(Connection c=Db.get(); PreparedStatement ps=c.prepareStatement("UPDATE users SET role=?, is_admin=? WHERE id=?")){ String role=req.getParameter("role"); ps.setString(1, role==null?"user":role); ps.setBoolean(2,"admin".equals(role)); ps.setInt(3,uid); ps.executeUpdate(); req.getSession().setAttribute("role", role); Util.text(resp,"role="+role); }catch(Exception e){resp.setStatus(500);e.printStackTrace(resp.getWriter());} } }

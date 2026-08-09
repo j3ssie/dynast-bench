@@ -1,0 +1,46 @@
+name: safe-springboot
+services:
+  app:
+    build: .
+    ports: ["127.0.0.1:${DYNAST_PORT:-13311}:3000"]
+    environment:
+      SERVER_PORT: "3000"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/bench
+      SPRING_DATASOURCE_USERNAME: bench
+      SPRING_DATASOURCE_PASSWORD: bench
+      JWT_SECRET: safe-long-random-development-secret-change-me-32
+      SPRINGBOOT_ACTUATOR_SECRET: redacted
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info"
+      MANAGEMENT_ENDPOINT_ENV_SHOW_VALUES: "NEVER"
+    depends_on:
+      postgres: { condition: service_healthy }
+      internal-sink: { condition: service_started }
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/_verify/health | grep -q ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+  postgres:
+    image: postgres:16.4
+    environment: { POSTGRES_USER: bench, POSTGRES_PASSWORD: bench, POSTGRES_DB: bench }
+    ports: ["127.0.0.1:${DYNAST_PORT_POSTGRES_5432:-13312}:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bench -d bench"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  internal-sink:
+    image: node:22-alpine
+    working_dir: /srv
+    command: ["node", "/srv/internal-sink.mjs"]
+    volumes: ["./internal-sink.mjs:/srv/internal-sink.mjs:ro"]
+  jenkins:
+    image: jenkins/jenkins:2.462.3-lts
+    ports: ["127.0.0.1:${DYNAST_PORT_JENKINS_8080:-13313}:8080"]
+    environment: { JENKINS_ADMIN_ID: admin, JENKINS_ADMIN_PASSWORD: rotated-local-only }
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    ports: ["127.0.0.1:${DYNAST_PORT_PROMETHEUS_9090:-13314}:9090"]
+    volumes: ["./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    depends_on:
+      app: { condition: service_healthy }

@@ -1,0 +1,3 @@
+package bench.web;
+import bench.db.Db; import bench.util.Util; import jakarta.servlet.http.*; import java.io.*; import java.sql.*;
+public class BillingServlet extends HttpServlet { protected void doPost(HttpServletRequest req,HttpServletResponse resp)throws IOException{ int delta=Integer.parseInt(req.getParameter("seats")); if(delta < 0 || delta > 10){resp.sendError(400);return;} try(Connection c=Db.get(); PreparedStatement ps=c.prepareStatement("UPDATE orgs SET seats_used=seats_used+? WHERE id=? RETURNING seats_used")){ ps.setInt(1,delta); ps.setInt(2,Util.org(req)); ResultSet rs=ps.executeQuery(); rs.next(); Util.text(resp,"seats="+rs.getInt(1)); }catch(Exception e){resp.setStatus(500);Util.text(resp,"internal error");} } }

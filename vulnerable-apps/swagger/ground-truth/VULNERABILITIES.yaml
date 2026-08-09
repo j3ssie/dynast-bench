@@ -1,0 +1,413 @@
+# Ground-truth answer key for the Swagger/OpenAPI vulnerable app.
+# This file lives outside both build contexts and is never baked into an image.
+
+app: swagger
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex (tenants). user2@bench.local is in Globex for cross-tenant
+  BOLA/IDOR. A Globex DRAFT ("globex-internal") carries
+  GLOBEX-CONFIDENTIAL-MARKER-7f3a. Weak default service credential admin/admin.
+
+vulnerabilities:
+  - id: DOCS-PUBLIC-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: openapi_schema/swagger_docs/redoc
+    route: "GET /api/schema/ and /api/docs/"
+    cwe: CWE-200
+    owasp: "API8:2023-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: NM-DOCS-001
+    match:
+      http: { method: GET, path: "/api/schema/" }
+      http_alt: ["/api/docs/"]
+      file: { path: vuln/app/main.py, symbol: openapi_schema/swagger_docs/redoc, lines: [281, 287] }
+    poc: ground-truth/verify/docs_public_001.sh
+    documented: true
+    api_version: none
+    notes: "Swagger UI, ReDoc, and the OpenAPI document are public in the vulnerable production variant."
+
+  - id: SWAGGERUI-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: swagger_docs
+    route: "GET /api/docs/?url="
+    cwe: CWE-79
+    owasp: "API8:2023-Security Misconfiguration"
+    severity: high
+    difficulty: M
+    taint: config
+    reachability: pre-auth
+    near_miss: NM-DOCS-001
+    match:
+      http: { method: GET, path: "/api/docs/", params: [url] }
+      file: { path: vuln/app/main.py, symbol: swagger_docs, lines: [288, 308] }
+    poc: ground-truth/verify/swaggerui_001.sh
+    documented: true
+    api_version: none
+    notes: "The Swagger UI mount honors query string spec loading, enabling spoofed attacker specs."
+
+  - id: SPEC-LEAK-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: schema_document
+    route: "GET /api/schema/"
+    cwe: CWE-200
+    owasp: "API9:2023-Improper Inventory Management"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/schema/" }
+      file: { path: vuln/app/main.py, symbol: schema_document, lines: [155, 215] }
+    poc: ground-truth/verify/spec_leak_001.sh
+    documented: true
+    api_version: none
+    notes: "OpenAPI examples/extensions leak an internal token and partner-api hostname."
+
+  - id: SHADOW-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: debug_config
+    route: "GET /api/v1/internal/debug/config"
+    cwe: CWE-489
+    owasp: "API9:2023-Improper Inventory Management"
+    severity: critical
+    difficulty: H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/v1/internal/debug/config" }
+      file: { path: vuln/app/main.py, symbol: debug_config, lines: [314, 320] }
+      markers: [SECRET_KEY]
+    poc: ground-truth/verify/shadow_001.sh
+    documented: false
+    api_version: v1
+    notes: "Shadow debug endpoint is implemented but absent from the schema and dumps SECRET_KEY."
+
+  - id: ZOMBIE-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: zombie_user
+    route: "GET /api/v0/users/{id}"
+    cwe: CWE-1059
+    owasp: "API9:2023-Improper Inventory Management"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-V1-USER-001
+    match:
+      http: { method: GET, path: "/api/v0/users/{id}" }
+      file: { path: vuln/app/main.py, symbol: zombie_user, lines: [331, 341] }
+    poc: ground-truth/verify/zombie_001.sh
+    documented: false
+    api_version: v0
+    notes: "Old v0 user endpoint remains routed and lacks the v1 organization filter."
+
+  - id: DRIFT-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: update_me
+    route: "PATCH /api/v1/users/me"
+    cwe: CWE-915
+    owasp: "API3:2023-Broken Object Property Level Authorization"
+    severity: high
+    difficulty: M-H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-USER-SERIALIZER-001
+    match:
+      http: { method: PATCH, path: "/api/v1/users/me" }
+      file: { path: vuln/app/main.py, symbol: update_me, lines: [353, 370] }
+    poc: ground-truth/verify/drift_001.sh
+    documented: true
+    api_version: v1
+    notes: "Spec lists only profile fields as writable but the handler overposts any User model attribute."
+
+  - id: REPORTS-ALLOWANY-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: create_report
+    route: "POST /api/v1/reports"
+    cwe: CWE-862
+    owasp: "API5:2023-Broken Function Level Authorization"
+    severity: medium
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/v1/reports" }
+      file: { path: vuln/app/main.py, symbol: create_report, lines: [441, 463] }
+    poc: ground-truth/verify/reports_allowany_001.sh
+    documented: true
+    api_version: v1
+    notes: "The spec says bearerAuth is required, but the report creation route accepts anonymous callers."
+
+  - id: METHODS-DRIFT-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: delete_post
+    route: "DELETE /api/v1/posts/{id}"
+    cwe: CWE-862
+    owasp: "API5:2023-Broken Function Level Authorization"
+    severity: high
+    difficulty: M-H
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: DELETE, path: "/api/v1/posts/{id}" }
+      file: { path: vuln/app/main.py, symbol: delete_post, lines: [433, 440] }
+    poc: ground-truth/verify/methods_drift_001.sh
+    documented: false
+    api_version: v1
+    notes: "The spec documents only GET for post detail, while the implementation also exposes DELETE."
+
+  - id: SERIALIZER-LEAK-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: admin_users
+    route: "GET /api/v1/admin/users"
+    cwe: CWE-200
+    owasp: "API3:2023-Broken Object Property Level Authorization"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: NM-USER-SERIALIZER-001
+    match:
+      http: { method: GET, path: "/api/v1/admin/users" }
+      file: { path: vuln/app/main.py, symbol: admin_users, lines: [371, 378] }
+    poc: ground-truth/verify/serializer_leak_001.sh
+    documented: false
+    api_version: v1
+    notes: "Admin user serializer shape leaks password hashes and reset tokens to any authenticated user."
+
+  - id: ORDER-SQLI-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: list_posts
+    route: "GET /api/v1/posts?ordering="
+    cwe: CWE-89
+    owasp: "API8:2023-Security Misconfiguration"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: NM-ORDERING-001
+    match:
+      http: { method: GET, path: "/api/v1/posts", params: [ordering] }
+      file: { path: vuln/app/main.py, symbol: list_posts, lines: [405, 421] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/order_sqli_001.sh
+    documented: true
+    api_version: v1
+    notes: "The ordering parameter is interpolated into raw SQL and can project the Globex marker."
+
+  - id: DEBUG-LEAK-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: crash
+    route: "GET /api/v1/crash"
+    cwe: CWE-209
+    owasp: "API8:2023-Security Misconfiguration"
+    severity: high
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/v1/crash" }
+      file: { path: vuln/app/main.py, symbol: crash, lines: [321, 330] }
+      markers: [django-insecure-swagger-hardcoded-SWAGGER-SECRET]
+    poc: ground-truth/verify/debug_leak_001.sh
+    documented: false
+    api_version: v1
+    notes: "Verbose debug crash responses include SECRET_KEY and traceback details."
+
+  - id: HOST-CORS-JWT-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: reset_password/cors_and_audit/verify_jwt
+    route: "POST /api/v1/auth/reset and JWT-protected APIs"
+    cwe: CWE-347
+    owasp: "API2:2023-Broken Authentication"
+    severity: high
+    difficulty: M
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/v1/auth/reset" }
+      file: { path: vuln/app/main.py, symbol: reset_password/cors_and_audit/verify_jwt, lines: [265, 280] }
+    poc: ground-truth/verify/host_cors_jwt_001.sh
+    documented: true
+    api_version: v1
+    notes: "Reset links trust Host, CORS reflects arbitrary origins with credentials, and JWT accepts alg=none."
+
+  - id: BOLA-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: get_post
+    route: "GET /api/v1/posts/{id}"
+    cwe: CWE-639
+    owasp: "API1:2023-Broken Object Level Authorization"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: NM-V1-USER-001
+    match:
+      http: { method: GET, path: "/api/v1/posts/{id}" }
+      file: { path: vuln/app/main.py, symbol: get_post, lines: [422, 432] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/bola_001.sh
+    documented: true
+    api_version: v1
+    notes: "Authenticated Acme users can read a Globex draft post by ID."
+
+  - id: BFLA-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: admin_set_role
+    route: "POST /api/v1/admin/users/{id}/role"
+    cwe: CWE-862
+    owasp: "API5:2023-Broken Function Level Authorization"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/v1/admin/users/{id}/role" }
+      file: { path: vuln/app/main.py, symbol: admin_set_role, lines: [379, 404] }
+    poc: ground-truth/verify/bfla_001.sh
+    documented: false
+    api_version: v1
+    notes: "Admin role-changing endpoint checks only authentication, not admin authorization."
+
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: integrations_fetch
+    route: "POST /api/v1/integrations/fetch"
+    cwe: CWE-918
+    owasp: "API7:2023-Server Side Request Forgery"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: user
+    near_miss: NM-SSRF-001
+    match:
+      http: { method: POST, path: "/api/v1/integrations/fetch" }
+      file: { path: vuln/app/main.py, symbol: integrations_fetch, lines: [470, 480] }
+    poc: ground-truth/verify/ssrf_001.sh
+    documented: true
+    api_version: v1
+    notes: "The integration fetch endpoint reaches internal partner-api URLs without allowlisting."
+
+  - id: API10-YAML-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: partner_sync
+    route: "POST /api/v1/integrations/partner/sync"
+    cwe: CWE-1104
+    owasp: "API10:2023-Unsafe Consumption of APIs"
+    severity: high
+    difficulty: H
+    taint: cross-service
+    reachability: user
+    near_miss: NM-SSRF-001
+    match:
+      http: { method: POST, path: "/api/v1/integrations/partner/sync" }
+      file: { path: vuln/app/main.py, symbol: partner_sync, lines: [481, 497] }
+    poc: ground-truth/verify/api10_yaml_001.sh
+    documented: true
+    api_version: v1
+    notes: "Partner YAML is loaded unsafely and the upstream role field is trusted to grant admin."
+
+  - id: UPLOAD-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: upload_file
+    route: "POST /api/v1/uploads"
+    cwe: CWE-22
+    owasp: "API8:2023-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/v1/uploads" }
+      file: { path: vuln/app/main.py, symbol: upload_file, lines: [498, 516] }
+    poc: ground-truth/verify/upload_001.sh
+    documented: false
+    api_version: v1
+    notes: "Upload saves the client-supplied filename directly, allowing path traversal outside the upload directory."
+
+  - id: SEATS-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: create_invite
+    route: "POST /api/v1/invites"
+    cwe: CWE-840
+    owasp: "API6:2023-Unrestricted Access to Sensitive Business Flows"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/v1/invites" }
+      file: { path: vuln/app/main.py, symbol: create_invite, lines: [517, 543] }
+    poc: ground-truth/verify/seats_001.sh
+    documented: false
+    api_version: v1
+    notes: "Negative invite quantities pass validation and corrupt seat accounting."
+
+  - id: LOG-TOKEN-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: cors_and_audit/audit_log
+    route: "GET /api/v1/internal/audit"
+    cwe: CWE-532
+    owasp: "API8:2023-Security Misconfiguration"
+    severity: low
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/v1/internal/audit" }
+      file: { path: vuln/app/main.py, symbol: cors_and_audit/audit_log, lines: [127, 154] }
+    poc: ground-truth/verify/log_token_001.sh
+    documented: false
+    api_version: v1
+    notes: "Bearer tokens are written to audit logs and the audit endpoint is public in the vulnerable variant."
+
+near_misses:
+  - id: NM-DOCS-001
+    path: vuln/app/main.py
+    symbol: swagger_docs_v2
+    of: SWAGGERUI-001
+    match:
+      file: { path: vuln/app/main.py, symbol: swagger_docs_v2, lines: [309, 313] }
+    notes: "Second docs mount hardcodes the schema URL and states queryConfigEnabled=false."
+  - id: NM-V1-USER-001
+    path: vuln/app/main.py
+    symbol: user_detail
+    of: ZOMBIE-001
+    match:
+      file: { path: vuln/app/main.py, symbol: user_detail, lines: [342, 352] }
+    notes: "v1 user detail applies an organization check beside the unfiltered v0 zombie route."
+  - id: NM-USER-SERIALIZER-001
+    path: vuln/app/main.py
+    symbol: public_user(sensitive=False)
+    of: DRIFT-001
+    match:
+      file: { path: vuln/app/main.py, symbol: "public_user(sensitive=False)", lines: [73, 126] }
+    notes: "Safe serializer shape omits passwordHash/resetToken and explicit writable profile fields are documented."
+  - id: NM-ORDERING-001
+    path: vuln/app/main.py
+    symbol: list_posts SECURE branch allowlist
+    of: ORDER-SQLI-001
+    match:
+      file: { path: vuln/app/main.py, symbol: "list_posts SECURE branch allowlist" }
+    notes: "The patched branch allowlists id/title/slug and rejects arbitrary ordering expressions."
+  - id: NM-SSRF-001
+    path: vuln/app/main.py
+    symbol: is_private_or_internal
+    of: SSRF-001
+    match:
+      file: { path: vuln/app/main.py, symbol: is_private_or_internal, lines: [464, 469] }
+    notes: "Patched branch blocks private/internal hosts and safely consumes partner YAML without trusting role."

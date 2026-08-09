@@ -1,0 +1,10 @@
+vendor
+node_modules
+.git
+storage/logs/*.log
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*.php
+Dockerfile
+Dockerfile.standalone
+docker-compose.yml

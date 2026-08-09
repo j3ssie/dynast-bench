@@ -1,0 +1,514 @@
+# Ground-truth answer key for the nextjs vulnerable app.
+# Validated: every `poc` exits 0 against vuln/ and non-zero against safe/.
+# This file lives outside both build contexts and is never baked into an image.
+#
+# Reachability: pre-auth | user | admin.  Taint: in-file | cross-file | cross-service.
+# Difficulty (detection): E | E-M | M | M-H | H.
+
+app: nextjs
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex (tenants). user2@bench.local is in Globex for cross-tenant
+  IDOR. A Globex DRAFT ("globex-internal") carries GLOBEX-CONFIDENTIAL-MARKER-7f3a,
+  returned only via SQLi or IDOR. Weak default service credential admin/admin.
+
+vulnerabilities:
+  - id: MW-BYPASS-001
+    variant_paths: { vuln: vuln/src/middleware.ts, safe: safe/src/middleware.ts }
+    symbol: middleware
+    route: "GET /api/admin/users (header: x-middleware-subrequest)"
+    cwe: CWE-285
+    owasp: "A01:2021-Broken Access Control"
+    severity: critical
+    difficulty: H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/admin/users" }
+      file: { path: vuln/src/middleware.ts, symbol: middleware, lines: [19, 39] }
+    poc: ground-truth/verify/mw_bypass_001.sh
+    notes: >
+      Middleware trusts the internal x-middleware-subrequest header and skips the
+      auth gate (CVE-2025-29927 class); admin routes rely on middleware only.
+
+  - id: PROTO-001
+    variant_paths: { vuln: vuln/src/lib/merge.ts, safe: safe/src/lib/merge.ts }
+    symbol: deepMerge
+    route: "POST /api/settings/import"
+    cwe: CWE-1321
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-MERGE-001
+    match:
+      http: { method: POST, path: "/api/settings/import" }
+      file: { path: vuln/src/lib/merge.ts, symbol: deepMerge, lines: [4, 18] }
+    poc: ground-truth/verify/proto_001.sh
+    notes: >
+      Recursive deep-merge walks __proto__ from the request body onto
+      Object.prototype. Sink is deepMerge; the route probes+cleans for test hygiene.
+
+  - id: SQLI-001
+    variant_paths: { vuln: vuln/src/app/api/posts/search/route.ts, safe: safe/src/app/api/posts/search/route.ts }
+    symbol: GET
+    route: "GET /api/posts/search?q="
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SQL-001
+    match:
+      http: { method: GET, path: "/api/posts/search", params: [q] }
+      file: { path: vuln/src/app/api/posts/search/route.ts, symbol: GET, lines: [19, 33] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_001.sh
+    notes: "q concatenated into $queryRawUnsafe. Empty-q path is parameterized (near-miss)."
+
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/src/app/api/preview/route.ts, safe: safe/src/app/api/preview/route.ts }
+    symbol: GET
+    route: "GET /api/preview?url="
+    cwe: CWE-918
+    owasp: "A10:2021-SSRF"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-FETCH-001
+    match:
+      http: { method: GET, path: "/api/preview", params: [url] }
+      file: { path: vuln/src/app/api/preview/route.ts, symbol: GET, lines: [6, 20] }
+    poc: ground-truth/verify/ssrf_001.sh
+    notes: "Server fetch of arbitrary URL reaches internal Mailpit / metadata IP."
+
+  - id: IDOR-001
+    variant_paths: { vuln: "vuln/src/app/api/posts/[id]/route.ts", safe: "safe/src/app/api/posts/[id]/route.ts" }
+    symbol: GET
+    route: "GET /api/posts/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/posts/{id}" }
+      file: { path: "vuln/src/app/api/posts/[id]/route.ts", symbol: GET, lines: [8, 21] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/idor_001.sh
+    notes: "No org/membership check; any authed user reads any post across tenants."
+
+  - id: MASSASSIGN-001
+    variant_paths: { vuln: vuln/src/app/api/users/me/route.ts, safe: safe/src/app/api/users/me/route.ts }
+    symbol: PATCH
+    route: "PATCH /api/users/me"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: PATCH, path: "/api/users/me" }
+      file: { path: vuln/src/app/api/users/me/route.ts, symbol: PATCH, lines: [15, 25] }
+    poc: ground-truth/verify/massassign_001.sh
+    notes: "Request body spread into prisma.user.update; sets role/isAdmin."
+
+  - id: AUTHZ-001
+    variant_paths: { vuln: "vuln/src/app/api/users/[id]/promote/route.ts", safe: "safe/src/app/api/users/[id]/promote/route.ts" }
+    symbol: POST
+    route: "POST /api/users/{id}/promote"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/users/{id}/promote" }
+      file: { path: "vuln/src/app/api/users/[id]/promote/route.ts", symbol: POST, lines: [8, 19] }
+    poc: ground-truth/verify/authz_001.sh
+    notes: "Privileged action outside /api/admin prefix; no role check."
+
+  - id: JWT-001
+    variant_paths: { vuln: vuln/src/lib/jwt.ts, safe: safe/src/lib/jwt.ts }
+    symbol: verifyJwt
+    route: "GET /api/reports/admin-summary (Bearer)"
+    cwe: CWE-347
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/reports/admin-summary" }
+      file: { path: vuln/src/lib/jwt.ts, symbol: verifyJwt, lines: [33, 50] }
+    poc: ground-truth/verify/jwt_001.sh
+    notes: "Accepts alg:none, hardcoded secret, exp unchecked; forge role=admin."
+
+  - id: XSS-STORED-001
+    variant_paths: { vuln: "vuln/src/app/posts/[id]/page.tsx", safe: "safe/src/app/posts/[id]/page.tsx" }
+    symbol: PostPage
+    route: "GET /posts/{id}"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E-M
+    taint: cross-file
+    reachability: user
+    near_miss: NM-XSS-001
+    match:
+      http: { method: GET, path: "/posts/{id}" }
+      file: { path: "vuln/src/app/posts/[id]/page.tsx", symbol: PostPage, lines: [18, 24] }
+    poc: ground-truth/verify/xss_stored_001.sh
+    notes: "Comment body rendered via dangerouslySetInnerHTML; title (text) is the near-miss."
+
+  - id: XSS-REFLECT-002
+    variant_paths: { vuln: vuln/src/app/posts/search/page.tsx, safe: safe/src/app/posts/search/page.tsx }
+    symbol: SearchPage
+    route: "GET /posts/search?q="
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/posts/search", params: [q] }
+      file: { path: vuln/src/app/posts/search/page.tsx, symbol: SearchPage, lines: [3, 20] }
+    poc: ground-truth/verify/xss_reflect_002.sh
+    notes: "q reflected via dangerouslySetInnerHTML."
+
+  - id: TRAVERSAL-001
+    variant_paths: { vuln: vuln/src/app/api/attachments/download/route.ts, safe: safe/src/app/api/attachments/download/route.ts }
+    symbol: GET
+    route: "GET /api/attachments/download?name="
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/attachments/download", params: [name] }
+      file: { path: vuln/src/app/api/attachments/download/route.ts, symbol: GET, lines: [10, 23] }
+    poc: ground-truth/verify/traversal_001.sh
+    notes: "path.join on user filename, no containment check."
+
+  - id: CORS-001
+    variant_paths: { vuln: vuln/src/lib/cors.ts, safe: safe/src/lib/cors.ts }
+    symbol: withCors
+    route: "GET /api/posts/search (Origin reflected)"
+    cwe: CWE-942
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/posts/search" }
+      file: { path: vuln/src/lib/cors.ts, symbol: withCors, lines: [3, 14] }
+    poc: ground-truth/verify/cors_001.sh
+    notes: "Reflects arbitrary Origin + Allow-Credentials: true."
+
+  - id: REDIRECT-001
+    variant_paths: { vuln: vuln/src/app/goto/route.ts, safe: safe/src/app/goto/route.ts }
+    symbol: GET
+    route: "GET /goto?next="
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/goto", params: [next] }
+      file: { path: vuln/src/app/goto/route.ts, symbol: GET, lines: [6, 13] }
+    poc: ground-truth/verify/redirect_001.sh
+    notes: "Redirects to arbitrary external URL (models login ?next=)."
+
+  - id: SECRET-001
+    variant_paths: { vuln: vuln/src/lib/config.ts, safe: safe/src/lib/config.ts }
+    symbol: PUBLIC_API_KEY
+    route: "GET /"
+    cwe: CWE-200
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: medium
+    difficulty: E
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/" }
+      file: { path: vuln/src/lib/config.ts, symbol: PUBLIC_API_KEY, lines: [8, 32] }
+    poc: ground-truth/verify/secret_001.sh
+    notes: "NEXT_PUBLIC_ secret + hardcoded JWT fallback; rendered into homepage HTML."
+
+  - id: SECRET-002
+    variant_paths: { vuln: vuln/src/lib/integrations.ts, safe: safe/src/lib/integrations.ts }
+    symbol: OBJECT_STORE_KEY_B64
+    route: "GET /integrations (-> /_next/static/chunks/app/integrations/page-*.js)"
+    cwe: CWE-798
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: high
+    difficulty: E-M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-B64-001
+    match:
+      http: { method: GET, path: "/integrations" }
+      file: { path: vuln/src/lib/integrations.ts, symbol: OBJECT_STORE_KEY_B64, lines: [10, 16] }
+    poc: ground-truth/verify/secret_002.sh
+    notes: >
+      Cloud object-store access key + secret committed base64-encoded and imported
+      by a client component, so it ships in the public browser chunk. Decodes to
+      AKIA…:wJalr…. Base64 is encoding, not secrecy.
+
+  - id: CREDS-BUNDLE-001
+    variant_paths: { vuln: vuln/src/lib/integrations.ts, safe: safe/src/lib/integrations.ts }
+    symbol: SYNC_BASIC_AUTH
+    route: "GET /integrations (-> chunk) then POST /api/integrations/sync"
+    cwe: CWE-522
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: critical
+    difficulty: E-M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-TOKEN-001
+    match:
+      http: { method: GET, path: "/integrations" }
+      http_alt: ["/api/integrations/sync"]
+      file: { path: vuln/src/lib/integrations.ts, symbol: SYNC_BASIC_AUTH, lines: [17, 21] }
+    poc: ground-truth/verify/creds_bundle_001.sh
+    notes: >
+      Live service-account credential (seeded admin/admin) pre-encoded as a Basic
+      header in client code. Harvest from the chunk, replay it against
+      /api/integrations/sync (role=service), or decode and log in outright.
+
+  - id: SOURCEMAP-001
+    variant_paths: { vuln: vuln/next.config.js, safe: safe/next.config.js }
+    symbol: productionBrowserSourceMaps
+    route: "GET /_next/static/chunks/*.js.map"
+    cwe: CWE-540
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/_next/static/chunks/*.js.map" }
+      file: { path: vuln/next.config.js, symbol: productionBrowserSourceMaps, lines: [9, 15] }
+    poc: ground-truth/verify/sourcemap_001.sh
+    notes: >
+      Production browser source maps are published; every chunk has a fetchable
+      *.js.map whose sourcesContent carries the original TypeScript, file paths
+      and comments (including the planted-bug comments).
+
+  - id: ENVFILE-001
+    variant_paths: { vuln: vuln/public/env.production, safe: "(absent)" }
+    symbol: public/env.production
+    route: "GET /env.production"
+    cwe: CWE-538
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: critical
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: NM-PUBFILE-001
+    match:
+      http: { method: GET, path: "/env.production" }
+      file: { path: vuln/public/env.production, symbol: public/env.production, lines: [1, 19] }
+      markers: [ENVFILE-LEAK-MARKER-5d2c]
+    poc: ground-truth/verify/envfile_001.sh
+    notes: >
+      The production env file sits under public/, so Next serves it from the web
+      root unauthenticated — DATABASE_URL, JWT_SECRET, SMTP and object-store keys.
+      Fix is deleting the file; safe/public/ keeps only config.public.json.
+
+  - id: CONFIG-LEAK-001
+    variant_paths: { vuln: vuln/src/app/layout.tsx, safe: safe/src/app/layout.tsx }
+    symbol: RootLayout
+    route: "GET / (script#app-config)"
+    cwe: CWE-200
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: E-M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-CONFIG-001
+    match:
+      http: { method: GET, path: "/" }
+      file: { path: vuln/src/app/layout.tsx, symbol: RootLayout, lines: [12, 39] }
+    poc: ground-truth/verify/config_leak_001.sh
+    notes: >
+      The bootstrap <script id="app-config"> blob embedded in every page (pre-auth
+      included) serializes the FULL server RUNTIME_CONFIG — internalApiBase, SMTP
+      user/pass, internalAdminToken — instead of the PUBLIC_RUNTIME_CONFIG subset
+      declared right next to it.
+
+  - id: ENUM-001
+    variant_paths: { vuln: vuln/src/app/api/auth/login/route.ts, safe: safe/src/app/api/auth/login/route.ts }
+    symbol: POST
+    route: "POST /api/auth/login"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/src/app/api/auth/login/route.ts, symbol: POST, lines: [9, 25] }
+    poc: ground-truth/verify/enum_001.sh
+    notes: "Distinct 404 (no user) vs 401 (wrong password). Also no rate limit."
+
+  - id: BILLING-001
+    variant_paths: { vuln: vuln/src/app/api/billing/seats/route.ts, safe: safe/src/app/api/billing/seats/route.ts }
+    symbol: POST
+    route: "POST /api/billing/seats"
+    cwe: CWE-840
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/billing/seats" }
+      file: { path: vuln/src/app/api/billing/seats/route.ts, symbol: POST, lines: [8, 21] }
+    poc: ground-truth/verify/billing_001.sh
+    notes: "Negative/huge quantity accepted (logic bug)."
+
+  - id: RACE-001
+    variant_paths: { vuln: vuln/src/app/api/invites/route.ts, safe: safe/src/app/api/invites/route.ts }
+    symbol: POST
+    route: "POST /api/invites"
+    cwe: CWE-362
+    owasp: "A04:2021-Insecure Design"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/invites" }
+      file: { path: vuln/src/app/api/invites/route.ts, symbol: POST, lines: [8, 27] }
+    poc: ground-truth/verify/race_001.sh
+    notes: "Non-atomic seat check-then-act; concurrent invites exceed the limit. Needs fresh seed."
+
+  - id: CACHE-POISON-001
+    variant_paths: { vuln: vuln/src/app/api/cache/route.ts, safe: safe/src/app/api/cache/route.ts }
+    symbol: GET
+    route: "GET /api/cache?key="
+    cwe: CWE-349
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: M-H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-CACHE-001
+    match:
+      http: { method: GET, path: "/api/cache", params: [key] }
+      file: { path: vuln/src/app/api/cache/route.ts, symbol: GET, lines: [7, 18] }
+    poc: ground-truth/verify/cache_poison_001.sh
+    notes: "Web cache poisoning: the Redis entry is keyed on `key` only but the body reflects the unkeyed X-Forwarded-Host; the safe twin folds the host into the key (see cache-scoped)."
+
+near_misses:
+  # Safe code planted next to a vulnerable sibling. Flagging any of these is a
+  # FALSE POSITIVE. Present in BOTH variants.
+  - id: NM-SQL-001
+    path: vuln/src/app/api/posts/search/route.ts
+    symbol: "GET (empty-q branch)"
+    of: SQLI-001
+    match:
+      file: { path: vuln/src/app/api/posts/search/route.ts, symbol: "GET (empty-q branch)" }
+    notes: "Parameterized $queryRaw tagged template."
+  - id: NM-CACHE-001
+    path: vuln/src/app/api/cache-scoped/route.ts
+    symbol: GET
+    of: CACHE-POISON-001
+    match:
+      http: { path: "/api/cache-scoped" }
+      file: { path: vuln/src/app/api/cache-scoped/route.ts, symbol: GET }
+    notes: "Same widget-cache shape but the host is part of the cache key, so it cannot be poisoned across users."
+  - id: NM-MERGE-001
+    path: vuln/src/lib/merge.ts
+    symbol: safeApplySettings
+    of: PROTO-001
+    match:
+      file: { path: vuln/src/lib/merge.ts, symbol: safeApplySettings, lines: [19, 25] }
+    notes: "Allow-list copy; never touches __proto__."
+  - id: NM-FETCH-001
+    path: vuln/src/app/api/preview-internal/route.ts
+    symbol: GET
+    of: SSRF-001
+    match:
+      http: { path: "/api/preview-internal" }
+      file: { path: vuln/src/app/api/preview-internal/route.ts, symbol: GET }
+    notes: "Server fetch of a fixed allow-listed URL; no user input."
+  - id: NM-XSS-001
+    path: "vuln/src/app/posts/[id]/page.tsx"
+    symbol: "PostPage (title render)"
+    of: XSS-STORED-001
+    match:
+      file: { path: "vuln/src/app/posts/[id]/page.tsx", symbol: "PostPage (title render)", lines: [5, 17] }
+    notes: "post.title rendered as escaped text via JSX interpolation."
+  - id: NM-B64-001
+    path: vuln/src/lib/integrations.ts
+    symbol: WIDGET_THEME_B64
+    of: SECRET-002
+    match:
+      file: { path: vuln/src/lib/integrations.ts, symbol: WIDGET_THEME_B64, lines: [22, 30] }
+    notes: >
+      Committed base64 literal in the same file, shipped in the same chunk — but
+      the plaintext is {"theme":"dark","density":"compact"}, not a credential.
+  - id: NM-TOKEN-001
+    path: vuln/src/lib/integrations.ts
+    symbol: fetchSyncToken
+    of: CREDS-BUNDLE-001
+    match:
+      file: { path: vuln/src/lib/integrations.ts, symbol: fetchSyncToken, lines: [31, 36] }
+    notes: >
+      Credential-shaped name and same call site, but the token is minted per
+      request by /api/integrations/token (CSPRNG, session-scoped) and never
+      committed.
+  - id: NM-CONFIG-001
+    path: vuln/src/lib/config.ts
+    symbol: PUBLIC_RUNTIME_CONFIG
+    of: CONFIG-LEAK-001
+    match:
+      file: { path: vuln/src/lib/config.ts, symbol: PUBLIC_RUNTIME_CONFIG, lines: [33, 38] }
+    notes: >
+      Config object built from an explicit public allow-list (appName, locale,
+      buildSha). Serializing this into the page is correct; only RUNTIME_CONFIG
+      is the leak.
+  - id: NM-PUBFILE-001
+    path: vuln/public/config.public.json
+    symbol: config.public.json
+    of: ENVFILE-001
+    match:
+      http: { path: "/config.public.json" }
+      file: { path: vuln/public/config.public.json, symbol: config.public.json, lines: [2, 8] }
+    notes: >
+      A config file deliberately served from the web root, same shape as the
+      exposed env file, but every field is public by design.
+
+# Catalog items from benchmark-plans/nextjs.md deferred in v1 (not yet planted):
+#   next/image SSRF, upload SVG XSS, second-order SQLi, predictable session id
+#   (present in source as SESSION-001 but no dynamic PoC), reset token,
+#   verbose-error leak, dependency CVE, CSRF on server actions.

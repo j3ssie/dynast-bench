@@ -1,0 +1,591 @@
+# Ground-truth answer key for the websocket vulnerable app.
+# This file lives outside both build contexts and is never baked into an image.
+
+app: websocket
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex; user2@bench.local is in Globex for cross-tenant realtime BOLA/IDOR.
+  A Globex DRAFT carries GLOBEX-CONFIDENTIAL-MARKER-7f3a. Weak service credential admin/admin exists only in vuln.
+
+vulnerabilities:
+  - id: CSWSH-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: handle upgrade
+    route: "GET /ws (Origin: evil)"
+    transport: http
+    cwe: CWE-1385
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-ORIGIN-001
+    match:
+      http: { method: GET, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: "handle upgrade", lines: [73, 73] }
+      ws: { transport: http }
+    poc: ground-truth/verify/cswsh_001.sh
+    notes: "No Origin validation on raw /ws; /ws/secure is the near-miss."
+
+  - id: DOWNGRADE-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: Socket.IO allowRequest
+    route: "GET /socket.io/?transport=polling"
+    transport: socketio-polling
+    cwe: CWE-287
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: critical
+    difficulty: H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/socket.io/", query: { transport: polling } }
+      file: { path: vuln/src/server.mjs, symbol: "Socket.IO allowRequest", lines: [74, 75] }
+      ws: { transport: socketio-polling }
+    poc: ground-truth/verify/downgrade_001.sh
+    notes: "Engine.IO polling transport bypasses the auth check applied to websocket transport."
+
+  - id: TICKET-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: verifyTicket
+    route: "WS /ws token"
+    transport: ws
+    cwe: CWE-330
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: verifyTicket, lines: [44, 47] }
+      ws: { transport: ws }
+    poc: ground-truth/verify/ticket_forge_001.sh
+    notes: "WS tickets are base64 userId:exp:role values with no signature."
+
+  - id: TOKEN-LEAK-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: logAccess
+    route: "GET /api/health?token="
+    transport: http
+    cwe: CWE-598
+    owasp: "A09:2021-Security Logging and Monitoring Failures"
+    severity: medium
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/health", params: [token] }
+      file: { path: vuln/src/server.mjs, symbol: logAccess, lines: [49, 54] }
+      ws: { transport: http }
+    poc: ground-truth/verify/token_leak_001.sh
+    notes: "Ticket accepted in query string and written to access logs."
+
+  - id: EXPIRY-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: handleFrame
+    route: "WS /ws after ticket exp"
+    transport: ws
+    cwe: CWE-613
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M-H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: handleFrame, lines: [69, 70] }
+      ws: { transport: ws }
+    poc: ground-truth/verify/session_expiry_001.sh
+    notes: "Ticket expiry is not re-checked on frames after the handshake."
+
+  - id: RESUME-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: sessionFor
+    route: "WS /ws?sid="
+    transport: ws
+    cwe: CWE-384
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws", params: [sid] }
+      file: { path: vuln/src/server.mjs, symbol: sessionFor, lines: [59, 59] }
+      ws: { transport: ws }
+    poc: ground-truth/verify/resume_001.sh
+    notes: "sid resume restores an authenticated session without re-authentication."
+
+  - id: SUBPROTO-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: handleFrame adminProtocol
+    route: "WS /ws Sec-WebSocket-Protocol: admin-v1"
+    transport: ws
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M-H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: "handleFrame adminProtocol" }
+      ws: { transport: ws }
+    poc: ground-truth/verify/subprotocol_admin_001.sh
+    notes: "admin-v1 subprotocol selects privileged handling."
+
+  - id: SIO-ADMIN-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: /admin namespace
+    route: "Socket.IO /admin stats"
+    transport: socketio-ws
+    cwe: CWE-306
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-SIO-001
+    match:
+      http: { path: "/admin" }
+      file: { path: vuln/src/server.mjs, symbol: "/admin namespace", lines: [76, 80] }
+      ws: { transport: socketio-ws }
+    poc: ground-truth/verify/socketio_admin_001.sh
+    notes: "Socket.IO /admin namespace has no role middleware in the vulnerable twin."
+
+  - id: CHAN-BOLA-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: subscribeChannel
+    route: "WS /ws {type: subscribe, channel: org:globex:posts}"
+    transport: ws
+    cwe: CWE-863
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M-H
+    taint: in-file
+    reachability: user
+    near_miss: NM-CHANNEL-001
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: subscribeChannel, lines: [62, 63] }
+      ws: { transport: ws, event: subscribe, channel: "org:globex:posts" }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/channel_bola_001.sh
+    notes: "Client-controlled channel names allow cross-tenant Globex subscription."
+
+  - id: CHAN-WILD-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: subscribeChannel
+    route: "WS /ws {type: subscribe, channel: org:*}"
+    transport: ws
+    cwe: CWE-863
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: subscribeChannel }
+      ws: { transport: ws, event: subscribe, channel: "org:*" }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/channel_wildcard_001.sh
+    notes: "Wildcard org channel returns cross-tenant firehose events."
+
+  - id: CHAN-INTERNAL-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: subscribeChannel
+    route: "WS /ws {type: subscribe, channel: internal:billing}"
+    transport: ws
+    cwe: CWE-441
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: H
+    taint: cross-service
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: subscribeChannel }
+      ws: { transport: ws, event: subscribe, channel: "internal:billing" }
+    poc: ground-truth/verify/channel_internal_001.sh
+    notes: "Client channel can reach internal billing stream."
+
+  - id: IMPERSONATE-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: chat.send
+    route: "WS /ws {type: chat.send, from: ...}"
+    transport: ws
+    cwe: CWE-290
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: chat.send }
+      ws: { transport: ws, event: chat.send }
+    poc: ground-truth/verify/impersonation_001.sh
+    notes: "chat.send trusts client-supplied from value."
+
+  - id: BFLA-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: admin.userDelete
+    route: "WS /ws {type: admin.userDelete}"
+    transport: ws
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M-H
+    taint: in-file
+    reachability: user
+    near_miss: NM-SIO-001
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: admin.userDelete }
+      ws: { transport: ws, event: admin.userDelete }
+    poc: ground-truth/verify/bfla_001.sh
+    notes: "Message type router exposes admin action without a role check."
+
+  - id: IDOR-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: post.get
+    route: "WS /ws {type: post.get}"
+    transport: ws
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: post.get }
+      ws: { transport: ws, event: post.get }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/idor_001.sh
+    notes: "post.get reads any post id without org membership check."
+
+  - id: SQLI-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: post.search
+    route: "WS /ws {type: post.search}"
+    transport: ws
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: M-H
+    taint: in-file
+    reachability: user
+    near_miss: NM-SQL-001
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: post.search, lines: [55, 58] }
+      ws: { transport: ws, event: post.search }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_001.sh
+    notes: "post.search concatenates q into SQL; post.list is parameterized/scoped near-miss."
+
+  - id: RCE-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: evalFilter
+    route: "WS /ws {type: sub.filter}"
+    transport: ws
+    cwe: CWE-94
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-FILTER-001
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: evalFilter, lines: [64, 66] }
+      ws: { transport: ws, event: sub.filter }
+    poc: ground-truth/verify/rce_001.sh
+    notes: "Subscription filter expression is evaluated with new Function."
+
+  - id: PROTO-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: mergePresence
+    route: "WS /ws {type: presence.update}"
+    transport: ws
+    cwe: CWE-1321
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-MERGE-001
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: mergePresence, lines: [60, 60] }
+      ws: { transport: ws, event: presence.update }
+    poc: ground-truth/verify/proto_001.sh
+    notes: "Recursive merge follows __proto__ and pollutes Object.prototype."
+
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: webhook.test
+    route: "WS /ws {type: webhook.test}"
+    transport: ws
+    cwe: CWE-918
+    owasp: "A10:2021-SSRF"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: webhook.test }
+      ws: { transport: ws, event: webhook.test }
+      markers: [INTERNAL-SERVICE-SECRET]
+    poc: ground-truth/verify/ssrf_001.sh
+    notes: "webhook.test fetches arbitrary URLs including internal-svc."
+
+  - id: TRAVERSAL-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: file.get
+    route: "WS /ws {type: file.get}"
+    transport: ws
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: file.get, lines: [20, 21] }
+      ws: { transport: ws, event: file.get }
+      markers: [FILE-SECRET-WEBSOCKET-TRAVERSAL]
+    poc: ground-truth/verify/traversal_001.sh
+    notes: "file.get joins user name to public dir without containment."
+
+  - id: XSS-STORED-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: transcript
+    route: "GET /api/rooms/{id}/transcript"
+    transport: http
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: M
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/rooms/{id}/transcript" }
+      file: { path: vuln/src/server.mjs, symbol: transcript, lines: [33, 43] }
+      ws: { transport: http }
+    poc: ground-truth/verify/xss_stored_001.sh
+    notes: "WS chat body is rendered into transcript HTML without escaping."
+
+  - id: LOG-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: auditName
+    route: "WS /ws {type: presence.update}"
+    transport: ws
+    cwe: CWE-117
+    owasp: "A09:2021-Security Logging and Monitoring Failures"
+    severity: low
+    difficulty: M
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: auditName, lines: [67, 67] }
+      ws: { transport: ws, event: presence.update }
+    poc: ground-truth/verify/log_injection_001.sh
+    notes: "presence.name is written to audit log without CRLF sanitization."
+
+  - id: PAYLOAD-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: WebSocketServer
+    route: "WS /ws large frame"
+    transport: ws
+    cwe: CWE-770
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: WebSocketServer, lines: [71, 72] }
+      ws: { transport: ws }
+    poc: ground-truth/verify/payload_limit_001.sh
+    notes: "Raw ws server allows oversized frames."
+
+  - id: RATE-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: checkRate
+    route: "WS /ws rapid frames"
+    transport: ws
+    cwe: CWE-770
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: checkRate, lines: [68, 68] }
+      ws: { transport: ws }
+    poc: ground-truth/verify/rate_limit_001.sh
+    notes: "No per-connection message rate limit."
+
+  - id: ROOM-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: subscribeChannel
+    route: "WS /ws many subscribe frames"
+    transport: ws
+    cwe: CWE-770
+    owasp: "A04:2021-Insecure Design"
+    severity: low
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: subscribeChannel }
+      ws: { transport: ws }
+    poc: ground-truth/verify/room_limit_001.sh
+    notes: "Unbounded room creation on subscribe."
+
+  - id: CORS-COOKIE-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: corsHeaders/login
+    route: "POST /api/auth/login"
+    transport: http
+    cwe: CWE-942
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/src/server.mjs, symbol: corsHeaders/login, lines: [48, 48] }
+      ws: { transport: http }
+    poc: ground-truth/verify/cors_cookie_001.sh
+    notes: "Reflective credentialed CORS and SameSite=None cookie without Secure."
+
+  - id: BILLING-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: billing.seats
+    route: "WS /ws {type: billing.seats}"
+    transport: ws
+    cwe: CWE-840
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: billing.seats }
+      ws: { transport: ws, event: billing.seats }
+    poc: ground-truth/verify/billing_001.sh
+    notes: "billing.seats accepts negative quantity."
+
+  - id: RACE-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: invite.create
+    route: "WS /ws {type: invite.create}"
+    transport: ws
+    cwe: CWE-362
+    owasp: "A04:2021-Insecure Design"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: WS, path: "/ws" }
+      file: { path: vuln/src/server.mjs, symbol: invite.create }
+      ws: { transport: ws, event: invite.create }
+    poc: ground-truth/verify/race_001.sh
+    notes: "Concurrent invite.create frames exceed the org seat limit."
+
+  - id: DEFAULT-CREDS-001
+    variant_paths: { vuln: vuln/src/server.mjs, safe: safe/src/server.mjs }
+    symbol: seed users
+    route: "POST /api/auth/login admin/admin"
+    transport: http
+    cwe: CWE-1392
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/src/server.mjs, symbol: "seed users", lines: [22, 32] }
+      ws: { transport: http }
+    poc: ground-truth/verify/default_creds_001.sh
+    notes: "Seeded service account uses weak admin/admin credentials."
+
+near_misses:
+  - id: NM-ORIGIN-001
+    path: vuln/src/server.mjs
+    symbol: /ws/secure upgrade path
+    of: CSWSH-001
+    match:
+      file: { path: vuln/src/server.mjs, symbol: "/ws/secure upgrade path" }
+    notes: "Checks Origin against the local allowlist and requires a ticket."
+  - id: NM-SQL-001
+    path: vuln/src/server.mjs
+    symbol: post.list
+    of: SQLI-001
+    match:
+      file: { path: vuln/src/server.mjs, symbol: post.list }
+    notes: "Lists only published posts in the authenticated user org."
+  - id: NM-MERGE-001
+    path: vuln/src/server.mjs
+    symbol: applyPresence
+    of: PROTO-001
+    match:
+      file: { path: vuln/src/server.mjs, symbol: applyPresence, lines: [61, 61] }
+    notes: "Copies only allowlisted scalar presence fields."
+  - id: NM-CHANNEL-001
+    path: vuln/src/server.mjs
+    symbol: subscribeChannel safe branch
+    of: CHAN-BOLA-001
+    match:
+      file: { path: vuln/src/server.mjs, symbol: "subscribeChannel safe branch" }
+    notes: "Derives allowed org channel from the authenticated session."
+  - id: NM-SIO-001
+    path: vuln/src/server.mjs
+    symbol: /rt namespace
+    of: SIO-ADMIN-001
+    match:
+      file: { path: vuln/src/server.mjs, symbol: "/rt namespace" }
+    notes: "Non-privileged namespace exposes only a ping event."
+  - id: NM-FILTER-001
+    path: vuln/src/server.mjs
+    symbol: evalFilter safe parser
+    of: RCE-001
+    match:
+      file: { path: vuln/src/server.mjs, symbol: "evalFilter safe parser" }
+    notes: "Accepts only event.priority numeric comparisons."

@@ -1,0 +1,9 @@
+* { box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; margin: 0; background: #0b0f14; color: #e6edf3; }
+main { max-width: 820px; margin: 0 auto; padding: 24px; }
+a { color: #58a6ff; }
+.banner { background: #7f1d1d; color: #fff; padding: 8px 16px; font-weight: 600; }
+.card { background: #111820; border: 1px solid #223; border-radius: 8px; padding: 16px; margin: 12px 0; }
+input, textarea { width: 100%; padding: 8px; margin: 6px 0; background: #0d1117; color: #e6edf3; border: 1px solid #30363d; border-radius: 6px; }
+button { padding: 8px 14px; background: #238636; color: #fff; border: 0; border-radius: 6px; cursor: pointer; }
+nav a { margin-right: 14px; }

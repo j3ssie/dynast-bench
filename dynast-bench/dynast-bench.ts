@@ -1,0 +1,2267 @@
+#!/usr/bin/env bun
+/**
+ * dynast-bench — one CLI to drive the DynAST-Bench vulnerable-app suite.
+ *
+ *   dynast-bench start nextjs           # build + boot, wait until healthy, print target
+ *   dynast-bench verify nextjs          # run the ground-truth PoCs against it
+ *   dynast-bench stop --all             # stop everything this repo started
+ *   dynast-bench clean --all --images   # remove containers, volumes, networks, images
+ *
+ * Everything is derived from the apps themselves (compose files, Makefiles,
+ * ground-truth/VULNERABILITIES.yaml) — there is no config file to keep in sync.
+ *
+ * ⚠️ The apps are DELIBERATELY INSECURE and bind 127.0.0.1 only. Never expose them.
+ */
+
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { basename, dirname, join, relative } from "node:path";
+
+import { checkApp, twinDiff, type Differ } from "./src/check/invariants.ts";
+import { normalizeText, type Format, FORMATS } from "./src/normalize/index.ts";
+import { parseGroundTruthFile } from "./src/schema/ground-truth.ts";
+import type {
+  FindingsFile,
+  GroundTruth as ScoredGroundTruth,
+  Variant as GtVariant,
+} from "./src/schema/types.ts";
+import { gtAnchors } from "./src/scorer/anchors.ts";
+import { renderReport } from "./src/scorer/report.ts";
+import { scoreApp } from "./src/scorer/score.ts";
+
+const VERSION = "0.3.0";
+const DEFAULT_HEALTH_PATH = "/api/_verify/health";
+const VERIFY_TOKEN = "benchsecret";
+const HEALTH_TIMEOUT_S = 300; // cold builds (aspnet/springboot/jsp) are slow
+
+/**
+ * Host-port plan. The suite deliberately sits in a quiet slice of the ephemeral
+ * range so it never collides with the usual suspects (3000/8000/8080/5432/...)
+ * that other scanners and test targets grab.
+ *
+ *   13311          the app itself — every compose stack's default
+ *   13312 .. 13319 that stack's sidecars (mailpit, phpmyadmin, jenkins, ...)
+ *   13320 .. 13399 auto-assigned solo ports (`start --all --solo`)
+ *   13400 .. 13499 relocation pool — where a port goes when its default is busy
+ */
+const APP_PORT = 13311;
+const SOLO_PORT_BASE = 13320;
+const SOLO_PORT_SPAN = 80;
+const PORT_FALLBACK_BASE = 13400;
+const PORT_FALLBACK_SPAN = 100;
+
+type Variant = "vuln" | "safe";
+type Mode = "compose" | "solo";
+
+const VARIANTS: Variant[] = ["vuln", "safe"];
+
+interface PortMap {
+  hostIp: string;
+  host: number;
+  container: number;
+  proto: string;
+}
+
+/**
+ * One `ports:` entry of a compose file, e.g.
+ * `127.0.0.1:${DYNAST_PORT_MAILPIT_8025:-13312}:8025`. `envVar` is what the CLI
+ * sets to move that publish somewhere else; `preferred` is the baked-in default.
+ */
+interface PortDecl {
+  service: string;
+  envVar: string | null;
+  preferred: number;
+  container: number;
+  isApp: boolean;
+}
+
+interface App {
+  name: string;
+  dir: string;
+  /** default host port for the app itself (before any relocation) */
+  composePort: number;
+  /** compose service that serves the app under test */
+  appService: string;
+  /** port that service listens on inside its container */
+  appContainerPort: number;
+  /** every publish each variant's compose declares, in file order */
+  ports: Record<Variant, PortDecl[]>;
+  /** port the standalone image listens on inside the container */
+  soloInternalPort: number;
+  hasSolo: boolean;
+  healthPath: string;
+  pocCount: number;
+  groundTruth: string;
+  planDoc: string | null;
+}
+
+interface Container {
+  id: string;
+  name: string;
+  project: string | null;
+  service: string | null;
+  state: string;
+  status: string;
+  ports: PortMap[];
+}
+
+interface Stack {
+  app: string;
+  variant: Variant;
+  mode: Mode;
+  containers: Container[];
+  running: number;
+  target: string | null;
+}
+
+// ---------------------------------------------------------------- output ----
+
+// Provisional, so that failures during module init (locating the repo) already
+// respect --json. main() sets it properly once the args are parsed.
+const JSON_MODE = { on: process.argv.includes("--json") || process.argv.includes("-j") };
+const useColor = () =>
+  !JSON_MODE.on && process.stdout.isTTY === true && !process.env.NO_COLOR;
+
+const paint = (code: string) => (s: string) =>
+  useColor() ? `\x1b[${code}m${s}\x1b[0m` : s;
+const c = {
+  bold: paint("1"),
+  dim: paint("2"),
+  red: paint("31"),
+  green: paint("32"),
+  yellow: paint("33"),
+  blue: paint("34"),
+  cyan: paint("36"),
+};
+
+/** Human progress. Silenced in --json so stdout stays pure JSON. */
+function log(msg = "") {
+  if (!JSON_MODE.on) console.log(msg);
+}
+function step(msg: string) {
+  log(`${c.cyan(">>")} ${msg}`);
+}
+function warn(msg: string) {
+  if (JSON_MODE.on) console.error(`warn: ${msg}`);
+  else console.log(`${c.yellow("!!")} ${msg}`);
+}
+
+class CliError extends Error {
+  constructor(message: string, readonly code = 1) {
+    super(message);
+  }
+}
+// Explicitly typed so TypeScript treats a die() call as terminating a branch.
+const die: (msg: string, code?: number) => never = (msg, code = 1) => {
+  throw new CliError(msg, code);
+};
+
+/** Report a CliError the way the CLI always does, and exit. Rethrows real bugs. */
+function fatal(err: unknown): never {
+  if (err instanceof CliError) {
+    if (JSON_MODE.on) console.log(JSON.stringify({ error: err.message }, null, 2));
+    else console.error(`${c.red("!!")} ${err.message}`);
+    process.exit(err.code);
+  }
+  throw err;
+}
+
+/** Run module-init work that may die() — main()'s handler isn't up yet. */
+function init<T>(fn: () => T): T {
+  try {
+    return fn();
+  } catch (err) {
+    return fatal(err);
+  }
+}
+
+function emit(payload: unknown) {
+  if (JSON_MODE.on) console.log(JSON.stringify(payload, null, 2));
+}
+
+function table(rows: string[][], head?: string[]) {
+  const all = head ? [head, ...rows] : rows;
+  if (all.length === 0) return;
+  const widths = all[0]!.map((_, i) =>
+    Math.max(...all.map((r) => (r[i] ?? "").length)),
+  );
+  const line = (r: string[], bold = false) => {
+    const s = r
+      .map((cell, i) => (cell ?? "").padEnd(widths[i]!))
+      .join("  ")
+      .trimEnd();
+    log(bold ? c.bold(s) : s);
+  };
+  if (head) line(head, true);
+  rows.forEach((r) => line(r));
+}
+
+// ------------------------------------------------------------- processes ----
+
+interface RunResult {
+  code: number;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * Spawn a command. `stream` echoes the child's output live (and still captures
+ * it); otherwise output is captured silently. --json always captures.
+ */
+async function exec(
+  cmd: string[],
+  opts: { cwd?: string; env?: Record<string, string>; stream?: boolean } = {},
+): Promise<RunResult> {
+  const stream = opts.stream && !JSON_MODE.on;
+  const proc = Bun.spawn(cmd, {
+    cwd: opts.cwd,
+    env: { ...process.env, ...(opts.env ?? {}) },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const drain = async (
+    rs: ReadableStream<Uint8Array>,
+    sink: NodeJS.WriteStream,
+  ) => {
+    const chunks: Uint8Array[] = [];
+    for await (const chunk of rs) {
+      chunks.push(chunk);
+      if (stream) sink.write(chunk);
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  };
+
+  const [stdout, stderr, code] = await Promise.all([
+    drain(proc.stdout, process.stdout),
+    drain(proc.stderr, process.stderr),
+    proc.exited,
+  ]);
+  return { code, stdout, stderr };
+}
+
+/** Run a command attached to the terminal (for `logs -f`, scanner commands). */
+async function execInherit(
+  cmd: string[],
+  opts: { cwd?: string; env?: Record<string, string> } = {},
+): Promise<number> {
+  const proc = Bun.spawn(cmd, {
+    cwd: opts.cwd,
+    env: { ...process.env, ...(opts.env ?? {}) },
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  return await proc.exited;
+}
+
+const docker = (args: string[], opts?: Parameters<typeof exec>[1]) =>
+  exec(["docker", ...args], opts);
+
+// ----------------------------------------------------------- repo + apps ----
+
+/**
+ * The checkout `make build` compiled this binary from, baked in by
+ * `bun build --define`. Undefined when the CLI runs as a plain script.
+ */
+declare const DYNAST_REPO_ROOT: string | undefined;
+
+const BAKED_ROOT: string | null =
+  typeof DYNAST_REPO_ROOT === "string" ? DYNAST_REPO_ROOT : null;
+
+/** Nearest ancestor of `from` that holds a `vulnerable-apps/` directory. */
+function findRootAbove(from: string): string | null {
+  let dir = from;
+  for (let i = 0; i < 12; i++) {
+    if (existsSync(join(dir, "vulnerable-apps"))) return dir;
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  return null;
+}
+
+/**
+ * Locate the suite. Compiled binaries live on `$PATH`, far from the apps, and
+ * their `import.meta.dir` is inside bun's virtual filesystem — so the script
+ * walk only works when running from source, and the fallbacks carry the rest.
+ */
+function repoRoot(): string {
+  const explicit = process.env.DYNAST_BENCH_ROOT;
+  if (explicit) {
+    if (!existsSync(join(explicit, "vulnerable-apps"))) {
+      die(`DYNAST_BENCH_ROOT=${explicit} has no vulnerable-apps/`, 2);
+    }
+    return explicit;
+  }
+  const found =
+    findRootAbove(import.meta.dir) ?? // running from source
+    findRootAbove(process.cwd()) ?? // standing inside a checkout
+    (BAKED_ROOT && existsSync(join(BAKED_ROOT, "vulnerable-apps")) ? BAKED_ROOT : null);
+  if (found) return found;
+  return die(
+    "cannot find the vulnerable-apps/ directory\n" +
+      `   looked above ${process.cwd()}` +
+      (BAKED_ROOT ? ` and in ${BAKED_ROOT} (moved since \`make build\`?)` : "") +
+      "\n   point at it with: DYNAST_BENCH_ROOT=/path/to/dynast-bench",
+    2,
+  );
+}
+
+const ROOT = init(repoRoot);
+const APPS_DIR = join(ROOT, "vulnerable-apps");
+
+/**
+ * Read the `ports:` publishes out of a compose file, remembering which service
+ * each belongs to. A line scan (rather than a YAML parse) keeps this tolerant of
+ * both the inline `ports: ["..."]` and block-list styles the suite uses, and the
+ * "127.0.0.1:<host>:<container>" shape can't false-match the URLs in
+ * healthchecks — those never carry that second colon.
+ */
+function parseComposePorts(text: string): PortDecl[] {
+  const out: PortDecl[] = [];
+  let service = "";
+  let inServices = false;
+
+  for (const line of text.split("\n")) {
+    if (/^services:\s*$/.test(line)) {
+      inServices = true;
+      continue;
+    }
+    if (/^\S/.test(line)) {
+      inServices = false;
+      continue;
+    }
+    const svc = line.match(/^  ([A-Za-z0-9_.-]+):\s*(#.*)?$/);
+    if (inServices && svc) {
+      service = svc[1]!;
+      continue;
+    }
+    for (const m of line.matchAll(
+      /127\.0\.0\.1:(?:\$\{([A-Za-z_][A-Za-z0-9_]*):-(\d+)\}|(\d+)):(\d+)/g,
+    )) {
+      const envVar = m[1] ?? null;
+      out.push({
+        service,
+        envVar,
+        preferred: Number(m[2] ?? m[3]),
+        container: Number(m[4]),
+        isApp: envVar === "DYNAST_PORT",
+      });
+    }
+  }
+  return out;
+}
+
+function loadApp(name: string): App {
+  const dir = join(APPS_DIR, name);
+  const composeFile = join(dir, "vuln", "docker-compose.yml");
+  if (!existsSync(composeFile)) die(`no such app: ${name} (see: dynast-bench list)`, 2);
+
+  const compose = readFileSync(composeFile, "utf8");
+  const ports: Record<Variant, PortDecl[]> = { vuln: [], safe: [] };
+  for (const variant of VARIANTS) {
+    const f = join(dir, variant, "docker-compose.yml");
+    ports[variant] = existsSync(f) ? parseComposePorts(readFileSync(f, "utf8")) : [];
+  }
+  // DYNAST_PORT marks the app under test; fall back to the first publish.
+  const appPort = ports.vuln.find((p) => p.isApp) ?? ports.vuln[0];
+
+  const makefile = existsSync(join(dir, "Makefile"))
+    ? readFileSync(join(dir, "Makefile"), "utf8")
+    : "";
+  const soloMatch = makefile.match(
+    /docker run[^\n]*?-p 127\.0\.0\.1:\$\(PORT\):(\d+)/,
+  );
+
+  const healthMatch = compose.match(/\/api\/_verify\/health[A-Za-z0-9._-]*/);
+
+  const verifyDir = join(dir, "ground-truth", "verify");
+  const pocs = existsSync(verifyDir)
+    ? readdirSync(verifyDir).filter((f) => f.endsWith(".sh") && f !== "_lib.sh")
+    : [];
+
+  const plan = join(ROOT, "benchmark-plans", `${name}.md`);
+
+  return {
+    name,
+    dir,
+    composePort: appPort?.preferred ?? APP_PORT,
+    appService: appPort?.service ?? "app",
+    appContainerPort: appPort?.container ?? 3000,
+    ports,
+    soloInternalPort: soloMatch ? Number(soloMatch[1]) : 3000,
+    hasSolo: existsSync(join(dir, "vuln", "Dockerfile.standalone")),
+    healthPath: healthMatch?.[0] ?? DEFAULT_HEALTH_PATH,
+    pocCount: pocs.length,
+    groundTruth: join(dir, "ground-truth", "VULNERABILITIES.yaml"),
+    planDoc: existsSync(plan) ? plan : null,
+  };
+}
+
+function appNames(): string[] {
+  return readdirSync(APPS_DIR)
+    .filter((n) => !n.startsWith("_"))
+    .filter((n) => existsSync(join(APPS_DIR, n, "vuln", "docker-compose.yml")))
+    .sort();
+}
+
+const ALL_APPS = init(appNames);
+
+interface GroundTruth {
+  app?: string;
+  entry?: string;
+  seed_notes?: string;
+  vulnerabilities?: Record<string, any>[];
+  near_misses?: Record<string, any>[];
+}
+
+function groundTruth(app: App): GroundTruth {
+  if (!existsSync(app.groundTruth)) return {};
+  try {
+    return (Bun.YAML.parse(readFileSync(app.groundTruth, "utf8")) ?? {}) as GroundTruth;
+  } catch (e) {
+    warn(`${app.name}: VULNERABILITIES.yaml did not parse (${(e as Error).message})`);
+    return {};
+  }
+}
+
+// -------------------------------------------------------- docker state ------
+
+const composeProject = (app: string, variant: Variant) => `${variant}-${app}`;
+const soloName = (app: string, variant: Variant) => `${variant}-${app}-solo`;
+
+async function listContainers(): Promise<Container[]> {
+  const res = await docker(["ps", "--all", "--no-trunc", "--format", "{{json .}}"]);
+  if (res.code !== 0) {
+    die(
+      `docker is not reachable — is Docker Desktop running?\n${res.stderr.trim()}`,
+    );
+  }
+  const out: Container[] = [];
+  for (const line of res.stdout.split("\n")) {
+    if (!line.trim()) continue;
+    let row: any;
+    try {
+      row = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const labels: Record<string, string> = {};
+    for (const kv of String(row.Labels ?? "").split(",")) {
+      const i = kv.indexOf("=");
+      if (i > 0) labels[kv.slice(0, i)] = kv.slice(i + 1);
+    }
+    const ports: PortMap[] = [];
+    for (const m of String(row.Ports ?? "").matchAll(
+      /(\d+\.\d+\.\d+\.\d+):(\d+)->(\d+)\/(\w+)/g,
+    )) {
+      ports.push({
+        hostIp: m[1]!,
+        host: Number(m[2]),
+        container: Number(m[3]),
+        proto: m[4]!,
+      });
+    }
+    out.push({
+      id: String(row.ID ?? "").slice(0, 12),
+      name: String(row.Names ?? "").split(",")[0]!,
+      project: labels["com.docker.compose.project"] ?? null,
+      service: labels["com.docker.compose.service"] ?? null,
+      state: String(row.State ?? ""),
+      status: String(row.Status ?? ""),
+      ports,
+    });
+  }
+  return out;
+}
+
+/** Every stack (compose + solo, both variants) that currently has containers. */
+function stacksOf(app: App, containers: Container[]): Stack[] {
+  const stacks: Stack[] = [];
+  for (const variant of VARIANTS) {
+    const composed = containers.filter(
+      (ct) => ct.project === composeProject(app.name, variant),
+    );
+    if (composed.length) {
+      stacks.push({
+        app: app.name,
+        variant,
+        mode: "compose",
+        containers: composed,
+        running: composed.filter((ct) => ct.state === "running").length,
+        target: composeTargetOf(app, composed),
+      });
+    }
+    const solo = containers.filter((ct) => ct.name === soloName(app.name, variant));
+    if (solo.length) {
+      stacks.push({
+        app: app.name,
+        variant,
+        mode: "solo",
+        containers: solo,
+        running: solo.filter((ct) => ct.state === "running").length,
+        target: targetOf(solo, app.soloInternalPort, true),
+      });
+    }
+  }
+  return stacks;
+}
+
+function targetOf(
+  containers: Container[],
+  port: number,
+  byContainerPort = false,
+): string | null {
+  for (const ct of containers) {
+    if (ct.state !== "running") continue;
+    const hit = byContainerPort
+      ? ct.ports.find((p) => p.container === port)
+      : ct.ports.find((p) => p.host === port);
+    if (hit) return `http://127.0.0.1:${hit.host}`;
+  }
+  return null;
+}
+
+/**
+ * Where a compose stack actually answers. Resolved through the app's compose
+ * *service* rather than a fixed host port, because a busy default gets
+ * relocated at start time — the published port is whatever docker reports.
+ */
+function composeTargetOf(app: App, containers: Container[]): string | null {
+  const ct = containers.find(
+    (x) => x.state === "running" && x.service === app.appService,
+  );
+  if (!ct) return targetOf(containers, app.appContainerPort, true);
+  const hit =
+    ct.ports.find((p) => p.container === app.appContainerPort) ?? ct.ports[0];
+  return hit ? `http://127.0.0.1:${hit.host}` : null;
+}
+
+/** Stacks that are actually up, for one app. */
+function liveStacks(app: App, containers: Container[]): Stack[] {
+  return stacksOf(app, containers).filter((s) => s.running > 0);
+}
+
+const isBenchContainer = (ct: Container) =>
+  (ct.project !== null &&
+    VARIANTS.some((v) => ALL_APPS.some((a) => ct.project === `${v}-${a}`))) ||
+  VARIANTS.some((v) => ALL_APPS.some((a) => ct.name === soloName(a, v)));
+
+// ------------------------------------------------------------- net probes ---
+
+/** True when 127.0.0.1:<port> can be bound right now. */
+function portBindable(port: number): boolean {
+  try {
+    const server = Bun.listen({
+      hostname: "127.0.0.1",
+      port,
+      socket: { data() {} },
+    });
+    server.stop(true);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Best-effort name of whatever is listening on a port (any address family). */
+async function processHolder(port: number): Promise<string | null> {
+  let res: RunResult;
+  try {
+    res = await exec(["lsof", "-nP", `-iTCP:${port}`, "-sTCP:LISTEN"]);
+  } catch {
+    return null; // no lsof on this box
+  }
+  if (res.code !== 0) return null;
+  const line = res.stdout.split("\n")[1];
+  if (!line) return null;
+  const [cmd, pid] = line.split(/\s+/);
+  return cmd ? `${cmd} (pid ${pid})` : null;
+}
+
+interface PortStatus {
+  port: number;
+  free: boolean;
+  bindable: boolean;
+  dockerHolders: Container[];
+  otherHolder: string | null;
+}
+
+/**
+ * Is this host port really ours to take?
+ *
+ * A bind test alone is not enough: Docker Desktop publishes containers on the
+ * IPv6 wildcard (`*:3000`), which leaves IPv4 `127.0.0.1:3000` bindable. A
+ * second app could then bind it and `localhost:3000` would resolve to either
+ * one — exactly the ambiguity a benchmark must not have. So a port counts as
+ * free only when it is bindable AND nothing else is published/listening on it.
+ */
+async function portStatus(port: number, containers: Container[]): Promise<PortStatus> {
+  const bindable = portBindable(port);
+  const dockerHolders = containers.filter(
+    (ct) => ct.state === "running" && ct.ports.some((p) => p.host === port),
+  );
+  const otherHolder = dockerHolders.length ? null : await processHolder(port);
+  return {
+    port,
+    bindable,
+    dockerHolders,
+    otherHolder,
+    free: bindable && !dockerHolders.length && !otherHolder,
+  };
+}
+
+async function probeHealth(
+  target: string,
+  path: string,
+  timeoutMs = 2500,
+): Promise<{ ok: boolean; status: number | null }> {
+  try {
+    const res = await fetch(target + path, {
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: { "X-Verify-Token": VERIFY_TOKEN },
+    });
+    return { ok: res.ok, status: res.status };
+  } catch {
+    return { ok: false, status: null };
+  }
+}
+
+// ------------------------------------------------------------ arg parsing ---
+
+interface Args {
+  cmd: string;
+  positional: string[];
+  passthrough: string[]; // everything after `--`
+  flags: Record<string, string | boolean>;
+}
+
+function parseArgs(argv: string[]): Args {
+  const positional: string[] = [];
+  const passthrough: string[] = [];
+  const flags: Record<string, string | boolean> = {};
+  let afterDoubleDash = false;
+
+  const wantsValue = new Set([
+    "variant",
+    "port",
+    "timeout",
+    "target",
+    "tail",
+    "expect",
+    "format",
+    "safe",
+    "limit",
+  ]);
+
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!;
+    if (afterDoubleDash) {
+      passthrough.push(a);
+      continue;
+    }
+    if (a === "--") {
+      afterDoubleDash = true;
+      continue;
+    }
+    if (a.startsWith("--")) {
+      const [rawKey, inlineVal] = a.slice(2).split(/=(.*)/s);
+      const key = rawKey!;
+      if (inlineVal !== undefined) flags[key] = inlineVal;
+      else if (wantsValue.has(key)) flags[key] = argv[++i] ?? "";
+      else flags[key] = true;
+      continue;
+    }
+    if (a.startsWith("-") && a.length > 1) {
+      const short: Record<string, string> = {
+        h: "help",
+        v: "version",
+        f: "follow",
+        y: "yes",
+        j: "json",
+        n: "tail",
+      };
+      const key = short[a.slice(1)] ?? a.slice(1);
+      if (wantsValue.has(key)) flags[key] = argv[++i] ?? "";
+      else flags[key] = true;
+      continue;
+    }
+    positional.push(a);
+  }
+  return { cmd: positional.shift() ?? "", positional, passthrough, flags };
+}
+
+function flagStr(args: Args, key: string): string | undefined {
+  const v = args.flags[key];
+  return typeof v === "string" ? v : undefined;
+}
+const flagBool = (args: Args, key: string) => args.flags[key] === true;
+
+function wantVariant(args: Args): Variant {
+  const v = flagStr(args, "variant") ?? "vuln";
+  if (v !== "vuln" && v !== "safe") die(`--variant must be vuln or safe (got: ${v})`, 2);
+  return v;
+}
+
+function wantMode(args: Args): Mode {
+  return flagBool(args, "solo") ? "solo" : "compose";
+}
+
+/** Resolve app arguments (or --all) into App objects. */
+function resolveApps(args: Args, opts: { allowAll: boolean; min?: number }): App[] {
+  if (flagBool(args, "all")) {
+    if (!opts.allowAll) die("--all is not supported for this command", 2);
+    return ALL_APPS.map(loadApp);
+  }
+  if (args.positional.length === 0) {
+    if ((opts.min ?? 1) === 0) return [];
+    die("which app? (see: dynast-bench list)", 2);
+  }
+  return args.positional.map(loadApp);
+}
+
+// ------------------------------------------------------- lifecycle: start ---
+
+function composeArgs(app: App, variant: Variant, rest: string[]): string[] {
+  return [
+    "compose",
+    "-f",
+    `${variant}/docker-compose.yml`,
+    "-p",
+    composeProject(app.name, variant),
+    ...rest,
+  ];
+}
+
+/** Names of every docker volume that currently exists. */
+async function existingVolumes(): Promise<Set<string>> {
+  const res = await docker(["volume", "ls", "-q"]);
+  if (res.code !== 0) return new Set();
+  return new Set(res.stdout.split("\n").map((v) => v.trim()).filter(Boolean));
+}
+
+const volumeNamesFrom = (out: string) =>
+  out.split("\n").map((v) => v.trim()).filter(Boolean);
+
+const MOUNT_FORMAT = '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}}{{"\\n"}}{{end}}{{end}}';
+
+/**
+ * Every volume a stack is holding.
+ *
+ * Two sources, because neither is complete alone: compose labels *named* volumes
+ * with the project, but what these apps actually accumulate are the anonymous
+ * volumes their datastore images declare (`VOLUME /var/lib/postgresql/data`),
+ * and those carry no project label — the only link back is a container's mount
+ * list. So read that while the containers still exist, or the disk they hold
+ * becomes unattributable.
+ */
+async function stackVolumes(project: string): Promise<string[]> {
+  const labelled = await docker([
+    "volume",
+    "ls",
+    "-q",
+    "--filter",
+    `label=com.docker.compose.project=${project}`,
+  ]);
+  const out = new Set(labelled.code === 0 ? volumeNamesFrom(labelled.stdout) : []);
+
+  const ps = await docker([
+    "ps",
+    "-aq",
+    "--filter",
+    `label=com.docker.compose.project=${project}`,
+  ]);
+  const ids = volumeNamesFrom(ps.stdout);
+  if (ids.length) {
+    const insp = await docker(["inspect", "--format", MOUNT_FORMAT, ...ids]);
+    for (const v of volumeNamesFrom(insp.stdout)) out.add(v);
+  }
+  return [...out];
+}
+
+/** Volumes one container mounts (used for the solo stacks). */
+async function containerVolumes(name: string): Promise<string[]> {
+  const insp = await docker(["inspect", "--format", MOUNT_FORMAT, name]);
+  return insp.code === 0 ? volumeNamesFrom(insp.stdout) : [];
+}
+
+/**
+ * Stop a stack. With `volumes`, its seeded data goes too: `compose down -v`
+ * removes what it can see, then anything still standing is deleted by name.
+ * Returns the volumes that actually disappeared.
+ */
+async function stopStack(
+  app: App,
+  variant: Variant,
+  mode: Mode,
+  opts: { volumes?: boolean; images?: boolean } = {},
+): Promise<{ volumes: string[] }> {
+  const held = !opts.volumes
+    ? []
+    : mode === "compose"
+      ? await stackVolumes(composeProject(app.name, variant))
+      : await containerVolumes(soloName(app.name, variant));
+
+  if (mode === "compose") {
+    const rest = ["down", "--remove-orphans"];
+    if (opts.volumes) rest.push("--volumes");
+    if (opts.images) rest.push("--rmi", "local");
+    await docker(composeArgs(app, variant, rest), { cwd: app.dir, stream: false });
+  } else {
+    // -v drops the container's anonymous volumes with it.
+    await docker(["rm", "-f", "-v", soloName(app.name, variant)]);
+    if (opts.images) await docker(["rmi", "-f", soloName(app.name, variant)]);
+  }
+
+  if (!held.length) return { volumes: [] };
+  const alive = await existingVolumes();
+  const survivors = held.filter((v) => alive.has(v));
+  if (survivors.length) await docker(["volume", "rm", "-f", ...survivors]);
+  const after = survivors.length ? await existingVolumes() : alive;
+  return { volumes: held.filter((v) => !after.has(v)) };
+}
+
+interface PortPlan {
+  /** env overrides to hand docker compose (empty when every default was free) */
+  env: Record<string, string>;
+  /** host port the app itself ended up on */
+  appPort: number;
+  /** publishes that had to move, for reporting */
+  moved: { service: string; from: number; to: number }[];
+  /** bench stacks stopped to reclaim a port */
+  stopped: string[];
+}
+
+/**
+ * Decide which host ports this stack will publish on.
+ *
+ * A default that is free is kept, so runs stay reproducible. A default that is
+ * taken by anything else — another benchmark app, an unrelated container, a
+ * stray process — is relocated into the fallback pool rather than failing or
+ * evicting the squatter. The one exception is this app's *other* stack (the
+ * vuln/safe twin, or the same app in the other mode): those are the same app
+ * and are swapped in place, which is what the twin loop expects.
+ */
+async function planPorts(
+  app: App,
+  decls: PortDecl[],
+  self: { variant: Variant; mode: Mode },
+  opts: { takeover: boolean; requestedAppPort?: number },
+): Promise<PortPlan> {
+  const plan: PortPlan = { env: {}, appPort: app.composePort, moved: [], stopped: [] };
+  let containers = await listContainers();
+  const claimed = new Set<number>();
+
+  const isOwn = (ct: Container) =>
+    self.mode === "compose"
+      ? ct.project === composeProject(app.name, self.variant)
+      : ct.name === soloName(app.name, self.variant);
+  /** Which of this app's stacks a container belongs to, if any. */
+  const sameAppStack = (ct: Container): { variant: Variant; mode: Mode } | null => {
+    for (const v of VARIANTS) {
+      if (ct.name === soloName(app.name, v)) return { variant: v, mode: "solo" };
+      if (ct.project === composeProject(app.name, v)) return { variant: v, mode: "compose" };
+    }
+    return null;
+  };
+
+  for (const decl of decls) {
+    const wanted =
+      decl.isApp && opts.requestedAppPort ? opts.requestedAppPort : decl.preferred;
+
+    let chosen: number | null = null;
+    if (!claimed.has(wanted)) {
+      const status = await portStatus(wanted, containers);
+      if (status.free) {
+        chosen = wanted;
+      } else if (status.dockerHolders.length && status.dockerHolders.every(isOwn)) {
+        // The very stack we are about to (re)start — compose reuses the port.
+        chosen = wanted;
+      } else if (
+        opts.takeover &&
+        status.dockerHolders.length &&
+        status.dockerHolders.every((ct) => sameAppStack(ct) !== null)
+      ) {
+        // The twin (or the same app in the other mode) — swap it out in place.
+        const others = new Map<string, { variant: Variant; mode: Mode }>();
+        for (const ct of status.dockerHolders) {
+          const s = sameAppStack(ct)!;
+          others.set(`${s.variant}/${s.mode}`, s);
+        }
+        for (const other of others.values()) {
+          step(
+            `port ${wanted} busy — stopping ${c.dim(`${app.name}/${other.variant} (${other.mode})`)}`,
+          );
+          await stopStack(app, other.variant, other.mode);
+          plan.stopped.push(`${app.name}/${other.variant}/${other.mode}`);
+        }
+        containers = await listContainers();
+        if ((await portStatus(wanted, containers)).free) chosen = wanted;
+      }
+    }
+
+    if (chosen === null) {
+      // Relocate. An explicit --port is the user's call, so say so and move on.
+      for (let i = 0; i < PORT_FALLBACK_SPAN; i++) {
+        const p = PORT_FALLBACK_BASE + i;
+        if (claimed.has(p)) continue;
+        if ((await portStatus(p, containers)).free) {
+          chosen = p;
+          break;
+        }
+      }
+      if (chosen === null) {
+        die(
+          `no free host port for ${app.name}/${decl.service}:${decl.container} — ` +
+            `${wanted} is taken and the ${PORT_FALLBACK_BASE}-${PORT_FALLBACK_BASE + PORT_FALLBACK_SPAN - 1} pool is full`,
+        );
+      }
+      plan.moved.push({ service: decl.service, from: wanted, to: chosen });
+      if (decl.envVar) plan.env[decl.envVar] = String(chosen);
+      warn(
+        `port ${wanted} is in use — publishing ${c.bold(`${app.name}/${decl.service}`)} on ${chosen} instead`,
+      );
+    } else if (decl.envVar && chosen !== decl.preferred) {
+      plan.env[decl.envVar] = String(chosen);
+    }
+
+    claimed.add(chosen);
+    if (decl.isApp) plan.appPort = chosen;
+  }
+  return plan;
+}
+
+async function pickSoloPort(
+  app: App,
+  variant: Variant,
+  requested?: string,
+): Promise<number> {
+  if (requested) {
+    const p = Number(requested);
+    if (!Number.isInteger(p) || p < 1 || p > 65535) die(`bad --port: ${requested}`, 2);
+    return p;
+  }
+  const containers = await listContainers();
+  const candidates = [
+    app.composePort,
+    ...Array.from({ length: SOLO_PORT_SPAN }, (_, i) => SOLO_PORT_BASE + i),
+    ...Array.from({ length: PORT_FALLBACK_SPAN }, (_, i) => PORT_FALLBACK_BASE + i),
+  ];
+  for (const p of candidates) {
+    const st = await portStatus(p, containers);
+    // A restart should land back where it was, so our own container doesn't
+    // count as an obstacle.
+    const ours =
+      st.dockerHolders.length > 0 &&
+      st.dockerHolders.every((ct) => ct.name === soloName(app.name, variant));
+    if (st.free || ours) return p;
+  }
+  return die("no free port found for solo mode — pass --port");
+}
+
+async function waitHealthy(
+  app: App,
+  target: string,
+  timeoutS: number,
+): Promise<boolean> {
+  const deadline = Date.now() + timeoutS * 1000;
+  const spin = ["|", "/", "-", "\\"];
+  let i = 0;
+  const started = Date.now();
+  while (Date.now() < deadline) {
+    const { ok } = await probeHealth(target, app.healthPath, 3000);
+    if (ok) {
+      if (useColor()) process.stdout.write("\r\x1b[K");
+      return true;
+    }
+    if (useColor()) {
+      const secs = Math.round((Date.now() - started) / 1000);
+      process.stdout.write(
+        `\r\x1b[K${c.dim(`   ${spin[i++ % 4]} waiting for ${target}${app.healthPath} (${secs}s)`)}`,
+      );
+    }
+    await Bun.sleep(1500);
+  }
+  if (useColor()) process.stdout.write("\r\x1b[K");
+  return false;
+}
+
+async function dumpDiagnostics(app: App, variant: Variant, mode: Mode) {
+  warn(`${app.name}/${variant} never became healthy — last 40 log lines:`);
+  if (mode === "compose") {
+    const ps = await docker(composeArgs(app, variant, ["ps"]), { cwd: app.dir });
+    log(ps.stdout.trimEnd());
+    const logs = await docker(composeArgs(app, variant, ["logs", "--tail", "40"]), {
+      cwd: app.dir,
+    });
+    log(logs.stdout.trimEnd());
+  } else {
+    const logs = await docker(["logs", "--tail", "40", soloName(app.name, variant)]);
+    log(logs.stdout.trimEnd() + logs.stderr.trimEnd());
+  }
+}
+
+interface StartResult {
+  app: string;
+  variant: Variant;
+  mode: Mode;
+  target: string;
+  port: number;
+  health: string;
+  healthy: boolean;
+  stopped: string[];
+  relocated: { service: string; from: number; to: number }[];
+}
+
+async function startApp(
+  app: App,
+  opts: {
+    variant: Variant;
+    mode: Mode;
+    port?: string;
+    build: boolean;
+    timeout: number;
+    takeover: boolean;
+  },
+): Promise<StartResult> {
+  const { variant, mode } = opts;
+
+  if (mode === "solo" && !app.hasSolo) {
+    die(`${app.name} has no ${variant}/Dockerfile.standalone — drop --solo`);
+  }
+
+  let port: number;
+  let plan: PortPlan;
+  if (mode === "compose") {
+    if (opts.port && !/^\d+$/.test(opts.port)) die(`bad --port: ${opts.port}`, 2);
+    plan = await planPorts(app, app.ports[variant], { variant, mode }, {
+      takeover: opts.takeover,
+      requestedAppPort: opts.port ? Number(opts.port) : undefined,
+    });
+    port = plan.appPort;
+  } else {
+    port = await pickSoloPort(app, variant, opts.port);
+    plan = await planPorts(
+      app,
+      [
+        {
+          service: app.appService,
+          envVar: null,
+          preferred: port,
+          container: app.soloInternalPort,
+          isApp: true,
+        },
+      ],
+      { variant, mode },
+      { takeover: opts.takeover },
+    );
+    port = plan.appPort;
+  }
+
+  step(
+    `starting ${c.bold(app.name)} ${c.dim(`(${variant}, ${mode})`)} on 127.0.0.1:${port}`,
+  );
+
+  if (mode === "compose") {
+    const rest = ["up", "-d", "--remove-orphans"];
+    if (opts.build) rest.push("--build");
+    const res = await docker(composeArgs(app, variant, rest), {
+      cwd: app.dir,
+      env: plan.env,
+      stream: true,
+    });
+    if (res.code !== 0) die(`docker compose up failed for ${app.name}/${variant}`);
+  } else {
+    const img = soloName(app.name, variant);
+    if (opts.build) {
+      const build = await docker(
+        ["build", "-f", `${variant}/Dockerfile.standalone`, "-t", img, variant],
+        { cwd: app.dir, stream: true },
+      );
+      if (build.code !== 0) die(`docker build failed for ${app.name}/${variant}`);
+    }
+    await docker(["rm", "-f", "-v", img]);
+    const run = await docker([
+      "run",
+      "-d",
+      "--rm",
+      "-p",
+      `127.0.0.1:${port}:${app.soloInternalPort}`,
+      "--name",
+      img,
+      img,
+    ]);
+    if (run.code !== 0) die(`docker run failed for ${img}: ${run.stderr.trim()}`);
+  }
+
+  const target = `http://127.0.0.1:${port}`;
+  const healthy = await waitHealthy(app, target, opts.timeout);
+  if (!healthy) {
+    await dumpDiagnostics(app, variant, mode);
+    die(`${app.name}/${variant} did not answer ${app.healthPath} within ${opts.timeout}s`);
+  }
+
+  log(
+    `${c.green("ok")}   ${c.bold(target)}  ${c.dim(`health ${app.healthPath} · ${app.pocCount} PoCs · verify: dynast-bench verify ${app.name}`)}`,
+  );
+  return {
+    app: app.name,
+    variant,
+    mode,
+    target,
+    port,
+    health: target + app.healthPath,
+    healthy,
+    stopped: plan.stopped,
+    relocated: plan.moved,
+  };
+}
+
+// ----------------------------------------------------------- ground truth ---
+
+function gtSummary(app: App) {
+  const gt = groundTruth(app);
+  const vulns = gt.vulnerabilities ?? [];
+  const tally = (key: string) => {
+    const out: Record<string, number> = {};
+    for (const v of vulns) {
+      const k = String(v[key] ?? "?");
+      out[k] = (out[k] ?? 0) + 1;
+    }
+    return out;
+  };
+  return {
+    app: app.name,
+    entry: gt.entry ?? `http://127.0.0.1:${app.composePort}`,
+    seed_notes: (gt.seed_notes ?? "").trim(),
+    counts: {
+      vulnerabilities: vulns.length,
+      near_misses: (gt.near_misses ?? []).length,
+      pocs: app.pocCount,
+    },
+    by_severity: tally("severity"),
+    by_difficulty: tally("difficulty"),
+    by_reachability: tally("reachability"),
+    cwes: [...new Set(vulns.map((v) => String(v.cwe ?? "")).filter(Boolean))].sort(),
+    vulnerabilities: vulns,
+    near_misses: gt.near_misses ?? [],
+  };
+}
+
+/** Parse + validate an app's answer key, dying on anything unusable. */
+function loadGroundTruth(app: App): ScoredGroundTruth {
+  if (!existsSync(app.groundTruth)) {
+    die(`${app.name} has no ground-truth/VULNERABILITIES.yaml`);
+  }
+  const res = parseGroundTruthFile(app.groundTruth);
+  if (!res.value) {
+    die(
+      `${app.name}: VULNERABILITIES.yaml is not scoreable\n` +
+        res.errors.map((e) => `   ${e.at}: ${e.msg}`).join("\n"),
+    );
+  }
+  for (const e of res.errors) warn(`${app.name} ground truth ${e.at}: ${e.msg}`);
+  return res.value;
+}
+
+// ---------------------------------------------------------------- commands --
+
+async function cmdList(args: Args) {
+  const containers = await listContainers();
+  const rows: string[][] = [];
+  const payload: any[] = [];
+
+  for (const name of ALL_APPS) {
+    const app = loadApp(name);
+    const gt = groundTruth(app);
+    const live = liveStacks(app, containers);
+    const state = live.length
+      ? live.map((s) => `${s.variant}/${s.mode}`).join(",")
+      : "-";
+    rows.push([
+      app.name,
+      String((gt.vulnerabilities ?? []).length),
+      String(app.pocCount),
+      String((gt.near_misses ?? []).length),
+      app.hasSolo ? "yes" : "-",
+      live.length ? c.green(state) : c.dim(state),
+      live[0]?.target ?? c.dim(`(:${app.composePort})`),
+    ]);
+    payload.push({
+      app: app.name,
+      vulnerabilities: (gt.vulnerabilities ?? []).length,
+      pocs: app.pocCount,
+      near_misses: (gt.near_misses ?? []).length,
+      solo: app.hasSolo,
+      compose_port: app.composePort,
+      health_path: app.healthPath,
+      plan: app.planDoc ? app.planDoc.replace(ROOT + "/", "") : null,
+      running: live.map((s) => ({
+        variant: s.variant,
+        mode: s.mode,
+        target: s.target,
+      })),
+    });
+  }
+
+  emit({ apps: payload });
+  table(rows, ["APP", "VULNS", "POCS", "NEAR", "SOLO", "RUNNING", "TARGET"]);
+  log();
+  log(c.dim(`${ALL_APPS.length} apps · start one:  dynast-bench start <app>`));
+}
+
+async function cmdInfo(args: Args) {
+  const [app] = resolveApps(args, { allowAll: false });
+  const s = gtSummary(app!);
+  emit(s);
+  if (JSON_MODE.on) return;
+
+  log(c.bold(`${s.app}  ${c.dim(s.entry)}`));
+  log();
+  log(
+    `  ${s.counts.vulnerabilities} planted vulns · ${s.counts.pocs} PoCs · ${s.counts.near_misses} near-misses`,
+  );
+  const fmt = (o: Record<string, number>) =>
+    Object.entries(o)
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k}=${v}`)
+      .join("  ");
+  log(`  severity      ${fmt(s.by_severity)}`);
+  log(`  difficulty    ${fmt(s.by_difficulty)}`);
+  log(`  reachability  ${fmt(s.by_reachability)}`);
+  log(`  cwes          ${s.cwes.join(" ")}`);
+  if (s.seed_notes) {
+    log();
+    log(c.dim("  seed: " + s.seed_notes.replace(/\n/g, "\n        ")));
+  }
+  if (flagBool(args, "full")) {
+    log();
+    table(
+      s.vulnerabilities.map((v: any) => [
+        String(v.id ?? ""),
+        String(v.cwe ?? ""),
+        String(v.severity ?? ""),
+        String(v.difficulty ?? ""),
+        String(v.reachability ?? ""),
+        String(v.route ?? "").slice(0, 60),
+      ]),
+      ["ID", "CWE", "SEV", "DIFF", "REACH", "ROUTE"],
+    );
+  } else {
+    log();
+    log(c.dim(`  answer key: ${app!.groundTruth.replace(ROOT + "/", "")}  (--full to list entries)`));
+  }
+}
+
+async function cmdStart(args: Args) {
+  const mode = wantMode(args);
+  const apps = resolveApps(args, { allowAll: true });
+  if (flagBool(args, "all") && mode === "compose") {
+    die(
+      `booting all ${ALL_APPS.length} compose stacks at once means every datastore they ship, ` +
+        "which is more than a laptop wants.\n" +
+        "   use: dynast-bench start --all --solo   (one image per app, auto-assigned ports)\n" +
+        "   or name the apps you want: dynast-bench start nextjs golang",
+    );
+  }
+
+  const results: StartResult[] = [];
+  for (const app of apps) {
+    results.push(
+      await startApp(app, {
+        variant: wantVariant(args),
+        mode,
+        port: flagStr(args, "port"),
+        build: !flagBool(args, "no-build"),
+        timeout: Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S),
+        takeover: !flagBool(args, "no-takeover"),
+      }),
+    );
+  }
+  emit(results.length === 1 ? results[0] : { started: results });
+}
+
+async function cmdStop(args: Args) {
+  const apps = resolveApps(args, { allowAll: true });
+  const containers = await listContainers();
+  const dropVolumes = flagBool(args, "volumes");
+  const only = flagStr(args, "variant") as Variant | undefined;
+  const stopped: any[] = [];
+  let volumes = 0;
+
+  for (const app of apps) {
+    for (const stack of stacksOf(app, containers)) {
+      if (only && stack.variant !== only) continue;
+      step(`stopping ${app.name} ${c.dim(`(${stack.variant}, ${stack.mode})`)}`);
+      const res = await stopStack(app, stack.variant, stack.mode, { volumes: dropVolumes });
+      volumes += res.volumes.length;
+      stopped.push({ app: app.name, variant: stack.variant, mode: stack.mode });
+    }
+  }
+  if (!stopped.length) log(c.dim("nothing to stop"));
+  emit({ stopped, volumes_removed: dropVolumes, volumes_deleted: volumes });
+}
+
+async function cmdReset(args: Args) {
+  const [app] = resolveApps(args, { allowAll: false });
+  const containers = await listContainers();
+  const live = liveStacks(app!, containers);
+  const variant = flagStr(args, "variant")
+    ? wantVariant(args)
+    : ((live[0]?.variant ?? "vuln") as Variant);
+  const mode: Mode = flagBool(args, "solo")
+    ? "solo"
+    : ((live[0]?.mode ?? "compose") as Mode);
+
+  step(`resetting ${app!.name} ${c.dim(`(${variant}, ${mode})`)} — dropping volumes`);
+  await stopStack(app!, variant, mode, { volumes: true });
+
+  const res = await startApp(app!, {
+    variant,
+    mode,
+    port: flagStr(args, "port"),
+    build: !flagBool(args, "no-build"),
+    timeout: Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S),
+    takeover: !flagBool(args, "no-takeover"),
+  });
+  emit({ ...res, reset: true });
+}
+
+async function cmdRestart(args: Args) {
+  const [app] = resolveApps(args, { allowAll: false });
+  const containers = await listContainers();
+  const live = liveStacks(app!, containers);
+  const variant = flagStr(args, "variant") ? wantVariant(args) : (live[0]?.variant ?? "vuln");
+  const mode: Mode = flagBool(args, "solo") ? "solo" : (live[0]?.mode ?? "compose");
+
+  await stopStack(app!, variant, mode);
+  const res = await startApp(app!, {
+    variant,
+    mode,
+    port: flagStr(args, "port"),
+    build: !flagBool(args, "no-build"),
+    timeout: Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S),
+    takeover: !flagBool(args, "no-takeover"),
+  });
+  emit(res);
+}
+
+async function cmdStatus(args: Args) {
+  const apps = args.positional.length ? resolveApps(args, { allowAll: true }) : ALL_APPS.map(loadApp);
+  const containers = await listContainers();
+  const rows: string[][] = [];
+  const payload: any[] = [];
+
+  for (const app of apps) {
+    for (const stack of stacksOf(app, containers)) {
+      const showAll = flagBool(args, "all");
+      if (!stack.running && !showAll) continue;
+      const health = stack.target
+        ? await probeHealth(stack.target, app.healthPath)
+        : { ok: false, status: null };
+      rows.push([
+        app.name,
+        stack.variant,
+        stack.mode,
+        `${stack.running}/${stack.containers.length}`,
+        stack.target ?? "-",
+        health.ok ? c.green("healthy") : c.red(health.status ? `http ${health.status}` : "down"),
+        stack.containers[0]?.status ?? "",
+      ]);
+      payload.push({
+        app: app.name,
+        variant: stack.variant,
+        mode: stack.mode,
+        containers_running: stack.running,
+        containers_total: stack.containers.length,
+        target: stack.target,
+        healthy: health.ok,
+        health_status: health.status,
+      });
+    }
+  }
+
+  emit({ stacks: payload });
+  if (!rows.length) {
+    log(c.dim("no benchmark app is running  (dynast-bench start <app>)"));
+    return;
+  }
+  table(rows, ["APP", "VARIANT", "MODE", "UP", "TARGET", "HEALTH", "STATUS"]);
+}
+
+async function cmdTarget(args: Args) {
+  const [app] = resolveApps(args, { allowAll: false });
+  const containers = await listContainers();
+  const live = liveStacks(app!, containers);
+  const want = flagStr(args, "variant") as Variant | undefined;
+  const stack = want ? live.find((s) => s.variant === want) : live[0];
+  if (!stack?.target) {
+    die(`${app!.name} is not running (dynast-bench start ${app!.name})`);
+  }
+  emit({
+    app: app!.name,
+    variant: stack.variant,
+    mode: stack.mode,
+    target: stack.target,
+    health: stack.target + app!.healthPath,
+    ground_truth: app!.groundTruth,
+  });
+  if (!JSON_MODE.on) console.log(stack.target);
+}
+
+interface VerifyResult {
+  app: string;
+  target: string;
+  expect: Variant;
+  ok: number;
+  bad: number;
+  failures: string[];
+  passed: boolean;
+}
+
+async function runVerify(
+  app: App,
+  target: string,
+  expect: Variant,
+  stream: boolean,
+): Promise<VerifyResult> {
+  const res = await exec(["bash", "ground-truth/run.sh", `expect-${expect}`], {
+    cwd: app.dir,
+    env: { TARGET: target },
+    stream,
+  });
+  const out = res.stdout + res.stderr;
+  const summary = out.match(/ok=(\d+)\s+bad=(\d+)/);
+  const failures = (out.match(/FAILURES:(.*)/)?.[1] ?? "")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return {
+    app: app.name,
+    target,
+    expect,
+    ok: Number(summary?.[1] ?? 0),
+    bad: Number(summary?.[2] ?? 0),
+    failures,
+    passed: res.code === 0,
+  };
+}
+
+async function cmdVerify(args: Args) {
+  const [app] = resolveApps(args, { allowAll: false });
+  const containers = await listContainers();
+  const live = liveStacks(app!, containers);
+
+  const target = flagStr(args, "target") ?? live[0]?.target;
+  if (!target) {
+    die(
+      `${app!.name} is not running — start it first (dynast-bench start ${app!.name}) or pass --target`,
+    );
+  }
+  const expectFlag = flagStr(args, "expect");
+  if (expectFlag && expectFlag !== "vuln" && expectFlag !== "safe") {
+    die(`--expect must be vuln or safe (got: ${expectFlag})`, 2);
+  }
+  const expect = (expectFlag ?? live[0]?.variant ?? "vuln") as Variant;
+
+  step(
+    `verifying ${app!.name} against ${target} ${c.dim(`(expect all ${expect === "vuln" ? "exploitable" : "fixed"})`)}`,
+  );
+  const result = await runVerify(app!, target!, expect, true);
+  emit(result);
+  if (!result.passed) {
+    // In --json the result object above is the machine answer; don't also emit
+    // an error document. Just fail the exit code.
+    if (JSON_MODE.on) process.exitCode = 1;
+    else die(`verify failed: ${result.bad} PoC(s) off-expectation`);
+  }
+}
+
+async function cmdValidate(args: Args) {
+  const [app] = resolveApps(args, { allowAll: false });
+  const timeout = Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S);
+  const build = !flagBool(args, "no-build");
+  const common = { mode: "compose" as Mode, build, timeout, takeover: !flagBool(args, "no-takeover") };
+
+  step(`validate ${app!.name}: fresh vuln → all exploitable`);
+  await stopStack(app!, "vuln", "compose", { volumes: true });
+  const vulnUp = await startApp(app!, { ...common, variant: "vuln" });
+  const vulnRes = await runVerify(app!, vulnUp.target, "vuln", true);
+
+  step(`validate ${app!.name}: safe twin → all fixed`);
+  const safeUp = await startApp(app!, { ...common, variant: "safe" });
+  const safeRes = await runVerify(app!, safeUp.target, "safe", true);
+
+  if (!flagBool(args, "keep")) await stopStack(app!, "safe", "compose", { volumes: true });
+
+  const passed = vulnRes.passed && safeRes.passed;
+  emit({ app: app!.name, passed, vuln: vulnRes, safe: safeRes });
+  log();
+  log(
+    passed
+      ? c.green(`ok   ${app!.name}: ${vulnRes.ok} exploitable on vuln/, ${safeRes.ok} fixed on safe/`)
+      : c.red(`FAIL ${app!.name}: vuln bad=${vulnRes.bad}, safe bad=${safeRes.bad}`),
+  );
+  if (!passed) {
+    if (JSON_MODE.on) process.exitCode = 1;
+    else die("validation failed");
+  }
+}
+
+// ------------------------------------------------------------------ scoring --
+
+/** Read one findings file, converting from a native scanner format if needed. */
+function readFindings(
+  path: string,
+  app: App,
+  variant: GtVariant,
+  format: Format | undefined,
+  markers: readonly string[],
+): FindingsFile {
+  if (!existsSync(path)) die(`no such findings file: ${path}`, 2);
+  const res = normalizeText(readFileSync(path, "utf8"), {
+    app: app.name,
+    variant,
+    format,
+    markers,
+  });
+  for (const e of res.errors) {
+    if (e.at === "$") die(`${basename(path)}: ${e.msg}`);
+    warn(`${basename(path)} ${e.at}: ${e.msg}`);
+  }
+  for (const n of res.notes) warn(`${basename(path)}: ${n}`);
+  const warnLimit = 5;
+  res.warnings.slice(0, warnLimit).forEach((w) => warn(`${basename(path)} ${w.at}: ${w.msg}`));
+  if (res.warnings.length > warnLimit) {
+    warn(`${basename(path)}: ${res.warnings.length - warnLimit} more schema warnings`);
+  }
+  step(
+    `${basename(path)} → ${res.file.findings.length} findings ` +
+      c.dim(`(${res.format}, ${res.file.run.variant} twin)`),
+  );
+  return res.file;
+}
+
+async function cmdScore(args: Args) {
+  const [appName, ...paths] = args.positional;
+  if (!appName) die("usage: dynast-bench score <app> <findings.json...> [--safe f.json]", 2);
+  const app = loadApp(appName);
+  const gt = loadGroundTruth(app);
+
+  const format = flagStr(args, "format") as Format | undefined;
+  if (format && !FORMATS.includes(format)) {
+    die(`--format must be one of ${FORMATS.join(", ")}`, 2);
+  }
+  const defaultVariant = wantVariant(args);
+  const safePaths = [flagStr(args, "safe")].filter(Boolean) as string[];
+  if (!paths.length && !safePaths.length) {
+    die("no findings file given — dynast-bench score <app> <findings.json>", 2);
+  }
+
+  // the answer key's proof markers, so a scanner's evidence text can reach the
+  // matcher's `proof` tier for apps whose markers are app-specific
+  const markers = [
+    ...new Set(gt.vulnerabilities.flatMap((v) => v.match?.markers ?? [])),
+  ];
+
+  const runs: FindingsFile[] = [
+    ...paths.map((p) => readFindings(p, app, defaultVariant, format, markers)),
+    ...safePaths.map((p) => {
+      const f = readFindings(p, app, "safe", format, markers);
+      f.run.variant = "safe"; // --safe wins over whatever the file claims
+      return f;
+    }),
+  ];
+
+  const report = scoreApp({
+    app: app.name,
+    groundTruth: gt,
+    runs,
+    lenientCwe: flagBool(args, "lenient-cwe"),
+  });
+
+  emit(report);
+  if (!JSON_MODE.on) {
+    log();
+    log(
+      renderReport(report, {
+        full: flagBool(args, "full"),
+        limit: Number(flagStr(args, "limit") ?? 10),
+      }).join("\n"),
+    );
+    log();
+  }
+}
+
+// --------------------------------------------------------- diff + invariants --
+
+/** How the invariant checks shell out - the one thing they cannot do themselves. */
+const differ: Differ = async (cwd, args) => exec(args, { cwd });
+
+async function cmdDiff(args: Args) {
+  const [app] = resolveApps(args, { allowAll: false });
+  const gt = loadGroundTruth(app!);
+  const files = await twinDiff({ name: app!.name, dir: app!.dir }, gt, differ);
+  const unclaimed = files.filter((f) => !f.claimedBy.length && (!f.infra || f.unexplained.length));
+
+  emit({
+    app: app!.name,
+    files,
+    unclaimed: unclaimed.map((f) => f.path),
+    in_scope: unclaimed.length === 0,
+  });
+
+  if (!JSON_MODE.on) {
+    log(c.bold(`${app!.name}  vuln ↔ safe`));
+    log();
+    table(
+      files.map((f) => [
+        f.path,
+        String(f.hunks),
+        String(f.changed),
+        f.claimedBy.length
+          ? f.claimedBy.join(",")
+          : f.infra && !f.unexplained.length
+            ? c.dim("(twin naming)")
+            : c.red("UNCLAIMED"),
+        f.nearMisses.length ? c.yellow(f.nearMisses.join(",")) : "",
+      ]),
+      ["FILE", "HUNKS", "LINES", "CLAIMED BY", "NEAR-MISS IN FILE"],
+    );
+    log();
+    log(
+      `  ${files.length} file(s) differ · ${files.reduce((s, f) => s + f.changed, 0)} line(s) · ` +
+        (unclaimed.length
+          ? c.red(`${unclaimed.length} not named in VULNERABILITIES.yaml`)
+          : c.green("every changed file is named in VULNERABILITIES.yaml")),
+    );
+    if (flagBool(args, "full")) {
+      log();
+      await execInherit(["diff", "-ru", "vuln", "safe"], { cwd: app!.dir });
+    }
+  }
+  if (unclaimed.length) process.exitCode = 1;
+}
+
+async function cmdCheck(args: Args) {
+  const apps = resolveApps(args, { allowAll: true });
+  // each app's check spawns a diff; they are independent
+  const perApp = await Promise.all(
+    apps.map((app) => checkApp({ name: app.name, dir: app.dir }, differ)),
+  );
+  const all = perApp.flat();
+
+  const errors = all.filter((i) => i.level === "error");
+  const warns = all.filter((i) => i.level === "warn");
+  emit({ apps: apps.map((a) => a.name), ok: errors.length === 0, errors, warnings: warns });
+
+  if (!JSON_MODE.on) {
+    const limit = flagBool(args, "full") ? Infinity : 12;
+    apps.forEach((app, i) => {
+      const mine = perApp[i]!;
+      const e = mine.filter((x) => x.level === "error").length;
+      const w = mine.length - e;
+      const status = e ? c.red(`${e} error(s)`) : w ? c.yellow(`${w} warning(s)`) : c.green("ok");
+      log(`${app.name.padEnd(12)} ${status}`);
+      for (const x of mine.slice(0, limit)) {
+        log(`${x.level === "error" ? c.red("  ✗") : c.yellow("  !")} ${x.at}: ${x.msg}`);
+      }
+      if (mine.length > limit) log(c.dim(`    … ${mine.length - limit} more (--full)`));
+    });
+    log();
+    log(
+      errors.length
+        ? c.red(`${errors.length} error(s) across ${apps.length} app(s)`)
+        : c.green(
+            `${apps.length} app(s) clean` + (warns.length ? ` (${warns.length} warning(s))` : ""),
+          ),
+    );
+  }
+  if (errors.length) process.exitCode = 1;
+}
+
+async function cmdLogs(args: Args) {
+  const [app] = resolveApps(args, { allowAll: false });
+  const containers = await listContainers();
+  const live = liveStacks(app!, containers);
+  const want = flagStr(args, "variant") as Variant | undefined;
+  const stack = want ? live.find((s) => s.variant === want) : live[0];
+  if (!stack) die(`${app!.name} is not running`);
+
+  const tail = flagStr(args, "tail") ?? "80";
+  const follow = flagBool(args, "follow");
+  if (stack.mode === "compose") {
+    const rest = ["logs", "--tail", tail];
+    if (follow) rest.push("-f");
+    process.exitCode = await execInherit(
+      ["docker", ...composeArgs(app!, stack.variant, rest)],
+      { cwd: app!.dir },
+    );
+  } else {
+    const cmd = ["docker", "logs", "--tail", tail];
+    if (follow) cmd.push("-f");
+    cmd.push(soloName(app!.name, stack.variant));
+    process.exitCode = await execInherit(cmd);
+  }
+}
+
+async function confirm(question: string): Promise<boolean> {
+  if (!process.stdin.isTTY) {
+    die(`${question}\n   refusing without a terminal — pass --yes to confirm`, 2);
+  }
+  const answer = prompt(`${question} [y/N]`) ?? "";
+  return /^y(es)?$/i.test(answer.trim());
+}
+
+/** Disk each volume is holding, best-effort (`docker system df` is optional). */
+async function volumeSizes(): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const res = await docker(["system", "df", "-v", "--format", "{{json .Volumes}}"]);
+  if (res.code !== 0) return out;
+  let rows: any[];
+  try {
+    rows = JSON.parse(res.stdout.trim() || "[]");
+  } catch {
+    return out;
+  }
+  const UNITS: Record<string, number> = {
+    B: 1,
+    KB: 1e3,
+    KIB: 1024,
+    MB: 1e6,
+    MIB: 1024 ** 2,
+    GB: 1e9,
+    GIB: 1024 ** 3,
+    TB: 1e12,
+  };
+  for (const row of rows) {
+    const m = String(row?.Size ?? "").match(/^([\d.]+)\s*([A-Za-z]+)$/);
+    if (row?.Name && m) out.set(row.Name, Number(m[1]) * (UNITS[m[2]!.toUpperCase()] ?? 1));
+  }
+  return out;
+}
+
+/**
+ * Anonymous volumes no container references any more — what a stack leaves
+ * behind when it was torn down without `-v`. Docker gives them no owner, so
+ * they can't be attributed to an app; `docker volume prune` treats exactly this
+ * set as safe to drop, and so does `clean --orphan-volumes`. Named volumes are
+ * never touched: those belong to somebody.
+ */
+async function orphanVolumes(): Promise<string[]> {
+  const res = await docker([
+    "volume",
+    "ls",
+    "-q",
+    "--filter",
+    "dangling=true",
+    "--filter",
+    "label=com.docker.volume.anonymous",
+  ]);
+  return res.code === 0 ? volumeNamesFrom(res.stdout) : [];
+}
+
+function humanBytes(n: number): string {
+  if (n < 1e3) return `${Math.round(n)}B`;
+  if (n < 1e6) return `${(n / 1e3).toFixed(1)}kB`;
+  if (n < 1e9) return `${(n / 1e6).toFixed(1)}MB`;
+  return `${(n / 1e9).toFixed(2)}GB`;
+}
+
+async function cmdClean(args: Args) {
+  const apps = resolveApps(args, { allowAll: true });
+  const withImages = flagBool(args, "images");
+  const containers = await listContainers();
+
+  // Only touch projects that still own something. Match on compose's project
+  // label rather than the name prefix — a stack whose containers are gone can
+  // still be holding a network or a named volume.
+  const projectsWithLeftovers = new Set<string>();
+  const [vols, nets] = await Promise.all([
+    docker(["volume", "ls", "--format", "{{.Labels}}"]),
+    docker(["network", "ls", "--format", "{{.Labels}}"]),
+  ]);
+  for (const labelBlob of [vols.stdout, nets.stdout].join("\n").split("\n")) {
+    const proj = labelBlob.match(/com\.docker\.compose\.project=([^,\s]+)/)?.[1];
+    if (proj) projectsWithLeftovers.add(proj);
+  }
+
+  // Built images outlive their stacks: solo containers run with --rm, and a
+  // finished `validate` leaves safe-<app>-app behind. Find them by repo name.
+  const imgList = await docker(["images", "--format", "{{.Repository}}"]);
+  const repos = new Set(imgList.stdout.split("\n").map((r) => r.trim()).filter(Boolean));
+  const soloImage = (app: string, v: Variant) => repos.has(soloName(app, v));
+  const composeImages = (app: string, v: Variant) =>
+    [...repos].filter((r) => r.startsWith(`${v}-${app}-`) && r !== soloName(app, v));
+
+  let keptImages = 0;
+  const targets: { app: App; variant: Variant; mode: Mode }[] = [];
+  for (const app of apps) {
+    for (const variant of VARIANTS) {
+      const proj = composeProject(app.name, variant);
+      const hasContainers = containers.some((ct) => ct.project === proj);
+      const imgs = composeImages(app.name, variant);
+      if (hasContainers || projectsWithLeftovers.has(proj) || (withImages && imgs.length)) {
+        targets.push({ app, variant, mode: "compose" });
+      } else if (imgs.length) keptImages += imgs.length;
+
+      const hasSolo = containers.some((ct) => ct.name === soloName(app.name, variant));
+      if (hasSolo || (withImages && soloImage(app.name, variant))) {
+        targets.push({ app, variant, mode: "solo" });
+      } else if (soloImage(app.name, variant)) keptImages += 1;
+    }
+  }
+
+  const withOrphans = flagBool(args, "orphan-volumes");
+  // Size everything up front — once it's gone there is nothing left to ask.
+  const sizes = await volumeSizes();
+  const bytesOf = (names: string[]) => names.reduce((n, v) => n + (sizes.get(v) ?? 0), 0);
+
+  // What each target is actually holding. Anonymous volumes are only reachable
+  // through their containers, so this has to happen before anything is torn down.
+  const held = new Map<string, string[]>();
+  for (const t of targets) {
+    const key = `${t.app.name}/${t.variant}/${t.mode}`;
+    held.set(
+      key,
+      t.mode === "compose"
+        ? await stackVolumes(composeProject(t.app.name, t.variant))
+        : await containerVolumes(soloName(t.app.name, t.variant)),
+    );
+  }
+
+  // Volumes from earlier runs whose containers are long gone: nothing links them
+  // to an app any more, so they only go when explicitly asked for.
+  const orphans = withOrphans ? await orphanVolumes() : [];
+
+  if (!targets.length && !orphans.length) {
+    log(
+      c.dim(
+        keptImages
+          ? `nothing to clean (${keptImages} built image(s) kept — add --images)`
+          : "nothing to clean",
+      ),
+    );
+    emit({ cleaned: [], images_removed: withImages, images_kept: keptImages });
+    return;
+  }
+
+  if (!flagBool(args, "yes") && !JSON_MODE.on) {
+    log(c.bold("about to remove:"));
+    for (const t of targets) {
+      const mine = held.get(`${t.app.name}/${t.variant}/${t.mode}`) ?? [];
+      const disk = mine.length
+        ? ` ${c.dim(`[${mine.length} volume(s), ${humanBytes(bytesOf(mine))}]`)}`
+        : "";
+      log(
+        `  ${t.app.name}/${t.variant} (${t.mode}) — containers, volumes, networks${withImages ? ", images" : ""}${disk}`,
+      );
+    }
+    if (orphans.length) {
+      log(
+        `  ${orphans.length} orphaned anonymous volume(s) ${c.dim(`[${humanBytes(bytesOf(orphans))}]`)} — not attached to any container`,
+      );
+    }
+    if (!(await confirm("this deletes all seeded data. continue?"))) {
+      log("aborted");
+      return;
+    }
+  } else if (!flagBool(args, "yes") && JSON_MODE.on) {
+    die("clean is destructive — pass --yes in --json mode", 2);
+  }
+
+  const cleaned: any[] = [];
+  let reclaimed = 0;
+  let volumesDeleted = 0;
+  for (const t of targets) {
+    step(`cleaning ${t.app.name}/${t.variant} ${c.dim(`(${t.mode})`)}`);
+    const res = await stopStack(t.app, t.variant, t.mode, {
+      volumes: true,
+      images: withImages,
+    });
+    volumesDeleted += res.volumes.length;
+    reclaimed += bytesOf(res.volumes);
+    cleaned.push({
+      app: t.app.name,
+      variant: t.variant,
+      mode: t.mode,
+      volumes_deleted: res.volumes.length,
+    });
+  }
+  if (orphans.length) {
+    step(`removing ${orphans.length} orphaned anonymous volume(s)`);
+    await docker(["volume", "rm", "-f", ...orphans]);
+    const after = await existingVolumes();
+    const gone = orphans.filter((v) => !after.has(v));
+    volumesDeleted += gone.length;
+    reclaimed += bytesOf(gone);
+  }
+  emit({
+    cleaned,
+    volumes_deleted: volumesDeleted,
+    orphan_volumes_deleted: orphans.length,
+    bytes_reclaimed: Math.round(reclaimed),
+    images_removed: withImages,
+    images_kept: withImages ? 0 : keptImages,
+  });
+  log(
+    c.green(
+      `ok   removed ${cleaned.length} stack(s), ${volumesDeleted} volume(s)` +
+        (reclaimed ? ` (~${humanBytes(reclaimed)} reclaimed)` : ""),
+    ),
+  );
+  if (!withImages) log(c.dim("     built images kept — add --images to drop them too"));
+  if (!withOrphans) {
+    const left = await orphanVolumes();
+    if (left.length) {
+      const size = bytesOf(left);
+      log(
+        c.dim(
+          `     ${left.length} orphaned anonymous volume(s)${size ? ` (~${humanBytes(size)})` : ""} ` +
+            "from earlier runs — add --orphan-volumes to drop those too",
+        ),
+      );
+    }
+  }
+}
+
+async function cmdRun(args: Args) {
+  const [app] = resolveApps(args, { allowAll: false });
+  if (!args.passthrough.length) {
+    die("nothing to run — usage: dynast-bench run <app> -- <command...>", 2);
+  }
+  const variant = wantVariant(args);
+  const mode = wantMode(args);
+
+  const started = await startApp(app!, {
+    variant,
+    mode,
+    port: flagStr(args, "port"),
+    build: !flagBool(args, "no-build"),
+    timeout: Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S),
+    takeover: !flagBool(args, "no-takeover"),
+  });
+
+  step(`running: ${c.dim(args.passthrough.join(" "))}`);
+  const env = {
+    TARGET: started.target,
+    DYNAST_BENCH_APP: app!.name,
+    DYNAST_BENCH_VARIANT: variant,
+    DYNAST_BENCH_TARGET: started.target,
+    DYNAST_BENCH_HEALTH: started.health,
+    DYNAST_BENCH_GROUND_TRUTH: app!.groundTruth,
+    DYNAST_BENCH_VERIFY_TOKEN: VERIFY_TOKEN,
+  };
+  const code = await execInherit(args.passthrough, { env });
+
+  if (!flagBool(args, "keep")) {
+    step(`stopping ${app!.name}`);
+    await stopStack(app!, variant, mode, { volumes: flagBool(args, "volumes") });
+  } else {
+    log(c.dim(`   left running at ${started.target} (--keep)`));
+  }
+
+  emit({ ...started, command: args.passthrough, exit_code: code });
+  process.exitCode = code;
+}
+
+async function cmdDoctor(_args: Args) {
+  const checks: { name: string; ok: boolean; detail: string }[] = [];
+  const add = (name: string, ok: boolean, detail: string) =>
+    checks.push({ name, ok, detail });
+
+  add("bun", true, Bun.version);
+  const dv = await exec(["docker", "--version"]);
+  add("docker", dv.code === 0, dv.stdout.trim() || dv.stderr.trim());
+  const cv = await exec(["docker", "compose", "version"]);
+  add("docker compose", cv.code === 0, cv.stdout.trim().split("\n")[0] ?? "");
+  const info = await exec(["docker", "info", "--format", "{{.ServerVersion}}"]);
+  add("docker daemon", info.code === 0, info.code === 0 ? `server ${info.stdout.trim()}` : "not reachable");
+  add("repo", true, ROOT);
+  add("apps", ALL_APPS.length > 0, `${ALL_APPS.length} found`);
+
+  const containers = info.code === 0 ? await listContainers() : [];
+  // Every default a compose stack would like to publish on, and who wants it.
+  const wanted = new Map<number, string[]>();
+  for (const name of ALL_APPS) {
+    const app = loadApp(name);
+    for (const decl of app.ports.vuln) {
+      const label = decl.isApp ? name : `${name}/${decl.service}`;
+      wanted.set(decl.preferred, [...(wanted.get(decl.preferred) ?? []), label]);
+    }
+  }
+  const portRows: string[][] = [];
+  const portPayload: any[] = [];
+  for (const p of [...wanted.keys()].sort((x, y) => x - y)) {
+    const st = await portStatus(p, containers);
+    const holder = st.dockerHolders[0];
+    const who = st.free
+      ? "-"
+      : holder
+        ? `${holder.name}${isBenchContainer(holder) ? " (bench)" : c.yellow(" (foreign)")}`
+        : (st.otherHolder ?? "unknown listener");
+    const users = wanted.get(p)!;
+    portRows.push([
+      String(p),
+      st.free ? c.green("free") : c.yellow("in use"),
+      who,
+      users.length > 3 ? `${users.length} apps` : users.join(" "),
+    ]);
+    portPayload.push({ port: p, free: st.free, holder: st.free ? null : who, wanted_by: users });
+  }
+
+  emit({
+    checks,
+    ports: portPayload,
+    port_plan: {
+      app: APP_PORT,
+      sidecars: `${APP_PORT + 1}-${APP_PORT + 8}`,
+      solo: `${SOLO_PORT_BASE}-${SOLO_PORT_BASE + SOLO_PORT_SPAN - 1}`,
+      relocation: `${PORT_FALLBACK_BASE}-${PORT_FALLBACK_BASE + PORT_FALLBACK_SPAN - 1}`,
+    },
+    root: ROOT,
+    apps: ALL_APPS,
+  });
+  for (const ch of checks) {
+    log(`${ch.ok ? c.green(" ok ") : c.red("FAIL")}  ${ch.name.padEnd(16)} ${c.dim(ch.detail)}`);
+  }
+  log();
+  log(c.bold("host ports the suite prefers") + c.dim("  (a busy one is relocated at start)"));
+  table(portRows, ["PORT", "STATE", "HOLDER", "WANTED BY"]);
+  log();
+  log(
+    c.dim(
+      `  app ${APP_PORT} · sidecars ${APP_PORT + 1}-${APP_PORT + 8} · ` +
+        `solo ${SOLO_PORT_BASE}-${SOLO_PORT_BASE + SOLO_PORT_SPAN - 1} · ` +
+        `relocation pool ${PORT_FALLBACK_BASE}-${PORT_FALLBACK_BASE + PORT_FALLBACK_SPAN - 1}`,
+    ),
+  );
+  const bad = checks.filter((ch) => !ch.ok);
+  if (bad.length) die(`${bad.length} check(s) failed`);
+}
+
+// -------------------------------------------------------------------- help --
+
+// The portable finding format `score` reads. Kept in the binary so an agent can
+// discover it with `dynast-bench schema` (no repo checkout needed). The canonical
+// prose reference is dynast-bench/README.md#scoring.
+const FINDINGS_EXAMPLE = {
+  schema: "dynast-bench.findings/v1",
+  tool: { name: "my-agent", version: "0.1.0", mode: "agent" }, // dast|sast|hybrid|agent
+  run: { app: "<app>", variant: "vuln", target: `http://127.0.0.1:${APP_PORT}` },
+  findings: [
+    {
+      id: "f-001", // unique within the file
+      title: "Boolean SQL injection in post search",
+      cwe: "CWE-89", // or "cwes": ["CWE-89", ...] for alternates
+      severity: "high", // info|low|medium|high|critical
+      confidence: "firm", // certain|firm|tentative
+      location: {
+        http: {
+          method: "GET",
+          url: `http://127.0.0.1:${APP_PORT}/api/posts/search?q=%27+OR+1%3D1--+`,
+          path: "/api/posts/search",
+          param: "q",
+          param_in: "query",
+        },
+        file: { path: "vuln/main.go", line: 21, symbol: "searchPosts" },
+      },
+      evidence: {
+        markers: ["GLOBEX-CONFIDENTIAL-MARKER-7f3a"], // a seed marker is proof
+        note: "returns a Globex DRAFT row",
+      },
+      exploited: true, // impact proven, vs inferred
+    },
+  ],
+};
+
+/** Human-readable rendering of the finding schema for `dynast-bench schema`. */
+function schemaDoc(): string {
+  return `${c.bold("dynast-bench findings/v1")} — the finding format ${c.bold("dynast-bench score")} reads ${c.dim(`v${VERSION}`)}
+
+One JSON object per distinct vulnerability; at least one ${c.bold("location.*")} block is
+required (a finding with no location cannot be scored). ${c.bold("dynast-bench score")} also
+takes native ZAP / SARIF / nuclei / Burp / nmap output directly — the format is sniffed.
+
+${c.bold("EXAMPLE")}
+${c.dim(JSON.stringify(FINDINGS_EXAMPLE, null, 2))}
+
+${c.bold("LOCATION BLOCKS")}  ${c.dim("(use whichever fit; they mirror the answer key's anchors)")}
+  http     { method, url, path, param, param_in }             web / API routes
+  file     { path, line, symbol }                             source location (vuln/… side)
+  net      { host, port, proto, service, version, state }     host/port scanners
+  graphql  { op, kind, field }                                GraphQL operations
+  ws       { transport, event, channel, endpoint }            websocket channels
+  llm      { tool, channel, run_id }                          LLM tool / prompt-injection
+
+${c.bold("FIELDS")}
+  tool.mode    dast | sast | hybrid | agent
+  run.variant  vuln | safe   ${c.dim(`(a twin scan that omits "safe" scores every finding as a true positive)`)}
+  cwe / cwes   CWE-89, or a list of alternates
+  severity     info | low | medium | high | critical
+  confidence   certain | firm | tentative
+  evidence     { markers[], request, response_excerpt, note }   ${c.dim("a seed marker is near-conclusive proof")}
+  exploited    true = impact proven (earns proof credit); false is honest and still scores
+
+${c.bold("RULES")}
+  1. One finding per vulnerability, not per payload (extra payloads are noise, not punished).
+  2. Concrete URLs (/api/posts/7); the scorer normalizes id segments to {id}.
+  3. Put a seed marker in evidence.markers — it is what resolves bugs that share a route.
+
+${c.dim("full reference: dynast-bench/README.md#scoring   ·   machine-readable: dynast-bench schema --json")}
+`;
+}
+
+async function cmdSchema(_args: Args) {
+  if (JSON_MODE.on) {
+    emit({
+      schema: "dynast-bench.findings/v1",
+      formats: ["findings/v1", ...FORMATS.filter((f) => f !== "findings/v1")],
+      locations: ["http", "file", "net", "graphql", "ws", "llm"],
+      example: FINDINGS_EXAMPLE,
+    });
+    return;
+  }
+  log(schemaDoc());
+}
+
+const HELP = `${c.bold("dynast-bench")} — run the intentionally-vulnerable benchmark apps ${c.dim(`v${VERSION}`)}
+
+${c.bold("USAGE")}
+  dynast-bench <command> [app...] [flags]
+
+${c.bold("CATALOG")}
+  list                     apps with vuln/PoC counts and what's running
+  info <app>               ground-truth summary (severity, CWE, difficulty)  [--full]
+  doctor                   docker/bun checks + which ports are taken
+
+${c.bold("LIFECYCLE")}
+  start <app...>           build + boot, wait for health, print the target URL
+  stop [app...|--all]      stop stacks (volumes kept unless --volumes)
+  restart <app>            stop, then start the same variant/mode
+  reset <app>              drop volumes and boot fresh (re-seeded state)
+  clean [app...|--all]     remove containers + volumes + networks, reclaiming the
+                           disk they held  [--images] [--orphan-volumes]
+
+${c.bold("INSPECT")}
+  status [app...]          running stacks: variant, mode, target, health
+  target <app>             print just the base URL (for scripts)
+  logs <app>               container logs  [--follow] [--tail N]
+
+${c.bold("BENCHMARK")}
+  verify <app>             run the ground-truth PoCs against the running app
+  validate <app>           twin loop: vuln all-exploitable → safe all-fixed
+  run <app> -- <cmd...>    start, run <cmd> with $TARGET set, stop afterwards
+
+${c.bold("SCORE")}
+  score <app> <file...>    findings → precision/recall/F1  [--safe f.json] [--full]
+  schema                   print the findings/v1 finding format score reads  [--json]
+  diff <app>               the vuln↔safe delta, cross-checked against the answer key
+  check [app...|--all]     CI gate: schema · anchors · diff scope · PoCs · binds
+
+${c.bold("FLAGS")}
+  --variant vuln|safe      which twin to use (default: vuln)
+  --solo                   one self-contained image instead of compose
+  --port N                 host port for the app (default ${APP_PORT}, or the next free one)
+  --all                    every app (stop/clean; start needs --solo too)
+  --no-build               skip the docker build
+  --timeout S              health-wait budget in seconds (default ${HEALTH_TIMEOUT_S})
+  --no-takeover            never stop this app's other twin to reclaim its port
+  --volumes                also drop volumes (stop/run)
+  --images                 also drop the images this repo built (clean)
+  --orphan-volumes         also drop anonymous volumes left by earlier runs (clean)
+  --keep                   leave the app running (run/validate)
+  --json                   machine-readable output on stdout
+  --yes                    skip the confirmation prompt (clean)
+  --safe FILE              findings from the patched twin (score) - all false alarms
+  --format F               force an input format (score): ${FORMATS.join(" ")}
+  --full                   every match/miss/false-positive row (score/diff/check)
+  --limit N                detail rows per section (score, default 10)
+  --lenient-cwe            accept a match whose CWE is unrelated (score)
+
+${c.bold("PORTS")}
+  The app answers on ${c.bold(`127.0.0.1:${APP_PORT}`)}; its sidecars take ${APP_PORT + 1}+. Anything
+  already listening on a port is left alone — that publish moves into the
+  ${PORT_FALLBACK_BASE}-${PORT_FALLBACK_BASE + PORT_FALLBACK_SPAN - 1} pool instead, and the real URL is printed (and in --json).
+  Nothing binds anything but 127.0.0.1. ${c.dim(`See: dynast-bench doctor`)}
+
+${c.bold("SCANNER INTEGRATION")}
+  ${c.dim("# one app, one scan")}
+  dynast-bench start nextjs --json | jq -r .target
+  dynast-bench run nextjs -- zap-baseline.py -t '$TARGET' -J findings.json
+
+  ${c.dim("# see the finding format an agent should emit, then score a run")}
+  dynast-bench schema                                    ${c.dim("# add --json for a template")}
+  dynast-bench score nextjs findings.json
+  dynast-bench score nextjs zap.json semgrep.sarif nuclei.jsonl   ${c.dim("# combine tools as one")}
+  dynast-bench score nextjs findings.json --json | jq .metrics
+
+  ${c.dim("# false-positive run: scan the patched twin, score both together")}
+  dynast-bench start nextjs --variant safe
+  dynast-bench score nextjs vuln.json --safe safe.json --full
+
+  ${c.dim("# whole fleet in parallel, one image + port each")}
+  dynast-bench start --all --solo --json
+
+${c.dim("apps are DELIBERATELY INSECURE and bind 127.0.0.1 only — never expose them")}
+`;
+
+// -------------------------------------------------------------------- main --
+
+const COMMANDS: Record<string, (a: Args) => Promise<void>> = {
+  list: cmdList,
+  ls: cmdList,
+  apps: cmdList,
+  info: cmdInfo,
+  doctor: cmdDoctor,
+  start: cmdStart,
+  up: cmdStart,
+  stop: cmdStop,
+  down: cmdStop,
+  restart: cmdRestart,
+  reset: cmdReset,
+  clean: cmdClean,
+  status: cmdStatus,
+  ps: cmdStatus,
+  target: cmdTarget,
+  url: cmdTarget,
+  logs: cmdLogs,
+  verify: cmdVerify,
+  validate: cmdValidate,
+  run: cmdRun,
+  score: cmdScore,
+  schema: cmdSchema,
+  "findings-schema": cmdSchema,
+  diff: cmdDiff,
+  check: cmdCheck,
+};
+
+async function main() {
+  const args = parseArgs(process.argv.slice(2));
+  JSON_MODE.on = flagBool(args, "json");
+
+  if (flagBool(args, "version")) {
+    console.log(VERSION);
+    return;
+  }
+  const askedForHelp = flagBool(args, "help") || args.cmd === "help";
+  if (!args.cmd || askedForHelp) {
+    console.log(HELP);
+    if (!askedForHelp) process.exitCode = 2; // bare invocation is a usage error
+    return;
+  }
+
+  const handler = COMMANDS[args.cmd];
+  if (!handler) {
+    console.error(`unknown command: ${args.cmd}\n\n${HELP}`);
+    process.exitCode = 2;
+    return;
+  }
+  await handler(args);
+}
+
+try {
+  await main();
+} catch (err) {
+  fatal(err);
+}

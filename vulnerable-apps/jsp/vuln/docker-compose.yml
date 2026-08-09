@@ -1,0 +1,44 @@
+name: vuln-jsp
+services:
+  app:
+    build: .
+    ports: ["127.0.0.1:${DYNAST_PORT:-13311}:8080"]
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/bench
+      DB_USER: bench
+      DB_PASSWORD: bench
+      VERIFY_TOKEN: benchsecret
+      APP_URL: "http://127.0.0.1:${DYNAST_PORT:-13311}"
+      CAPTCHA_SEED: "42"
+      TOMCAT_MANAGER_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      internal-sink:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/api/_verify/health | grep -q ok"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+  postgres:
+    image: postgres:16.4
+    ports: ["127.0.0.1:${DYNAST_PORT_POSTGRES_5432:-13312}:5432"]
+    environment:
+      POSTGRES_USER: bench
+      POSTGRES_PASSWORD: bench
+      POSTGRES_DB: bench
+    volumes:
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bench -d bench"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  mailpit:
+    image: axllent/mailpit:v1.20
+    ports: ["127.0.0.1:${DYNAST_PORT_MAILPIT_8025:-13313}:8025", "127.0.0.1:${DYNAST_PORT_MAILPIT_1025:-13314}:1025"]
+  internal-sink:
+    image: node:22-slim
+    volumes: ["./internal-sink.mjs:/internal-sink.mjs:ro"]
+    command: ["node", "/internal-sink.mjs"]

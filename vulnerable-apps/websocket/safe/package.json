@@ -1,0 +1,17 @@
+{
+  "name": "DynAST-Bench-websocket",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node --check src/server.mjs",
+    "start": "node src/server.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "pg": "8.13.1",
+    "socket.io": "4.8.1",
+    "ws": "8.18.0"
+  },
+  "devDependencies": {}
+}

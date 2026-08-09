@@ -1,0 +1,713 @@
+app: network
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Network benchmark seed includes Acme and Globex users plus the Globex DRAFT marker GLOBEX-CONFIDENTIAL-MARKER-7f3a in simulated datastores.
+vulnerabilities:
+  - id: NET-TLS-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: tls_expired
+    route: "edge-proxy:443/tcp"
+    cwe: CWE-295
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: medium
+    difficulty: E-M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-TLS-001
+    match:
+      net: { host: edge-proxy, port: 443, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: tls_expired }
+    poc: ground-truth/verify/tls_expired.sh
+    host: edge-proxy
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      Expired self-signed certificate is presented on the weak TLS listener.
+  - id: NET-TLS-002
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: tls_weak
+    route: "edge-proxy:443/tcp"
+    cwe: CWE-327
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: high
+    difficulty: E-M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-TLS-001
+    match:
+      net: { host: edge-proxy, port: 443, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: tls_weak }
+    poc: ground-truth/verify/tls_weak.sh
+    host: edge-proxy
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      Weak TLS policy accepts legacy TLS/cipher suites.
+  - id: NET-HTTP-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: cleartext_http
+    route: "edge-proxy:80/tcp"
+    cwe: CWE-319
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: medium
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-TLS-001
+    match:
+      net: { host: edge-proxy, port: 80, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: cleartext_http }
+    poc: ground-truth/verify/cleartext_http.sh
+    host: edge-proxy
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      Admin/API content is reachable over cleartext HTTP without redirect.
+  - id: NET-STATUS-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: status_exposed
+    route: "edge-proxy:80/tcp"
+    cwe: CWE-200
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: low
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: edge-proxy, port: 80, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: status_exposed }
+    poc: ground-truth/verify/status_exposed.sh
+    host: edge-proxy
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      nginx/server status endpoints expose operational metadata.
+  - id: NET-SEG-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: proxy_internal
+    route: "edge-proxy:80/tcp"
+    cwe: CWE-668
+    owasp: "A01:2021-Broken Access Control"
+    severity: critical
+    difficulty: H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: edge-proxy, port: 80, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: proxy_internal }
+    poc: ground-truth/verify/proxy_internal.sh
+    host: edge-proxy
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      Edge proxy forwards /internal/* requests into data-tier services.
+  - id: NET-SSH-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: ssh_weak_root
+    route: "edge-bastion:22/tcp"
+    cwe: CWE-1392
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: E-M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-SSH-001
+    match:
+      net: { host: edge-bastion, port: 22, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: ssh_weak_root }
+    poc: ground-truth/verify/ssh_weak_root.sh
+    host: edge-bastion
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      Bastion permits password/root login with weak service credential.
+  - id: NET-SSH-002
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: ssh_old_banner
+    route: "edge-bastion:22/tcp"
+    cwe: CWE-1104
+    owasp: "A06:2021-Vulnerable and Outdated Components"
+    severity: medium
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-SSH-001
+    match:
+      net: { host: edge-bastion, port: 22, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: ssh_old_banner }
+    poc: ground-truth/verify/ssh_old_banner.sh
+    host: edge-bastion
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      Bastion exposes an outdated OpenSSH banner.
+  - id: NET-FTP-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: ftp_anon
+    route: "edge-ftp:21/tcp"
+    cwe: CWE-306
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-FTP-001
+    match:
+      net: { host: edge-ftp, port: 21, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: ftp_anon }
+    poc: ground-truth/verify/ftp_anon.sh
+    host: edge-ftp
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      Anonymous FTP read/write is enabled.
+  - id: NET-FTP-002
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: ftp_cleartext
+    route: "edge-ftp:21/tcp"
+    cwe: CWE-319
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: medium
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-FTP-001
+    match:
+      net: { host: edge-ftp, port: 21, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: ftp_cleartext }
+    poc: ground-truth/verify/ftp_cleartext.sh
+    host: edge-ftp
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      FTP accepts cleartext credentials and data channels.
+  - id: NET-SMTP-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: smtp_relay
+    route: "edge-mail:25/tcp"
+    cwe: CWE-406
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: edge-mail, port: 25, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: smtp_relay }
+    poc: ground-truth/verify/smtp_relay.sh
+    host: edge-mail
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      SMTP relay accepts unauthenticated external recipients.
+  - id: NET-SMTP-002
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: smtp_vrfy_no_starttls
+    route: "edge-mail:25/tcp"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: edge-mail, port: 25, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: smtp_vrfy_no_starttls }
+    poc: ground-truth/verify/smtp_vrfy_no_starttls.sh
+    host: edge-mail
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      SMTP exposes VRFY user enumeration and lacks STARTTLS.
+  - id: NET-ROGUE-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: rogue_port
+    route: "app-web:31337/tcp"
+    cwe: CWE-1327
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: critical
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: app-web, port: 31337, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: rogue_port }
+    poc: ground-truth/verify/rogue_port.sh
+    host: app-web
+    segment: app
+    proto: tcp
+    expected_open: true
+    notes: >
+      Unexpected high-port bind shell is listening on app-web.
+  - id: NET-TELNET-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: telnet_open
+    route: "app-legacy:23/tcp"
+    cwe: CWE-319
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: high
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: app-legacy, port: 23, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: telnet_open, lines: [53, 53] }
+    poc: ground-truth/verify/telnet_open.sh
+    host: app-legacy
+    segment: app
+    proto: tcp
+    expected_open: true
+    notes: >
+      Cleartext telnet administrative service is exposed.
+  - id: NET-LEGACY-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: legacy_banner
+    route: "app-legacy:8000/tcp"
+    cwe: CWE-1104
+    owasp: "A06:2021-Vulnerable and Outdated Components"
+    severity: medium
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: app-legacy, port: 8000, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: legacy_banner }
+    poc: ground-truth/verify/legacy_banner.sh
+    host: app-legacy
+    segment: app
+    proto: tcp
+    expected_open: true
+    notes: >
+      Legacy HTTP server advertises a vulnerable version banner.
+  - id: NET-PG-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: pg_trust
+    route: "data-postgres:5432/tcp"
+    cwe: CWE-306
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: critical
+    difficulty: E-M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: data-postgres, port: 5432, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: pg_trust }
+    poc: ground-truth/verify/pg_trust.sh
+    host: data-postgres
+    segment: data
+    proto: tcp
+    expected_open: true
+    notes: >
+      Postgres listens broadly and accepts trust authentication.
+  - id: NET-REDIS-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: redis_open
+    route: "data-redis:6379/tcp"
+    cwe: CWE-306
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: critical
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-REDIS-001
+    match:
+      net: { host: data-redis, port: 6379, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: redis_open }
+    poc: ground-truth/verify/redis_open.sh
+    host: data-redis
+    segment: data
+    proto: tcp
+    expected_open: true
+    notes: >
+      Redis responds to PING/GET without AUTH and leaks seeded marker.
+  - id: NET-MONGO-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: mongo_open
+    route: "data-mongo:27017/tcp"
+    cwe: CWE-306
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: critical
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: data-mongo, port: 27017, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: mongo_open }
+    poc: ground-truth/verify/mongo_open.sh
+    host: data-mongo
+    segment: data
+    proto: tcp
+    expected_open: true
+    notes: >
+      Mongo-like datastore is readable without authentication.
+  - id: NET-ELASTIC-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: elastic_open
+    route: "data-elastic:9200/tcp"
+    cwe: CWE-306
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: data-elastic, port: 9200, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: elastic_open }
+    poc: ground-truth/verify/elastic_open.sh
+    host: data-elastic
+    segment: data
+    proto: tcp
+    expected_open: true
+    notes: >
+      Elasticsearch-like API has security disabled and returns seeded data.
+  - id: NET-MEMC-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: memcached_open
+    route: "data-memcached:11211/udp"
+    cwe: CWE-306
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: data-memcached, port: 11211, proto: udp }
+      file: { path: vuln/docker-compose.yml, symbol: memcached_open }
+    poc: ground-truth/verify/memcached_open.sh
+    host: data-memcached
+    segment: data
+    proto: udp
+    expected_open: true
+    notes: >
+      Memcached TCP/UDP exposes cached marker without authentication.
+  - id: NET-SEG-002
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: seg_edge_to_data
+    route: "data-redis:6379/tcp"
+    cwe: CWE-668
+    owasp: "A01:2021-Broken Access Control"
+    severity: critical
+    difficulty: H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: data-redis, port: 6379, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: seg_edge_to_data }
+    poc: ground-truth/verify/seg_edge_to_data.sh
+    host: data-redis
+    segment: data
+    proto: tcp
+    expected_open: true
+    notes: >
+      Edge segment can reach data-tier Redis directly.
+  - id: NET-JENKINS-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: jenkins_anon
+    route: "mgmt-jenkins:8080/tcp"
+    cwe: CWE-862
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: critical
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: mgmt-jenkins, port: 8080, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: jenkins_anon }
+    poc: ground-truth/verify/jenkins_anon.sh
+    host: mgmt-jenkins
+    segment: mgmt
+    proto: tcp
+    expected_open: true
+    notes: >
+      Jenkins anonymous read and script console are reachable.
+  - id: NET-GRAFANA-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: grafana_default
+    route: "mgmt-grafana:3000/tcp"
+    cwe: CWE-1392
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: mgmt-grafana, port: 3000, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: grafana_default }
+    poc: ground-truth/verify/grafana_default.sh
+    host: mgmt-grafana
+    segment: mgmt
+    proto: tcp
+    expected_open: true
+    notes: >
+      Grafana accepts default admin/Admin123! and anonymous view.
+  - id: NET-RABBIT-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: rabbit_default
+    route: "mgmt-rabbitmq:15672/tcp"
+    cwe: CWE-1392
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: mgmt-rabbitmq, port: 15672, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: rabbit_default }
+    poc: ground-truth/verify/rabbit_default.sh
+    host: mgmt-rabbitmq
+    segment: mgmt
+    proto: tcp
+    expected_open: true
+    notes: >
+      RabbitMQ management accepts guest/guest.
+  - id: NET-PMA-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: phpmyadmin_nopass
+    route: "mgmt-phpmyadmin:8081/tcp"
+    cwe: CWE-862
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: E-M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: mgmt-phpmyadmin, port: 8081, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: phpmyadmin_nopass }
+    poc: ground-truth/verify/phpmyadmin_nopass.sh
+    host: mgmt-phpmyadmin
+    segment: mgmt
+    proto: tcp
+    expected_open: true
+    notes: >
+      phpMyAdmin permits no-password root access.
+  - id: NET-MINIO-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: minio_default
+    route: "mgmt-minio:9000/tcp"
+    cwe: CWE-1392
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: mgmt-minio, port: 9000, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: minio_default }
+    poc: ground-truth/verify/minio_default.sh
+    host: mgmt-minio
+    segment: mgmt
+    proto: tcp
+    expected_open: true
+    notes: >
+      MinIO has default root credential and public bucket behavior.
+  - id: NET-SNMP-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: snmp_public
+    route: "mgmt-snmp:161/udp"
+    cwe: CWE-1392
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: mgmt-snmp, port: 161, proto: udp }
+      file: { path: vuln/docker-compose.yml, symbol: snmp_public }
+    poc: ground-truth/verify/snmp_public.sh
+    host: mgmt-snmp
+    segment: mgmt
+    proto: udp
+    expected_open: true
+    notes: >
+      SNMP public community string returns system data.
+  - id: NET-SEG-003
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: seg_app_to_mgmt
+    route: "mgmt-jenkins:8080/tcp"
+    cwe: CWE-668
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: mgmt-jenkins, port: 8080, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: seg_app_to_mgmt }
+    poc: ground-truth/verify/seg_app_to_mgmt.sh
+    host: mgmt-jenkins
+    segment: mgmt
+    proto: tcp
+    expected_open: true
+    notes: >
+      Application segment can reach management-tier Jenkins.
+  - id: NET-HEADERS-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: headers_missing
+    route: "edge-proxy:80/tcp"
+    cwe: CWE-693
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: low
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: edge-proxy, port: 80, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: headers_missing }
+    poc: ground-truth/verify/headers_missing.sh
+    host: edge-proxy
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      Security headers are missing and verbose Server banner is exposed.
+  - id: NET-MARKER-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: marker_leak
+    route: "data-redis:6379/tcp"
+    cwe: CWE-200
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: data-redis, port: 6379, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: marker_leak }
+    poc: ground-truth/verify/marker_leak.sh
+    host: data-redis
+    segment: data
+    proto: tcp
+    expected_open: true
+    notes: >
+      No-auth datastores leak the Globex confidential marker.
+  - id: NET-SSH-003
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: ssh_no_rate_limit
+    route: "edge-bastion:22/tcp"
+    cwe: CWE-307
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-SSH-001
+    match:
+      net: { host: edge-bastion, port: 22, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: ssh_no_rate_limit }
+    poc: ground-truth/verify/ssh_no_rate_limit.sh
+    host: edge-bastion
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      Bastion lacks rate limiting or lockout for credential stuffing.
+  - id: NET-FTP-003
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: ftp_passive_range
+    route: "edge-ftp:30000/tcp"
+    cwe: CWE-1327
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: low
+    difficulty: M
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-PORT-001
+    match:
+      net: { host: edge-ftp, port: 30000, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: ftp_passive_range }
+    poc: ground-truth/verify/ftp_passive_range.sh
+    host: edge-ftp
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      Wide FTP passive port range is open and undocumented.
+  - id: NET-CRED-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: default_admin_admin
+    route: "edge-bastion:22/tcp"
+    cwe: CWE-798
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      net: { host: edge-bastion, port: 22, proto: tcp }
+      file: { path: vuln/docker-compose.yml, symbol: default_admin_admin }
+    poc: ground-truth/verify/default_admin_admin.sh
+    host: edge-bastion
+    segment: edge
+    proto: tcp
+    expected_open: true
+    notes: >
+      Shared admin/admin service credential remains valid across the fleet.
+near_misses:
+  - id: NM-TLS-001
+    path: vuln/simulator.mjs
+    symbol: "startEdgeProxy"
+    of: NET-TLS-001
+    match:
+      file: { path: vuln/simulator.mjs, symbol: startEdgeProxy, lines: [204, 218] }
+    notes: "Port 8443 is TLSv1.3-only near-miss with security headers."
+  - id: NM-SSH-001
+    path: vuln/simulator.mjs
+    symbol: "startEdgeBastion"
+    of: NET-SSH-001
+    match:
+      file: { path: vuln/simulator.mjs, symbol: startEdgeBastion, lines: [219, 227] }
+    notes: "Port 2222 is key-only / no-password near-miss."
+  - id: NM-FTP-001
+    path: vuln/simulator.mjs
+    symbol: "startEdgeFtp"
+    of: NET-FTP-001
+    match:
+      file: { path: vuln/simulator.mjs, symbol: startEdgeFtp, lines: [228, 266] }
+    notes: "Safe FTPS-only branch disables anonymous login."
+  - id: NM-REDIS-001
+    path: vuln/simulator.mjs
+    symbol: "startRedis secure=true"
+    of: NET-REDIS-001
+    match:
+      file: { path: vuln/simulator.mjs, symbol: "startRedis secure=true", lines: [267, 327] }
+    notes: "data-redis-secure:6380 requires AUTH."
+  - id: NM-PORT-001
+    path: ground-truth/expected-ports.yaml
+    symbol: "edge-proxy:3306"
+    of: NET-FTP-003
+    match:
+      file: { path: ground-truth/expected-ports.yaml, symbol: "edge-proxy:3306", lines: [4, 64] }
+    notes: "Filtered decoy catches port-number heuristics."

@@ -1,0 +1,530 @@
+# Ground-truth answer key for the rails vulnerable app.
+# This file lives outside both build contexts and is never baked into an image.
+
+app: rails
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex (tenants). user2@bench.local is in Globex for cross-tenant
+  IDOR. A Globex DRAFT ("globex-internal") carries GLOBEX-CONFIDENTIAL-MARKER-7f3a,
+  returned only via SQLi or IDOR. Weak default service credential admin/admin.
+
+vulnerabilities:
+  - id: MASSASSIGN-001
+    variant_paths: { vuln: vuln/app/controllers/users_controller.rb, safe: safe/app/controllers/users_controller.rb }
+    symbol: UsersController#update
+    route: "PATCH /api/users/me"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-MASSASSIGN-001
+    match:
+      http: { method: PATCH, path: "/api/users/me" }
+      file: { path: vuln/app/controllers/users_controller.rb, symbol: "UsersController#update", lines: [9, 14] }
+    poc: ground-truth/verify/massassign_001.sh
+    notes: >
+      Strong params use permit!, allowing role/is_admin/org_id overposting.
+
+  - id: YAML-001
+    variant_paths: { vuln: vuln/app/controllers/imports_controller.rb, safe: safe/app/controllers/imports_controller.rb }
+    symbol: ImportsController#yaml_load
+    route: "POST /api/import/yaml"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: critical
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-YAML-001
+    match:
+      http: { method: POST, path: "/api/import/yaml" }
+      file: { path: vuln/app/controllers/imports_controller.rb, symbol: "ImportsController#yaml_load", lines: [6, 10] }
+    poc: ground-truth/verify/yaml_001.sh
+    notes: >
+      YAML.unsafe_load instantiates an ImportProbe object and evaluates its ERB template.
+
+  - id: SSTI-001
+    variant_paths: { vuln: vuln/app/controllers/previews_controller.rb, safe: safe/app/controllers/previews_controller.rb }
+    symbol: PreviewsController#inline
+    route: "POST /api/preview/inline"
+    cwe: CWE-1336
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-SSTI-001
+    match:
+      http: { method: POST, path: "/api/preview/inline" }
+      file: { path: vuln/app/controllers/previews_controller.rb, symbol: "PreviewsController#inline", lines: [3, 5] }
+    poc: ground-truth/verify/ssti_001.sh
+    notes: >
+      render inline evaluates user-controlled ERB.
+
+  - id: REGEX-001
+    variant_paths: { vuln: vuln/app/controllers/admin_checks_controller.rb, safe: safe/app/controllers/admin_checks_controller.rb }
+    symbol: AdminChecksController#check_email
+    route: "POST /api/admin/check_email"
+    cwe: CWE-625
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M-H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-REGEX-001
+    match:
+      http: { method: POST, path: "/api/admin/check_email" }
+      file: { path: vuln/app/controllers/admin_checks_controller.rb, symbol: "AdminChecksController#check_email", lines: [4, 8] }
+    poc: ground-truth/verify/regex_001.sh
+    notes: >
+      Ruby ^/$ regex anchors allow newline bypass of an admin email check.
+
+  - id: AUTHZ-001
+    variant_paths: { vuln: vuln/app/controllers/users_controller.rb, safe: safe/app/controllers/users_controller.rb }
+    symbol: UsersController#promote
+    route: "POST /api/users/{id}/promote"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/users/{id}/promote" }
+      file: { path: vuln/app/controllers/users_controller.rb, symbol: "UsersController#promote", lines: [15, 21] }
+    poc: ground-truth/verify/authz_001.sh
+    notes: >
+      Authenticated non-admin user can promote any user because authorization is skipped.
+
+  - id: SQLI-001
+    variant_paths: { vuln: vuln/app/controllers/posts_controller.rb, safe: safe/app/controllers/posts_controller.rb }
+    symbol: PostsController#search
+    route: "GET /api/posts/search?q="
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SQL-001
+    match:
+      http: { method: GET, path: "/api/posts/search", params: [q] }
+      file: { path: vuln/app/controllers/posts_controller.rb, symbol: "PostsController#search", lines: [6, 11] }
+      markers: ["%GLOBEX-CONFIDENTIAL-MARKER-7f3a%", GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_001.sh
+    notes: >
+      q is interpolated into find_by_sql and exposes the Globex draft marker.
+
+  - id: SQLI-002
+    variant_paths: { vuln: vuln/app/controllers/reports_controller.rb, safe: safe/app/controllers/reports_controller.rb }
+    symbol: ReportsController#run
+    route: "GET /api/reports/{id}/run"
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/reports/{id}/run" }
+      file: { path: vuln/app/controllers/reports_controller.rb, symbol: "ReportsController#run", lines: [11, 15] }
+      markers: ["%GLOBEX-CONFIDENTIAL-MARKER-7f3a%", GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_002.sh
+    notes: >
+      Stored report name is later interpolated into raw SQL as second-order SQLi.
+
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/app/controllers/fetches_controller.rb, safe: safe/app/controllers/fetches_controller.rb }
+    symbol: FetchesController#show
+    route: "GET /api/fetch?url="
+    cwe: CWE-918
+    owasp: "A10:2021-Server-Side Request Forgery"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/fetch", params: [url] }
+      file: { path: vuln/app/controllers/fetches_controller.rb, symbol: "FetchesController#show", lines: [5, 11] }
+    poc: ground-truth/verify/ssrf_001.sh
+    notes: >
+      open-uri fetches arbitrary URLs and reaches the internal sink service.
+
+  - id: CMD-001
+    variant_paths: { vuln: vuln/app/controllers/exports_controller.rb, safe: safe/app/controllers/exports_controller.rb }
+    symbol: ExportsController#show
+    route: "GET /api/export?name="
+    cwe: CWE-78
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/export", params: [name] }
+      file: { path: vuln/app/controllers/exports_controller.rb, symbol: "ExportsController#show", lines: [4, 8] }
+    poc: ground-truth/verify/cmd_001.sh
+    notes: >
+      Backtick command interpolation executes shell metacharacters in name.
+
+  - id: REFL-001
+    variant_paths: { vuln: vuln/app/controllers/reflections_controller.rb, safe: safe/app/controllers/reflections_controller.rb }
+    symbol: ReflectionsController#create
+    route: "POST /api/reflect"
+    cwe: CWE-470
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: high
+    difficulty: M-H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/reflect" }
+      file: { path: vuln/app/controllers/reflections_controller.rb, symbol: "ReflectionsController#create", lines: [6, 10] }
+    poc: ground-truth/verify/refl_001.sh
+    notes: >
+      constantize and send on request params permit arbitrary method invocation.
+
+  - id: SECRET-001
+    variant_paths: { vuln: vuln/app/controllers/secrets_controller.rb, safe: safe/app/controllers/secrets_controller.rb }
+    symbol: SecretsController#show
+    route: "GET /api/secrets"
+    cwe: CWE-798
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: high
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/secrets" }
+      file: { path: vuln/app/controllers/secrets_controller.rb, symbol: "SecretsController#show", lines: [3, 6] }
+      markers: [rails-hardcoded-secret-key-base]
+    poc: ground-truth/verify/secret_001.sh
+    notes: >
+      Hardcoded secret_key_base fallback and API exposure leak signing material.
+
+  - id: CONFIG-LEAK-001
+    variant_paths: { vuln: vuln/app/controllers/home_controller.rb, safe: safe/app/controllers/home_controller.rb }
+    symbol: HomeController#index
+    route: "GET /"
+    cwe: CWE-200
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/" }
+      file: { path: vuln/app/controllers/home_controller.rb, symbol: "HomeController#index", lines: [1, 8] }
+      markers: [rails-hardcoded-secret-key-base]
+    poc: ground-truth/verify/config_leak_001.sh
+    notes: >
+      Runtime config script exposes the Rails signing secret and default service credentials on the homepage.
+
+  - id: SECRET-KEY-001
+    variant_paths: { vuln: vuln/config/environments/production.rb, safe: safe/config/environments/production.rb }
+    symbol: Rails.application.secret_key_base
+    route: "GET /api/secrets"
+    cwe: CWE-798
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: high
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/secrets" }
+      file: { path: vuln/config/environments/production.rb, symbol: Rails.application.secret_key_base, lines: [7, 9] }
+      markers: [rails-hardcoded-secret-key-base]
+    poc: ground-truth/verify/secret_001.sh
+    notes: >
+      Production config has a hardcoded secret_key_base fallback; the safe twin requires a runtime secret.
+
+  - id: SECRET-COMPOSE-001
+    variant_paths: { vuln: vuln/docker-compose.yml, safe: safe/docker-compose.yml }
+    symbol: SECRET_KEY_BASE
+    route: "GET /api/secrets"
+    cwe: CWE-798
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/secrets" }
+      file: { path: vuln/docker-compose.yml, symbol: SECRET_KEY_BASE, lines: [10, 40] }
+      markers: [rails-hardcoded-secret-key-base]
+    poc: ground-truth/verify/secret_001.sh
+    notes: >
+      Compose supplies a benchmark-known signing secret; safe twin uses a distinct runtime secret value.
+
+  - id: SECRET-STANDALONE-001
+    variant_paths: { vuln: vuln/entrypoint.standalone.sh, safe: safe/entrypoint.standalone.sh }
+    symbol: SECRET_KEY_BASE fallback
+    route: "GET /api/secrets"
+    cwe: CWE-798
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/secrets" }
+      file: { path: vuln/entrypoint.standalone.sh, symbol: "SECRET_KEY_BASE fallback", lines: [10, 36] }
+      markers: [rails-hardcoded-secret-key-base]
+    poc: ground-truth/verify/secret_001.sh
+    notes: >
+      Standalone mode defaulted to the benchmark-known signing secret; safe twin uses a distinct runtime fallback.
+
+  - id: CREDS-001
+    variant_paths: { vuln: vuln/app/controllers/sessions_controller.rb, safe: safe/app/controllers/sessions_controller.rb }
+    symbol: SessionsController#create
+    route: "POST /api/auth/login"
+    cwe: CWE-798
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/app/controllers/sessions_controller.rb, symbol: "SessionsController#create", lines: [9, 24] }
+    poc: ground-truth/verify/creds_001.sh
+    notes: >
+      Default admin/admin service credential is seeded and accepted by login.
+
+  - id: IDOR-001
+    variant_paths: { vuln: vuln/app/controllers/posts_controller.rb, safe: safe/app/controllers/posts_controller.rb }
+    symbol: PostsController#show
+    route: "GET /api/posts/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/posts/{id}" }
+      file: { path: vuln/app/controllers/posts_controller.rb, symbol: "PostsController#show", lines: [12, 16] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/idor_001.sh
+    notes: >
+      Post lookup is not scoped to current_user.org, allowing cross-tenant draft reads.
+
+  - id: XSS-STORED-001
+    variant_paths: { vuln: vuln/app/views/posts/show.html.erb, safe: safe/app/views/posts/show.html.erb }
+    symbol: posts/show comments
+    route: "GET /posts/{id}"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E-M
+    taint: cross-file
+    reachability: user
+    near_miss: NM-XSS-001
+    match:
+      http: { method: GET, path: "/posts/{id}" }
+      file: { path: vuln/app/views/posts/show.html.erb, symbol: "posts/show comments", lines: [9, 14] }
+    poc: ground-truth/verify/xss_stored_001.sh
+    notes: >
+      Stored comment body is rendered with raw.
+
+  - id: XSS-REFLECT-001
+    variant_paths: { vuln: vuln/app/views/posts/search.html.erb, safe: safe/app/views/posts/search.html.erb }
+    symbol: posts/search query
+    route: "GET /posts/search?q="
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/posts/search", params: [q] }
+      file: { path: vuln/app/views/posts/search.html.erb, symbol: "posts/search query", lines: [6, 9] }
+    poc: ground-truth/verify/xss_reflect_001.sh
+    notes: >
+      Search query is reflected with raw.
+
+  - id: REDIRECT-001
+    variant_paths: { vuln: vuln/app/controllers/redirects_controller.rb, safe: safe/app/controllers/redirects_controller.rb }
+    symbol: RedirectsController#show
+    route: "GET /goto?next="
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/goto", params: [next] }
+      file: { path: vuln/app/controllers/redirects_controller.rb, symbol: "RedirectsController#show", lines: [3, 6] }
+    poc: ground-truth/verify/redirect_001.sh
+    notes: >
+      redirect_to follows an arbitrary external next URL.
+
+  - id: CORS-001
+    variant_paths: { vuln: vuln/config/application.rb, safe: safe/config/application.rb }
+    symbol: Rack::Cors configuration
+    route: "GET /api/posts/search (Origin reflected)"
+    cwe: CWE-942
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/posts/search" }
+      file: { path: vuln/config/application.rb, symbol: "Rack::Cors configuration", lines: [14, 20] }
+    poc: ground-truth/verify/cors_001.sh
+    notes: >
+      rack-cors reflects arbitrary Origin while allowing credentials.
+
+  - id: TRAVERSAL-001
+    variant_paths: { vuln: vuln/app/controllers/attachments_controller.rb, safe: safe/app/controllers/attachments_controller.rb }
+    symbol: AttachmentsController#download
+    route: "GET /api/attachments/download?name="
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/attachments/download", params: [name] }
+      file: { path: vuln/app/controllers/attachments_controller.rb, symbol: "AttachmentsController#download", lines: [3, 7] }
+    poc: ground-truth/verify/traversal_001.sh
+    notes: >
+      User-controlled attachment name reaches send_file without containment check.
+
+  - id: CSRF-001
+    variant_paths: { vuln: vuln/app/controllers/application_controller.rb, safe: safe/app/controllers/application_controller.rb }
+    symbol: ApplicationController CSRF API skip
+    route: "POST /api/csrf/profile"
+    cwe: CWE-352
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/csrf/profile" }
+      file: { path: vuln/app/controllers/application_controller.rb, symbol: "ApplicationController CSRF API skip", lines: [1, 26] }
+    poc: ground-truth/verify/csrf_001.sh
+    notes: >
+      Cookie-authenticated state-changing profile endpoint skips CSRF verification.
+
+  - id: BILLING-001
+    variant_paths: { vuln: vuln/app/controllers/billing_controller.rb, safe: safe/app/controllers/billing_controller.rb }
+    symbol: BillingController#update
+    route: "POST /api/billing/seats"
+    cwe: CWE-840
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/billing/seats" }
+      file: { path: vuln/app/controllers/billing_controller.rb, symbol: "BillingController#update", lines: [6, 10] }
+    poc: ground-truth/verify/billing_001.sh
+    notes: >
+      Negative seat limits are accepted and persisted.
+
+  - id: RACE-001
+    variant_paths: { vuln: vuln/app/controllers/invites_controller.rb, safe: safe/app/controllers/invites_controller.rb }
+    symbol: InvitesController#create
+    route: "POST /api/invites"
+    cwe: CWE-362
+    owasp: "A04:2021-Insecure Design"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/invites" }
+      file: { path: vuln/app/controllers/invites_controller.rb, symbol: "InvitesController#create", lines: [6, 16] }
+    poc: ground-truth/verify/race_001.sh
+    notes: >
+      Seat limit check and update are not protected by a lock/transaction.
+
+  - id: UPLOAD-001
+    variant_paths: { vuln: vuln/app/controllers/uploads_controller.rb, safe: safe/app/controllers/uploads_controller.rb }
+    symbol: UploadsController#create
+    route: "POST /api/uploads"
+    cwe: CWE-434
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/uploads" }
+      file: { path: vuln/app/controllers/uploads_controller.rb, symbol: "UploadsController#create", lines: [8, 12] }
+    poc: ground-truth/verify/upload_001.sh
+    notes: >
+      SVG upload is accepted and served from the web root as active content.
+
+near_misses:
+  - id: NM-MASSASSIGN-001
+    path: vuln/app/controllers/profiles_controller.rb
+    symbol: ProfilesController#update
+    of: MASSASSIGN-001
+    match:
+      file: { path: vuln/app/controllers/profiles_controller.rb, symbol: "ProfilesController#update", lines: [1, 10] }
+    notes: "Explicit strong params only permit display_name and bio."
+  - id: NM-YAML-001
+    path: vuln/app/controllers/imports_controller.rb
+    symbol: ImportsController#json_import
+    of: YAML-001
+    match:
+      file: { path: vuln/app/controllers/imports_controller.rb, symbol: "ImportsController#json_import", lines: [11, 18] }
+    notes: "JSON.parse imports primitive data and does not instantiate Ruby objects."
+  - id: NM-SSTI-001
+    path: vuln/app/controllers/previews_controller.rb
+    symbol: PreviewsController#safe_preview
+    of: SSTI-001
+    match:
+      file: { path: vuln/app/controllers/previews_controller.rb, symbol: "PreviewsController#safe_preview", lines: [6, 11] }
+    notes: "Safe preview renders user input as plain text."
+  - id: NM-REGEX-001
+    path: safe/app/controllers/admin_checks_controller.rb
+    symbol: AdminChecksController#check_email
+    of: REGEX-001
+    match:
+      file: { path: safe/app/controllers/admin_checks_controller.rb, symbol: "AdminChecksController#check_email", lines: [2, 3] }
+    notes: 'The safe twin uses \A and \z absolute anchors.'
+  - id: NM-SQL-001
+    path: safe/app/controllers/posts_controller.rb
+    symbol: PostsController#search
+    of: SQLI-001
+    match:
+      file: { path: safe/app/controllers/posts_controller.rb, symbol: "PostsController#search", lines: [4, 5] }
+    notes: "The safe twin binds q as an ActiveRecord parameter."
+  - id: NM-XSS-001
+    path: vuln/app/views/posts/show.html.erb
+    symbol: post title rendering
+    of: XSS-STORED-001
+    match:
+      file: { path: vuln/app/views/posts/show.html.erb, symbol: "post title rendering" }
+    notes: "The post title is rendered through normal ERB escaping."

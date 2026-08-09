@@ -1,0 +1,5 @@
+FROM node:22-slim
+WORKDIR /app
+COPY internal-sink.mjs ./
+EXPOSE 9099
+CMD ["node", "/app/internal-sink.mjs"]

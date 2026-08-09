@@ -1,0 +1,2 @@
+[debug] WP_DEBUG_DISPLAY enabled
+Fatal error: stack trace leaks /app/public/wp-config.php

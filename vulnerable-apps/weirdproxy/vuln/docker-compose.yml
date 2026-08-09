@@ -1,0 +1,30 @@
+name: vuln-weirdproxy
+services:
+  origin:
+    build: ./origin
+    # internal only — the proxies are the security boundary; never published.
+    expose: ["9000"]
+
+  nginx:
+    build: ./nginx
+    ports: ["127.0.0.1:${DYNAST_PORT:-13311}:80"]
+    depends_on:
+      origin: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/api/_verify/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+
+  apache:
+    build: ./apache
+    ports: ["127.0.0.1:${DYNAST_PORT_APACHE_80:-13312}:80"]
+    depends_on:
+      origin: { condition: service_started }
+
+  traefik:
+    build: ./traefik
+    ports: ["127.0.0.1:${DYNAST_PORT_TRAEFIK_80:-13313}:80"]
+    depends_on:
+      origin: { condition: service_started }

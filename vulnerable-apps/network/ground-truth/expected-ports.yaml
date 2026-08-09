@@ -1,0 +1,315 @@
+app: network
+entry: http://127.0.0.1:13311
+ports:
+  - host: edge-proxy
+    ip: 10.89.1.10
+    segment: edge
+    port: 80
+    proto: tcp
+    state: open
+    service: "nginx http"
+    version: "nginx/1.19.0"
+  - host: edge-proxy
+    ip: 10.89.1.10
+    segment: edge
+    port: 443
+    proto: tcp
+    state: open
+    service: "nginx https weak-tls"
+    version: "nginx/1.19.0 OpenSSL/1.0.1"
+  - host: edge-proxy
+    ip: 10.89.1.10
+    segment: edge
+    port: 8443
+    proto: tcp
+    state: open
+    service: "nginx https strong near-miss"
+    version: "nginx/1.27 TLSv1.3"
+  - host: edge-proxy
+    ip: 10.89.1.10
+    segment: edge
+    port: 3306
+    proto: tcp
+    state: filtered
+    service: "mysql decoy"
+    version: "filtered"
+  - host: edge-bastion
+    ip: 10.89.1.11
+    segment: edge
+    port: 22
+    proto: tcp
+    state: open
+    service: "ssh"
+    version: "OpenSSH_7.2p2"
+  - host: edge-bastion
+    ip: 10.89.1.11
+    segment: edge
+    port: 2222
+    proto: tcp
+    state: open
+    service: "ssh hardened near-miss"
+    version: "OpenSSH_9.7 key-only"
+  - host: edge-ftp
+    ip: 10.89.1.12
+    segment: edge
+    port: 21
+    proto: tcp
+    state: open
+    service: "ftp"
+    version: "Pure-FTPd anonymous"
+  - host: edge-ftp
+    ip: 10.89.1.12
+    segment: edge
+    port: 30000
+    proto: tcp
+    state: open
+    service: "ftp passive"
+    version: "Pure-FTPd passive"
+  - host: edge-ftp
+    ip: 10.89.1.12
+    segment: edge
+    port: 30001
+    proto: tcp
+    state: open
+    service: "ftp passive"
+    version: "Pure-FTPd passive"
+  - host: edge-ftp
+    ip: 10.89.1.12
+    segment: edge
+    port: 30002
+    proto: tcp
+    state: open
+    service: "ftp passive"
+    version: "Pure-FTPd passive"
+  - host: edge-ftp
+    ip: 10.89.1.12
+    segment: edge
+    port: 30003
+    proto: tcp
+    state: open
+    service: "ftp passive"
+    version: "Pure-FTPd passive"
+  - host: edge-ftp
+    ip: 10.89.1.12
+    segment: edge
+    port: 30004
+    proto: tcp
+    state: open
+    service: "ftp passive"
+    version: "Pure-FTPd passive"
+  - host: edge-ftp
+    ip: 10.89.1.12
+    segment: edge
+    port: 30005
+    proto: tcp
+    state: open
+    service: "ftp passive"
+    version: "Pure-FTPd passive"
+  - host: edge-ftp
+    ip: 10.89.1.12
+    segment: edge
+    port: 30006
+    proto: tcp
+    state: open
+    service: "ftp passive"
+    version: "Pure-FTPd passive"
+  - host: edge-ftp
+    ip: 10.89.1.12
+    segment: edge
+    port: 30007
+    proto: tcp
+    state: open
+    service: "ftp passive"
+    version: "Pure-FTPd passive"
+  - host: edge-ftp
+    ip: 10.89.1.12
+    segment: edge
+    port: 30008
+    proto: tcp
+    state: open
+    service: "ftp passive"
+    version: "Pure-FTPd passive"
+  - host: edge-ftp
+    ip: 10.89.1.12
+    segment: edge
+    port: 30009
+    proto: tcp
+    state: open
+    service: "ftp passive"
+    version: "Pure-FTPd passive"
+  - host: edge-mail
+    ip: 10.89.1.13
+    segment: edge
+    port: 25
+    proto: tcp
+    state: open
+    service: "smtp"
+    version: "Postfix open-relay no-starttls"
+  - host: app-web
+    ip: 10.89.2.10
+    segment: app
+    port: 8080
+    proto: tcp
+    state: open
+    service: "http app"
+    version: "bench-web/1.0"
+  - host: app-web
+    ip: 10.89.2.10
+    segment: app
+    port: 31337
+    proto: tcp
+    state: open
+    service: "rogue bind shell"
+    version: "bench-shell"
+  - host: app-legacy
+    ip: 10.89.2.11
+    segment: app
+    port: 23
+    proto: tcp
+    state: open
+    service: "telnet"
+    version: "BusyBox telnetd cleartext"
+  - host: app-legacy
+    ip: 10.89.2.11
+    segment: app
+    port: 8000
+    proto: tcp
+    state: open
+    service: "legacy http"
+    version: "Apache-Coyote/1.1 vulnerable"
+  - host: data-postgres
+    ip: 10.89.3.10
+    segment: data
+    port: 5432
+    proto: tcp
+    state: open
+    service: "postgres"
+    version: "PostgreSQL 16 trust"
+  - host: data-redis
+    ip: 10.89.3.11
+    segment: data
+    port: 6379
+    proto: tcp
+    state: open
+    service: "redis"
+    version: "Redis 7 noauth"
+  - host: data-redis-secure
+    ip: 10.89.3.12
+    segment: data
+    port: 6380
+    proto: tcp
+    state: open
+    service: "redis secure near-miss"
+    version: "Redis 7 requirepass"
+  - host: data-mongo
+    ip: 10.89.3.13
+    segment: data
+    port: 27017
+    proto: tcp
+    state: open
+    service: "mongodb"
+    version: "MongoDB 7 noauth"
+  - host: data-elastic
+    ip: 10.89.3.14
+    segment: data
+    port: 9200
+    proto: tcp
+    state: open
+    service: "elasticsearch http"
+    version: "Elasticsearch 8 security-disabled"
+  - host: data-elastic
+    ip: 10.89.3.14
+    segment: data
+    port: 9300
+    proto: tcp
+    state: open
+    service: "elasticsearch transport"
+    version: "Elasticsearch transport no-tls"
+  - host: data-memcached
+    ip: 10.89.3.15
+    segment: data
+    port: 11211
+    proto: tcp
+    state: open
+    service: "memcached"
+    version: "memcached noauth"
+  - host: data-memcached
+    ip: 10.89.3.15
+    segment: data
+    port: 11211
+    proto: udp
+    state: open
+    service: "memcached udp"
+    version: "memcached udp enabled"
+  - host: mgmt-jenkins
+    ip: 10.89.4.10
+    segment: mgmt
+    port: 8080
+    proto: tcp
+    state: open
+    service: "jenkins"
+    version: "Jenkins anonymous script-console"
+  - host: mgmt-grafana
+    ip: 10.89.4.11
+    segment: mgmt
+    port: 3000
+    proto: tcp
+    state: open
+    service: "grafana"
+    version: "Grafana 11 default-admin anonymous"
+  - host: mgmt-rabbitmq
+    ip: 10.89.4.12
+    segment: mgmt
+    port: 5672
+    proto: tcp
+    state: open
+    service: "amqp"
+    version: "RabbitMQ guest/guest"
+  - host: mgmt-rabbitmq
+    ip: 10.89.4.12
+    segment: mgmt
+    port: 15672
+    proto: tcp
+    state: open
+    service: "rabbitmq management"
+    version: "RabbitMQ management guest/guest"
+  - host: mgmt-phpmyadmin
+    ip: 10.89.4.13
+    segment: mgmt
+    port: 8081
+    proto: tcp
+    state: open
+    service: "phpmyadmin"
+    version: "phpMyAdmin AllowNoPassword"
+  - host: mgmt-minio
+    ip: 10.89.4.14
+    segment: mgmt
+    port: 9000
+    proto: tcp
+    state: open
+    service: "minio api"
+    version: "MinIO default-root anonymous-bucket"
+  - host: mgmt-minio
+    ip: 10.89.4.14
+    segment: mgmt
+    port: 9001
+    proto: tcp
+    state: open
+    service: "minio console"
+    version: "MinIO console default-root"
+  - host: mgmt-snmp
+    ip: 10.89.4.15
+    segment: mgmt
+    port: 161
+    proto: udp
+    state: open
+    service: "snmp"
+    version: "SNMPv2c public"
+  - host: scanner
+    ip: 10.89.1.200
+    segment: edge
+    port: 3000
+    proto: tcp
+    state: open
+    service: "netmeta api"
+    version: "network-benchmark netmeta"

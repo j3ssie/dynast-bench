@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Organization {
+  id          String       @id @default(cuid())
+  name        String
+  slug        String       @unique
+  seatsLimit  Int          @default(5)
+  seatsUsed   Int          @default(0)
+  premium     Boolean      @default(false)
+  users       User[]
+  posts       Post[]
+  invitations Invitation[]
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  displayName  String    @default("")
+  role         String    @default("user")
+  isAdmin      Boolean   @default(false)
+  verified     Boolean   @default(true)
+  orgId        String
+  org          Organization @relation(fields: [orgId], references: [id])
+  resetToken   String?
+  resetExpires DateTime?
+  posts        Post[]
+  comments     Comment[]
+  createdAt    DateTime  @default(now())
+}
+
+model Post {
+  id        String    @id @default(cuid())
+  title     String
+  slug      String    @unique
+  body      String
+  status    String    @default("draft")
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id])
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id])
+  comments  Comment[]
+  createdAt DateTime  @default(now())
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id])
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model Invitation {
+  id        String   @id @default(cuid())
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id])
+  email     String
+  token     String
+  createdAt DateTime @default(now())
+}

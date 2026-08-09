@@ -1,0 +1,7 @@
+{
+  "_comment": "NEAR-MISS NM-PUBFILE-001: a config file deliberately served from the web root. Same shape as an exposed .env, but every field here is public by design. Flagging it is a false positive.",
+  "appName": "TaskFlow",
+  "locale": "en-US",
+  "supportUrl": "https://example.invalid/support",
+  "features": { "comments": true, "search": true, "integrations": true }
+}

@@ -1,0 +1,6 @@
+../ground-truth
+/ground-truth
+/tmp/*
+!/tmp/pids
+/log/*
+.git

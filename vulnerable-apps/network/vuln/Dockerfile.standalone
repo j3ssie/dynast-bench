@@ -1,0 +1,12 @@
+FROM node:22-bookworm-slim
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends curl ca-certificates openssl netcat-openbsd iproute2 iptables \
+ && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY package.json simulator.mjs entrypoint.standalone.sh internal-sink.mjs ./
+COPY tls ./tls
+RUN chmod +x /app/entrypoint.standalone.sh
+EXPOSE 13000
+HEALTHCHECK --interval=10s --timeout=5s --retries=12 --start-period=5s \
+  CMD curl -sf http://127.0.0.1:13000/api/_verify/health >/dev/null || exit 1
+CMD ["/app/entrypoint.standalone.sh"]

@@ -1,0 +1,1 @@
+Welcome to the Spring Boot benchmark uploads directory.

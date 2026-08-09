@@ -1,0 +1,5 @@
+// Present to mirror the NestJS plan's Prisma/raw-SQL shape. The implementation
+// uses node-postgres raw queries so the planted SQLi remains framework-visible.
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+model User { id Int @id @default(autoincrement()) email String @unique role String }

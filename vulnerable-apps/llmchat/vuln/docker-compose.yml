@@ -1,0 +1,57 @@
+services:
+  app:
+    build: ./
+    ports:
+      - "127.0.0.1:${DYNAST_PORT:-13311}:3000"
+    environment:
+      LLM_BACKEND: stub
+      DATABASE_URL: postgresql://bench:bench@postgres:5432/bench
+      REDIS_URL: redis://redis:6379
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: gemma3:1b
+      INTERNAL_URL: http://internal-svc:9099
+      JWT_SECRET: hardcoded-weak-secret
+      LLM_API_KEY: llm-test-key-admin-admin
+    depends_on:
+      internal-svc:
+        condition: service_started
+      ollama:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request,json; json.load(urllib.request.urlopen(\"http://127.0.0.1:3000/api/_verify/health\"))'"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bench
+      POSTGRES_PASSWORD: bench
+      POSTGRES_DB: bench
+    expose: ["5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bench"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  redis:
+    image: redis:7.4.0
+    expose: ["6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  ollama:
+    image: alpine:3.20
+    command:
+      - sh
+      - -c
+      - |
+        while true; do printf 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"models":[{"name":"gemma3:1b"}]}' | nc -l -p 11434; done
+    expose: ["11434"]
+  internal-svc:
+    build:
+      context: ./
+      dockerfile: Dockerfile.internal
+    expose: ["9099"]

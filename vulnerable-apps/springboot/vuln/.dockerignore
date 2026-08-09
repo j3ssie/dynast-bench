@@ -1,0 +1,5 @@
+target/
+.git/
+.gitignore
+../ground-truth/
+ground-truth/

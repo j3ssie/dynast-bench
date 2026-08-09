@@ -1,0 +1,3 @@
+package bench.web;
+import bench.db.Db; import bench.util.Util; import jakarta.servlet.http.*; import java.io.*; import java.sql.*;
+public class ProfileServlet extends HttpServlet { protected void doPost(HttpServletRequest req,HttpServletResponse resp)throws IOException{ Integer uid=Util.uid(req); if(uid==null){resp.sendError(401);return;} try(Connection c=Db.get(); PreparedStatement ps=c.prepareStatement("UPDATE users SET verified=? WHERE id=?")){ ps.setBoolean(1,true); ps.setInt(2,uid); ps.executeUpdate(); Util.text(resp,"updated"); }catch(Exception e){resp.setStatus(500);Util.text(resp,"internal error");} } }

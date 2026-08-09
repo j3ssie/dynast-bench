@@ -1,0 +1,47 @@
+name: vuln-laravel
+services:
+  app:
+    build: .
+    ports: ["127.0.0.1:${DYNAST_PORT:-13311}:80"]
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "true"
+      DB_HOST: mysql
+      DB_DATABASE: bench
+      DB_USERNAME: bench
+      DB_PASSWORD: bench
+      VERIFY_TOKEN: benchsecret
+      MAIL_HOST: mailpit
+      MAIL_PORT: "1025"
+    depends_on:
+      mysql: { condition: service_healthy }
+      mailpit: { condition: service_started }
+      phpmyadmin: { condition: service_started }
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/api/_verify/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 90s
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: bench
+      MYSQL_USER: bench
+      MYSQL_PASSWORD: bench
+      MYSQL_ROOT_PASSWORD: root
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+  phpmyadmin:
+    image: phpmyadmin:5.2.1
+    environment:
+      PMA_HOST: mysql
+      PMA_USER: bench
+      PMA_PASSWORD: bench
+    ports: ["127.0.0.1:${DYNAST_PORT_PHPMYADMIN_80:-13312}:80"]
+  mailpit:
+    image: axllent/mailpit:v1.20
+    ports: ["127.0.0.1:${DYNAST_PORT_MAILPIT_8025:-13313}:8025", "127.0.0.1:${DYNAST_PORT_MAILPIT_1025:-13314}:1025"]

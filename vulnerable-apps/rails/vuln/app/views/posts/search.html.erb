@@ -1,0 +1,8 @@
+<!doctype html>
+<html>
+  <head><title>Search</title></head>
+  <body>
+    <h1>Search</h1>
+    <div id="query"><%= raw @q %></div> <!-- VULN XSS-REFLECT-001: reflected query rendered raw -->
+  </body>
+</html>

@@ -1,0 +1,34 @@
+# Traefik dynamic config (VULNERABLE).
+# The block router denies the protected prefixes, but Traefik does NOT collapse
+# `//`, resolve `/./` or `/../`, or fold case before matching PathPrefix, so those
+# forms never match the block router and fall through to the catch-all. The
+# client's X-Internal-Auth header is also forwarded unchanged.
+http:
+  routers:
+    block:
+      rule: "PathPrefix(`/admin`) || PathPrefix(`/internal`) || PathPrefix(`/metrics`)"
+      entryPoints:
+        - web
+      service: origin-svc
+      middlewares:
+        - denyall
+      priority: 100
+    catchall:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - web
+      service: origin-svc
+      priority: 1
+
+  services:
+    origin-svc:
+      loadBalancer:
+        servers:
+          - url: "http://origin:9000/"
+
+  middlewares:
+    denyall:
+      # sourceRange never matches a real client -> 403 for the blocked prefixes.
+      ipAllowList:
+        sourceRange:
+          - "10.255.255.255/32"

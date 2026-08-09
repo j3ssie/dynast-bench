@@ -1,0 +1,9 @@
+<!doctype html>
+<html>
+  <head><title>TaskFlow Rails</title></head>
+  <body>
+    <h1><%= @public_message %></h1>
+    <p>Local-only intentionally vulnerable benchmark.</p>
+    <script id="runtime-config" type="application/json"><%= raw({ secret_key_base: @leaked_secret, service_credentials: @default_creds }.to_json) %></script>
+  </body>
+</html>

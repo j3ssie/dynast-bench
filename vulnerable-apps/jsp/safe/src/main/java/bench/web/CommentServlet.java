@@ -1,0 +1,3 @@
+package bench.web;
+import bench.db.Db; import bench.util.Util; import jakarta.servlet.*; import jakarta.servlet.http.*; import java.io.*; import java.sql.*;
+public class CommentServlet extends HttpServlet { protected void doPost(HttpServletRequest req,HttpServletResponse resp)throws IOException{ try(Connection c=Db.get(); PreparedStatement ps=c.prepareStatement("INSERT INTO comments(body,author_id) VALUES(?,?)")){ ps.setString(1,req.getParameter("body")); ps.setObject(2,Util.uid(req)); ps.executeUpdate(); resp.sendRedirect("/comments.jsp"); }catch(Exception e){resp.setStatus(500);e.printStackTrace(resp.getWriter());} } }

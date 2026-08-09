@@ -1,0 +1,38 @@
+# Traefik dynamic config (HARDENED).
+# PathRegexp with a case-insensitive substring match catches every //, /./, %2e,
+# and case variant of the protected names (Traefik does not normalise the path,
+# so the rule must). A middleware also strips the client X-Internal-Auth header.
+http:
+  routers:
+    block:
+      rule: "PathRegexp(`(?i)(admin|internal|metrics)`)"
+      entryPoints:
+        - web
+      service: origin-svc
+      middlewares:
+        - denyall
+      priority: 100
+    catchall:
+      rule: "PathPrefix(`/`)"
+      entryPoints:
+        - web
+      service: origin-svc
+      middlewares:
+        - strip-internal
+      priority: 1
+
+  services:
+    origin-svc:
+      loadBalancer:
+        servers:
+          - url: "http://origin:9000/"
+
+  middlewares:
+    denyall:
+      ipAllowList:
+        sourceRange:
+          - "10.255.255.255/32"
+    strip-internal:
+      headers:
+        customRequestHeaders:
+          X-Internal-Auth: ""

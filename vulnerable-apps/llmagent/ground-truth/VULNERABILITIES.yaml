@@ -1,0 +1,674 @@
+app: llmagent
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Shared Acme/Globex users; Globex draft and ticket contain GLOBEX-CONFIDENTIAL-MARKER-7f3a; weak admin/admin service credential in vuln.
+vulnerabilities:
+  - id: AGENCY-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: run_shell
+    route: "POST /api/runs"
+    cwe: CWE-78
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM06:2025-Excessive Agency"
+    severity: critical
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SHELL-001
+    tool: "run_shell"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: run_shell, lines: [45, 49] }
+      llm: { tool: run_shell, channel: user }
+    poc: ground-truth/verify/unrestricted_shell_001.sh
+    notes: >
+      run_shell executes model-supplied shell text with no allowlist.
+  - id: HITL-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: executeTool
+    route: "POST /api/runs"
+    cwe: CWE-807
+    owasp: "API5:2023-Broken Function Level Authorization"
+    llm_owasp: "LLM06:2025-Excessive Agency"
+    severity: critical
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: NM-HITL-001
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: executeTool, lines: [89, 89] }
+      llm: { channel: user }
+    poc: ground-truth/verify/hitl_bypass_001.sh
+    notes: >
+      Approval is skipped when model-supplied riskLevel says low.
+  - id: APPROVAL-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: approvalToken
+    route: "POST /api/approvals/redeem"
+    cwe: CWE-345
+    owasp: "API2:2023-Broken Authentication"
+    llm_owasp: "LLM06:2025-Excessive Agency"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/approvals/redeem" }
+      file: { path: vuln/src/app.mjs, symbol: approvalToken, lines: [66, 67] }
+      llm: { channel: user }
+    poc: ground-truth/verify/approval_replay_001.sh
+    notes: >
+      Approval token is not bound to the tool call and can be replayed.
+  - id: REFUND-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: refund_order
+    route: "POST /api/runs"
+    cwe: CWE-840
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM06:2025-Excessive Agency"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    tool: "refund_order"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: refund_order }
+      llm: { tool: refund_order, channel: user }
+    poc: ground-truth/verify/refund_abuse_001.sh
+    notes: >
+      Refund tool accepts negative or excessive amounts without confirmation.
+  - id: AGENCY-002
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: delegate
+    route: "POST /api/runs"
+    cwe: CWE-674
+    owasp: "API4:2023-Unrestricted Resource Consumption"
+    llm_owasp: "LLM06:2025-Excessive Agency"
+    severity: high
+    difficulty: M-H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    tool: "delegate"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: delegate }
+      llm: { tool: delegate, channel: user }
+    poc: ground-truth/verify/autonomy_loop_001.sh
+    notes: >
+      No step or delegate fan-out budget allows unbounded work.
+  - id: IPI-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: browse
+    route: "POST /api/runs"
+    cwe: CWE-1427
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM01:2025-Prompt Injection"
+    severity: critical
+    difficulty: H
+    taint: cross-service
+    reachability: user
+    near_miss: null
+    tool: "browse"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: browse }
+      llm: { tool: browse, channel: user }
+    poc: ground-truth/verify/browse_injection_001.sh
+    notes: >
+      Browsed page text is treated as instructions and can trigger tools.
+  - id: IPI-002
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: sql_query
+    route: "POST /api/runs"
+    cwe: CWE-1427
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM01:2025-Prompt Injection"
+    severity: critical
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    tool: "sql_query"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: sql_query }
+      llm: { tool: sql_query, channel: user }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/tool_result_injection_001.sh
+    notes: >
+      Tool results are reinserted raw and can contain second-order tool-call instructions.
+  - id: MCP-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: effectiveTool
+    route: "POST /api/runs"
+    cwe: CWE-1427
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM03:2025-Supply Chain"
+    severity: critical
+    difficulty: H
+    taint: cross-service
+    reachability: user
+    near_miss: NM-MCP-001
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: effectiveTool, lines: [71, 80] }
+      llm: { channel: user }
+    poc: ground-truth/verify/mcp_description_001.sh
+    notes: >
+      MCP descriptions are trusted as system prompt material.
+  - id: MCP-002
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: effectiveTool
+    route: "POST /api/runs"
+    cwe: CWE-494
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM03:2025-Supply Chain"
+    severity: high
+    difficulty: H
+    taint: cross-service
+    reachability: user
+    near_miss: NM-MCP-001
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: effectiveTool }
+      llm: { channel: user }
+    poc: ground-truth/verify/mcp_rugpull_001.sh
+    notes: >
+      MCP tool metadata is re-fetched and not pinned.
+  - id: MCP-003
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: effectiveTool
+    route: "POST /api/mcp/servers"
+    cwe: CWE-706
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM03:2025-Supply Chain"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: user
+    near_miss: NM-MCP-001
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/mcp/servers" }
+      file: { path: vuln/src/app.mjs, symbol: effectiveTool }
+      llm: { channel: user }
+    poc: ground-truth/verify/mcp_shadow_001.sh
+    notes: >
+      Tool resolution by bare name lets partner MCP shadow local tools.
+  - id: PROMPT-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: executeMarkers
+    route: "POST /api/runs"
+    cwe: CWE-1427
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM01:2025-Prompt Injection"
+    severity: high
+    difficulty: M-H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    tool: "executeMarkers"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: executeMarkers, lines: [100, 136] }
+      llm: { tool: executeMarkers, channel: user }
+    poc: ground-truth/verify/flattened_prompt_001.sh
+    notes: >
+      Flattened prompt representation gives untrusted text instruction authority.
+  - id: SQL-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: toolSql
+    route: "POST /api/runs"
+    cwe: CWE-89
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM05:2025-Improper Output Handling"
+    severity: critical
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: NM-SQL-001
+    tool: "toolSql"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: toolSql, lines: [81, 84] }
+      llm: { tool: toolSql, channel: user }
+    poc: ground-truth/verify/sql_owner_write_001.sh
+    notes: >
+      Model-authored SQL runs with owner privileges and accepts writes.
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: toolFetch
+    route: "POST /api/runs"
+    cwe: CWE-918
+    owasp: "API7:2023-Server Side Request Forgery"
+    llm_owasp: "LLM05:2025-Improper Output Handling"
+    severity: critical
+    difficulty: M
+    taint: cross-service
+    reachability: user
+    near_miss: NM-FETCH-001
+    tool: "toolFetch"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: toolFetch, lines: [85, 88] }
+      llm: { tool: toolFetch, channel: user }
+    poc: ground-truth/verify/ssrf_internal_001.sh
+    notes: >
+      http_fetch reaches internal metadata targets.
+  - id: SSRF-002
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: toolFetch
+    route: "POST /api/runs"
+    cwe: CWE-918
+    owasp: "API7:2023-Server Side Request Forgery"
+    llm_owasp: "LLM05:2025-Improper Output Handling"
+    severity: high
+    difficulty: H
+    taint: cross-service
+    reachability: user
+    near_miss: NM-FETCH-001
+    tool: "toolFetch"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: toolFetch }
+      llm: { tool: toolFetch, channel: user }
+    poc: ground-truth/verify/ssrf_redirect_001.sh
+    notes: >
+      Allowlisted fetch follows redirects to internal hosts.
+  - id: FILE-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: read_file
+    route: "POST /api/runs"
+    cwe: CWE-22
+    owasp: "API1:2023-Broken Object Property Level Authorization"
+    llm_owasp: "LLM05:2025-Improper Output Handling"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-FILE-001
+    tool: "read_file"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: read_file }
+      llm: { tool: read_file, channel: user }
+    poc: ground-truth/verify/traversal_read_001.sh
+    notes: >
+      read_file joins paths without containment.
+  - id: FILE-002
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: write_file
+    route: "POST /api/runs"
+    cwe: CWE-434
+    owasp: "API1:2023-Broken Object Property Level Authorization"
+    llm_owasp: "LLM06:2025-Excessive Agency"
+    severity: critical
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    tool: "write_file"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: write_file }
+      llm: { tool: write_file, channel: user }
+    poc: ground-truth/verify/self_mod_rce_001.sh
+    notes: >
+      write_file can write app tool code that is loaded by later runs.
+  - id: CMD-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: create_ticket
+    route: "POST /api/runs"
+    cwe: CWE-78
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM05:2025-Improper Output Handling"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-SHELL-001
+    tool: "create_ticket"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: create_ticket }
+      llm: { tool: create_ticket, channel: user }
+    poc: ground-truth/verify/cmd_injection_001.sh
+    notes: >
+      create_ticket interpolates title into a shell command.
+  - id: CHECKPOINT-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: resumeCheckpoint
+    route: "POST /api/checkpoints/resume"
+    cwe: CWE-502
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM04:2025-Data and Model Poisoning"
+    severity: critical
+    difficulty: M-H
+    taint: cross-service
+    reachability: user
+    near_miss: null
+    tool: "resumeCheckpoint"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/checkpoints/resume" }
+      file: { path: vuln/src/app.mjs, symbol: resumeCheckpoint }
+      llm: { tool: resumeCheckpoint, channel: user }
+    poc: ground-truth/verify/eval_checkpoint_001.sh
+    notes: >
+      Checkpoint revive uses eval on stored state.
+  - id: MEM-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: memory_write
+    route: "POST /api/runs"
+    cwe: CWE-863
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM04:2025-Data and Model Poisoning"
+    severity: critical
+    difficulty: H
+    taint: cross-service
+    reachability: user
+    near_miss: NM-MEM-001
+    tool: "memory_write"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: memory_write }
+      llm: { tool: memory_write, channel: user }
+    poc: ground-truth/verify/memory_poison_001.sh
+    notes: >
+      Agent memory is global and auto-injected into later runs.
+  - id: BOLA-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: runView
+    route: "GET /api/runs/{id}"
+    cwe: CWE-639
+    owasp: "API1:2023-Broken Object Property Level Authorization"
+    llm_owasp: "LLM02:2025-Sensitive Information Disclosure"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: null
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: GET, path: "/api/runs/{id}" }
+      file: { path: vuln/src/app.mjs, symbol: runView, lines: [150, 151] }
+      llm: { channel: user }
+    poc: ground-truth/verify/bola_runs_001.sh
+    notes: >
+      Run transcripts are readable across tenants.
+  - id: EXPORT-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: exports
+    route: "GET /exports/"
+    cwe: CWE-548
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM02:2025-Sensitive Information Disclosure"
+    severity: medium
+    difficulty: E
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: GET, path: "/exports/" }
+      file: { path: vuln/src/app.mjs, symbol: exports, lines: [16, 44] }
+      llm: { channel: user }
+    poc: ground-truth/verify/export_dirlist_001.sh
+    notes: >
+      Raw transcripts are exported into a listable static directory.
+  - id: BFLA-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: toolEnable
+    route: "POST /api/agents/{id}/tools"
+    cwe: CWE-862
+    owasp: "API5:2023-Broken Function Level Authorization"
+    llm_owasp: "LLM06:2025-Excessive Agency"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/agents/{id}/tools" }
+      file: { path: vuln/src/app.mjs, symbol: toolEnable, lines: [171, 187] }
+      llm: { channel: user }
+    poc: ground-truth/verify/tool_enable_bfla_001.sh
+    notes: >
+      Any user can enable powerful tools on an agent.
+  - id: AUTHZ-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: callerContext
+    route: "POST /api/runs"
+    cwe: CWE-269
+    owasp: "API5:2023-Broken Function Level Authorization"
+    llm_owasp: "LLM06:2025-Excessive Agency"
+    severity: critical
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-AUTHZ-001
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: callerContext, lines: [68, 69] }
+      llm: { channel: user }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/confused_deputy_001.sh
+    notes: >
+      Tool executor runs as service identity instead of requester.
+  - id: MCPAUTH-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: mcp_call
+    route: "POST /api/runs"
+    cwe: CWE-522
+    owasp: "API2:2023-Broken Authentication"
+    llm_owasp: "LLM02:2025-Sensitive Information Disclosure"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: user
+    near_miss: null
+    tool: "mcp_call"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: mcp_call, lines: [90, 99] }
+      llm: { tool: mcp_call, channel: user }
+    poc: ground-truth/verify/mcp_bearer_confusion_001.sh
+    notes: >
+      User bearer token is forwarded to partner MCP.
+  - id: MCPRCE-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: mcpServers
+    route: "POST /api/mcp/servers"
+    cwe: CWE-78
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "LLM03:2025-Supply Chain"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    tool: "mcpServers"
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/mcp/servers" }
+      file: { path: vuln/src/app.mjs, symbol: mcpServers, lines: [50, 65] }
+      llm: { tool: mcpServers, channel: user }
+    poc: ground-truth/verify/mcp_spawn_rce_001.sh
+    notes: >
+      Client-controlled MCP command spawns arbitrary processes.
+  - id: MODEL-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: startRun
+    route: "POST /api/runs"
+    cwe: CWE-918
+    owasp: "API7:2023-Server Side Request Forgery"
+    llm_owasp: "LLM03:2025-Supply Chain"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: user
+    near_miss: null
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: startRun, lines: [137, 149] }
+      llm: { channel: user }
+    poc: ground-truth/verify/client_model_options_001.sh
+    notes: >
+      Client controls llmBaseUrl and model options.
+  - id: RACE-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: startRun
+    route: "POST /api/runs"
+    cwe: CWE-362
+    owasp: "API4:2023-Unrestricted Resource Consumption"
+    llm_owasp: "LLM10:2025-Unbounded Consumption"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: startRun }
+      llm: { channel: user }
+    poc: ground-truth/verify/quota_race_001.sh
+    notes: >
+      Quota reservation is check-then-decrement and races.
+  - id: CORS-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: corsHeaders
+    route: "POST /api/runs"
+    cwe: CWE-942
+    owasp: "API8:2023-Security Misconfiguration"
+    llm_owasp: "API8:2023-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: POST, path: "/api/runs" }
+      file: { path: vuln/src/app.mjs, symbol: corsHeaders, lines: [152, 170] }
+      llm: { channel: user }
+    poc: ground-truth/verify/cors_csrf_001.sh
+    notes: >
+      Reflective credentialed CORS and no CSRF token allow cross-site run start.
+  - id: SECRET-001
+    variant_paths: { vuln: vuln/src/app.mjs, safe: safe/src/app.mjs }
+    symbol: config
+    route: "GET /api/config"
+    cwe: CWE-798
+    owasp: "API2:2023-Broken Authentication"
+    llm_owasp: "API2:2023-Broken Authentication"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    tool: ""
+    injection_channel: user
+    match:
+      http: { method: GET, path: "/api/config" }
+      file: { path: vuln/src/app.mjs, symbol: config }
+      llm: { channel: user }
+      markers: [hardcoded-weak-secret]
+    poc: ground-truth/verify/hardcoded_secrets_001.sh
+    notes: >
+      Hardcoded JWT/MCP/service secrets and weak admin/admin seed are exposed.
+near_misses:
+  - id: NM-SHELL-001
+    path: vuln/src/app.mjs
+    symbol: runShell safe branch / safeShell
+    of: AGENCY-001
+    match:
+      file: { path: vuln/src/app.mjs, symbol: "runShell safe branch / safeShell" }
+    notes: "execFile allowlist sibling in safe variant."
+  - id: NM-HITL-001
+    path: vuln/src/app.mjs
+    symbol: executeTool static risk map
+    of: HITL-001
+    match:
+      file: { path: vuln/src/app.mjs, symbol: "executeTool static risk map" }
+    notes: "Risk derived from static tool map, not model input."
+  - id: NM-SQL-001
+    path: vuln/src/app.mjs
+    symbol: toolSql read-only branch
+    of: SQL-001
+    match:
+      file: { path: vuln/src/app.mjs, symbol: "toolSql read-only branch" }
+    notes: "Read-only query path rejects non-SELECT and scopes to requester org."
+  - id: NM-FETCH-001
+    path: vuln/src/app.mjs
+    symbol: toolFetch safe branch
+    of: SSRF-001
+    match:
+      file: { path: vuln/src/app.mjs, symbol: "toolFetch safe branch" }
+    notes: "Host and private-IP restrictions with manual redirects in safe variant."
+  - id: NM-FILE-001
+    path: vuln/src/app.mjs
+    symbol: safePath
+    of: FILE-001
+    match:
+      file: { path: vuln/src/app.mjs, symbol: safePath, lines: [70, 70] }
+    notes: "Resolved path must remain under workspace."
+  - id: NM-MCP-001
+    path: vuln/src/app.mjs
+    symbol: effectiveTool safe branch
+    of: MCP-001
+    match:
+      file: { path: vuln/src/app.mjs, symbol: "effectiveTool safe branch" }
+    notes: "Tool metadata pinned and namespaced in safe variant."
+  - id: NM-MEM-001
+    path: vuln/src/app.mjs
+    symbol: memory_write scoped branch
+    of: MEM-001
+    match:
+      file: { path: vuln/src/app.mjs, symbol: "memory_write scoped branch" }
+    notes: "Memory records are scoped to requester org."
+  - id: NM-AUTHZ-001
+    path: vuln/src/app.mjs
+    symbol: callerContext safe branch
+    of: AUTHZ-001
+    match:
+      file: { path: vuln/src/app.mjs, symbol: "callerContext safe branch" }
+    notes: "Tool identity is requester, not service token."

@@ -1,0 +1,603 @@
+# Ground-truth answer key for the aspnet vulnerable app.
+# This file lives outside both build contexts and is never baked into an image.
+app: aspnet
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex. user2@bench.local is in Globex for cross-tenant IDOR.
+  A Globex DRAFT carries GLOBEX-CONFIDENTIAL-MARKER-7f3a. Weak admin/admin is present in vuln.
+vulnerabilities:
+  - id: OVERPOST-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: overpost_001
+    route: "POST /api/users/me"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: NM-BIND-001
+    match:
+      http: { method: POST, path: "/api/users/me" }
+      file: { path: vuln/Program.cs, symbol: overpost_001 }
+    poc: ground-truth/verify/overpost_001.sh
+    notes: >
+      Profile update binds Role/IsAdmin from request body and persists them.
+
+  - id: DESER-BIN-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: deser_bin_001
+    route: "POST /api/import/binary"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: critical
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-DESER-001
+    match:
+      http: { method: POST, path: "/api/import/binary" }
+      file: { path: vuln/Program.cs, symbol: deser_bin_001, lines: [44, 53] }
+    poc: ground-truth/verify/deser_bin_001.sh
+    notes: >
+      BinaryFormatter deserializes attacker-controlled data.
+
+  - id: DESER-JSON-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: deser_json_001
+    route: "POST /api/import/json"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: critical
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-DESER-002
+    match:
+      http: { method: POST, path: "/api/import/json" }
+      file: { path: vuln/Program.cs, symbol: deser_json_001 }
+    poc: ground-truth/verify/deser_json_001.sh
+    notes: >
+      Json.NET TypeNameHandling.All allows attacker-chosen type construction.
+
+  - id: XXE-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: xxe_001
+    route: "POST /api/import/xml"
+    cwe: CWE-611
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-XML-001
+    match:
+      http: { method: POST, path: "/api/import/xml" }
+      file: { path: vuln/Program.cs, symbol: xxe_001 }
+      markers: [BenchPlaintextSecret-aspnet-123]
+    poc: ground-truth/verify/xxe_001.sh
+    notes: >
+      XmlDocument expands external entities.
+
+  - id: SQLI-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: sqli_001
+    route: "GET /api/posts/search?q="
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SQL-001
+    match:
+      http: { method: GET, path: "/api/posts/search", params: [q] }
+      file: { path: vuln/Program.cs, symbol: sqli_001, lines: [36, 40] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_001.sh
+    notes: >
+      Search concatenates q into SqlCommand.
+
+  - id: SQLI-002
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: sqli_002
+    route: "GET /api/reports/run"
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-SQL-002
+    match:
+      http: { method: GET, path: "/api/reports/run" }
+      file: { path: vuln/Program.cs, symbol: sqli_002, lines: [42, 42] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_second_001.sh
+    notes: >
+      Stored report filter is later concatenated into SQL.
+
+  - id: XSS-001
+    variant_paths: { vuln: vuln/Pages/Comments.cshtml, safe: safe/Pages/Comments.cshtml }
+    symbol: xss_001
+    route: "GET /comments"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E-M
+    taint: cross-file
+    reachability: user
+    near_miss: NM-XSS-001
+    match:
+      http: { method: GET, path: "/comments" }
+      file: { path: vuln/Pages/Comments.cshtml, symbol: xss_001, lines: [4, 4] }
+    poc: ground-truth/verify/xss_stored_001.sh
+    notes: >
+      Stored comments render with Html.Raw.
+
+  - id: XSS-002
+    variant_paths: { vuln: vuln/Pages/Search.cshtml, safe: safe/Pages/Search.cshtml }
+    symbol: xss_002
+    route: "GET /search?q="
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-XSS-002
+    match:
+      http: { method: GET, path: "/search", params: [q] }
+      file: { path: vuln/Pages/Search.cshtml, symbol: xss_002, lines: [3, 3] }
+    poc: ground-truth/verify/xss_reflected_001.sh
+    notes: >
+      Search q renders with Html.Raw.
+
+  - id: OPENREDIR-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: openredir_001
+    route: "GET /login?returnUrl="
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/login", params: [returnUrl] }
+      file: { path: vuln/Program.cs, symbol: openredir_001, lines: [28, 31] }
+    poc: ground-truth/verify/open_redirect_001.sh
+    notes: >
+      Login redirects to arbitrary returnUrl.
+
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: ssrf_001
+    route: "GET /api/fetch?url="
+    cwe: CWE-918
+    owasp: "A10:2021-SSRF"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: NM-FETCH-001
+    match:
+      http: { method: GET, path: "/api/fetch", params: [url] }
+      file: { path: vuln/Program.cs, symbol: ssrf_001 }
+    poc: ground-truth/verify/ssrf_001.sh
+    notes: >
+      Server-side HttpClient fetches arbitrary URL.
+
+  - id: CMD-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: cmd_001
+    route: "GET /api/export?format="
+    cwe: CWE-78
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-CMD-001
+    match:
+      http: { method: GET, path: "/api/export", params: [format] }
+      file: { path: vuln/Program.cs, symbol: cmd_001 }
+    poc: ground-truth/verify/cmd_001.sh
+    notes: >
+      Export format is passed to /bin/sh -c.
+
+  - id: TRAVERSAL-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: traversal_001
+    route: "GET /api/files/download?name="
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-PATH-001
+    match:
+      http: { method: GET, path: "/api/files/download", params: [name] }
+      file: { path: vuln/Program.cs, symbol: traversal_001 }
+      markers: [BenchPlaintextSecret-aspnet-123]
+    poc: ground-truth/verify/traversal_001.sh
+    notes: >
+      Download lacks path containment.
+
+  - id: IDOR-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: idor_001
+    route: "GET /api/posts/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/posts/{id}" }
+      file: { path: vuln/Program.cs, symbol: idor_001 }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/idor_001.sh
+    notes: >
+      Acme user reads Globex draft by id.
+
+  - id: BFLA-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: bfla_001
+    route: "GET /api/admin/users"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/admin/users" }
+      file: { path: vuln/Program.cs, symbol: bfla_001 }
+    poc: ground-truth/verify/bfla_001.sh
+    notes: >
+      Admin listing lacks role check.
+
+  - id: CSRF-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: csrf_001
+    route: "POST /api/profile/csrf-note"
+    cwe: CWE-352
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/profile/csrf-note" }
+      file: { path: vuln/Program.cs, symbol: csrf_001 }
+    poc: ground-truth/verify/csrf_001.sh
+    notes: >
+      State-changing POST lacks anti-forgery validation.
+
+  - id: JWT-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: jwt_001
+    route: "GET /api/reports/admin-summary"
+    cwe: CWE-347
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/reports/admin-summary" }
+      file: { path: vuln/Program.cs, symbol: jwt_001 }
+    poc: ground-truth/verify/jwt_001.sh
+    notes: >
+      Bearer auth accepts alg:none role=admin.
+
+  - id: RATE-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: rate_001
+    route: "GET /api/auth/rate-probe"
+    cwe: CWE-307
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/auth/rate-probe" }
+      file: { path: vuln/Program.cs, symbol: rate_001 }
+    poc: ground-truth/verify/rate_001.sh
+    notes: >
+      Repeated auth attempts never rate-limit.
+
+  - id: ENUM-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: enum_001
+    route: "POST /api/auth/login"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/Program.cs, symbol: enum_001 }
+    poc: ground-truth/verify/enum_001.sh
+    notes: >
+      Login reveals nonexistent users.
+
+  - id: RESET-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: reset_001
+    route: "POST /api/auth/reset/request"
+    cwe: CWE-640
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/reset/request" }
+      file: { path: vuln/Program.cs, symbol: reset_001 }
+    poc: ground-truth/verify/reset_001.sh
+    notes: >
+      Reset token is predictable.
+
+  - id: COOKIE-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: cookie_001
+    route: "POST /api/auth/login"
+    cwe: CWE-614
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/Program.cs, symbol: cookie_001 }
+    poc: ground-truth/verify/cookie_001.sh
+    notes: >
+      Auth cookie lacks secure flags.
+
+  - id: CORS-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: cors_001
+    route: "GET /api/cors/secret"
+    cwe: CWE-942
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/cors/secret" }
+      file: { path: vuln/Program.cs, symbol: cors_001 }
+    poc: ground-truth/verify/cors_001.sh
+    notes: >
+      CORS reflects arbitrary Origin with credentials.
+
+  - id: ERROR-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: error_001
+    route: "GET /api/debug/crash"
+    cwe: CWE-209
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-ERROR-001
+    match:
+      http: { method: GET, path: "/api/debug/crash" }
+      file: { path: vuln/Program.cs, symbol: error_001 }
+    poc: ground-truth/verify/error_001.sh
+    notes: >
+      Developer exception page enabled in Production.
+
+  - id: CONFIG-001
+    variant_paths: { vuln: vuln/appsettings.json, safe: safe/appsettings.json }
+    symbol: config_001
+    route: "GET /api/config/client"
+    cwe: CWE-798
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/config/client" }
+      file: { path: vuln/appsettings.json, symbol: config_001, lines: [3, 3] }
+      markers: [BenchPlaintextSecret-aspnet-123]
+    poc: ground-truth/verify/config_001.sh
+    notes: >
+      Plaintext appsettings secret is exposed.
+
+  - id: CRYPTO-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: crypto_001
+    route: "GET /api/crypto/hash?text="
+    cwe: CWE-327
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/crypto/hash", params: [text] }
+      file: { path: vuln/Program.cs, symbol: crypto_001 }
+    poc: ground-truth/verify/crypto_001.sh
+    notes: >
+      Endpoint uses deterministic MD5.
+
+  - id: UPLOAD-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: upload_001
+    route: "POST /api/upload/avatar"
+    cwe: CWE-434
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/upload/avatar" }
+      file: { path: vuln/Program.cs, symbol: upload_001 }
+    poc: ground-truth/verify/upload_001.sh
+    notes: >
+      Upload accepts arbitrary extension.
+
+  - id: BILLING-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: billing_001
+    route: "POST /api/billing/seats"
+    cwe: CWE-840
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/billing/seats" }
+      file: { path: vuln/Program.cs, symbol: billing_001 }
+    poc: ground-truth/verify/billing_001.sh
+    notes: >
+      Billing accepts negative seats.
+
+  - id: RACE-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: race_001
+    route: "POST /api/invite"
+    cwe: CWE-362
+    owasp: "A04:2021-Insecure Design"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/invite" }
+      file: { path: vuln/Program.cs, symbol: race_001, lines: [55, 55] }
+    poc: ground-truth/verify/race_001.sh
+    notes: >
+      Invite check/increment is not locked.
+
+  - id: DEFAULTCREDS-001
+    variant_paths: { vuln: vuln/Program.cs, safe: safe/Program.cs }
+    symbol: defaultcreds_001
+    route: "POST /api/auth/login"
+    cwe: CWE-798
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/Program.cs, symbol: defaultcreds_001 }
+    poc: ground-truth/verify/default_creds_001.sh
+    notes: >
+      Legacy admin/admin default service credential is accepted.
+
+near_misses:
+  - id: NM-BIND-001
+    path: safe/Program.cs
+    symbol: POST /api/users/me scoped DTO
+    of: OVERPOST-001
+    match:
+      file: { path: safe/Program.cs, symbol: "POST /api/users/me scoped DTO" }
+    notes: "Safe twin updates only displayName/bio."
+  - id: NM-DESER-001
+    path: safe/Program.cs
+    symbol: typed base64 JSON import
+    of: DESER-BIN-001
+    match:
+      file: { path: safe/Program.cs, symbol: "typed base64 JSON import" }
+    notes: "Safe twin avoids BinaryFormatter."
+  - id: NM-DESER-002
+    path: safe/Program.cs
+    symbol: System.Text.Json import
+    of: DESER-JSON-001
+    match:
+      file: { path: safe/Program.cs, symbol: "System.Text.Json import" }
+    notes: "Safe twin avoids TypeNameHandling."
+  - id: NM-XML-001
+    path: safe/Program.cs
+    symbol: hardened XmlReader
+    of: XXE-001
+    match:
+      file: { path: safe/Program.cs, symbol: "hardened XmlReader" }
+    notes: "Safe twin prohibits DTD and nulls resolver."
+  - id: NM-SQL-001
+    path: safe/Program.cs
+    symbol: SearchSafe
+    of: SQLI-001
+    match:
+      file: { path: safe/Program.cs, symbol: SearchSafe, lines: [125, 128] }
+    notes: "Safe twin parameterizes q."
+  - id: NM-SQL-002
+    path: safe/Program.cs
+    symbol: RunReportSafe
+    of: SQLI-002
+    match:
+      file: { path: safe/Program.cs, symbol: RunReportSafe, lines: [129, 134] }
+    notes: "Safe twin parameterizes stored filter."
+  - id: NM-XSS-001
+    path: safe/Pages/Comments.cshtml
+    symbol: "@c.Body"
+    of: XSS-001
+    match:
+      file: { path: safe/Pages/Comments.cshtml, symbol: "@c.Body" }
+    notes: "Safe Razor output is encoded."
+  - id: NM-XSS-002
+    path: safe/Pages/Search.cshtml
+    symbol: "@q"
+    of: XSS-002
+    match:
+      file: { path: safe/Pages/Search.cshtml, symbol: "@q" }
+    notes: "Safe Razor output is encoded."
+  - id: NM-FETCH-001
+    path: safe/Program.cs
+    symbol: /api/fetch allowlist
+    of: SSRF-001
+    match:
+      file: { path: safe/Program.cs, symbol: "/api/fetch allowlist" }
+    notes: "Safe twin allowlists example.com."
+  - id: NM-CMD-001
+    path: safe/Program.cs
+    symbol: ProcessStartInfo.ArgumentList
+    of: CMD-001
+    match:
+      file: { path: safe/Program.cs, symbol: ProcessStartInfo.ArgumentList }
+    notes: "Safe twin avoids shell and validates format."
+  - id: NM-PATH-001
+    path: safe/Program.cs
+    symbol: download containment
+    of: TRAVERSAL-001
+    match:
+      file: { path: safe/Program.cs, symbol: "download containment" }
+    notes: "Safe twin checks full path root."
+  - id: NM-ERROR-001
+    path: safe/Program.cs
+    symbol: environment gated dev page
+    of: ERROR-001
+    match:
+      file: { path: safe/Program.cs, symbol: "environment gated dev page" }
+    notes: "Safe twin gates DeveloperExceptionPage."

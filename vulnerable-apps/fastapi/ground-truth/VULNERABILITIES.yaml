@@ -1,0 +1,502 @@
+# Ground-truth answer key for the fastapi vulnerable app.
+# This file lives outside both build contexts and is never baked into an image.
+
+app: fastapi
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex (tenants). user2@bench.local is in Globex for cross-tenant
+  IDOR. A Globex DRAFT ("globex-internal") carries GLOBEX-CONFIDENTIAL-MARKER-7f3a,
+  returned only via SQLi/IDOR. Weak default service credential admin/admin.
+
+vulnerabilities:
+  - id: AUTH-ENUM-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: login
+    route: "POST /api/auth/login"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/app/main.py, symbol: login, lines: [170, 207] }
+    poc: ground-truth/verify/auth_enum_001.sh
+    notes: "Login returns distinct user-not-found vs bad-password errors."
+
+  - id: DEFAULT-CREDS-001
+    variant_paths: { vuln: vuln/app/seed.py, safe: safe/app/seed.py }
+    symbol: seed users
+    route: "POST /api/auth/login"
+    cwe: CWE-1392
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/app/seed.py, symbol: "seed users", lines: [41, 41] }
+    poc: ground-truth/verify/default_creds_001.sh
+    notes: "Seeded service account uses admin/admin."
+
+  - id: JWT-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: verify_jwt
+    route: "GET /api/reports/admin-summary (Bearer)"
+    cwe: CWE-347
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/reports/admin-summary" }
+      file: { path: vuln/app/main.py, symbol: verify_jwt, lines: [76, 136] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/jwt_001.sh
+    notes: "JWT verification accepts alg:none and does not require exp."
+
+  - id: RESET-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: reset
+    route: "POST /api/auth/reset"
+    cwe: CWE-640
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/reset" }
+      file: { path: vuln/app/main.py, symbol: reset, lines: [151, 169] }
+    poc: ground-truth/verify/reset_001.sh
+    notes: "Reset token is md5(email + current Unix second) and is returned to the caller."
+
+  - id: SQLI-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: search_posts
+    route: "GET /api/posts/search?q="
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SQL-001
+    match:
+      http: { method: GET, path: "/api/posts/search", params: [q] }
+      file: { path: vuln/app/main.py, symbol: search_posts, lines: [208, 214] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_001.sh
+    notes: "q is interpolated into a SQLAlchemy text() query; list_posts uses bound params nearby."
+
+  - id: IDOR-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: get_post
+    route: "GET /api/posts/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/posts/{id}" }
+      file: { path: vuln/app/main.py, symbol: get_post, lines: [221, 229] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/idor_001.sh
+    notes: "Any authenticated user can read any post ID across tenants."
+
+  - id: MASSASSIGN-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: update_me
+    route: "PATCH /api/users/me"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: PATCH, path: "/api/users/me" }
+      file: { path: vuln/app/main.py, symbol: update_me, lines: [230, 240] }
+    poc: ground-truth/verify/massassign_001.sh
+    notes: "Request JSON is applied directly to the User model, allowing role/is_admin changes."
+
+  - id: AUTHZ-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: admin_users
+    route: "GET /api/admin/users"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/admin/users" }
+      file: { path: vuln/app/main.py, symbol: admin_users, lines: [241, 258] }
+    poc: ground-truth/verify/authz_001.sh
+    notes: "Admin user listing only requires login, not an admin role."
+
+  - id: SSTI-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: render_report
+    route: "POST /api/reports/render"
+    cwe: CWE-1336
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-SSTI-001
+    match:
+      http: { method: POST, path: "/api/reports/render" }
+      file: { path: vuln/app/main.py, symbol: render_report, lines: [259, 265] }
+    poc: ground-truth/verify/ssti_001.sh
+    notes: "User-supplied string is compiled as a Jinja2 Template."
+
+  - id: CMD-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: export_report
+    route: "POST /api/reports/export"
+    cwe: CWE-78
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/reports/export" }
+      file: { path: vuln/app/main.py, symbol: export_report, lines: [271, 289] }
+    poc: ground-truth/verify/cmd_001.sh
+    notes: "Report export interpolates name into a shell=True subprocess."
+
+  - id: SECOND-SQLI-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: report_results
+    route: "GET /api/reports/{id}/results"
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/reports/{id}/results" }
+      file: { path: vuln/app/main.py, symbol: report_results, lines: [290, 299] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/second_sqli_001.sh
+    notes: "Stored report name is later interpolated into a SQL WHERE clause."
+
+  - id: PICKLE-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: import_pickle
+    route: "POST /api/import/pickle"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: critical
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-DESER-001
+    match:
+      http: { method: POST, path: "/api/import/pickle" }
+      file: { path: vuln/app/main.py, symbol: import_pickle, lines: [300, 308] }
+    poc: ground-truth/verify/pickle_001.sh
+    notes: "pickle.loads accepts attacker-controlled base64 data."
+
+  - id: YAML-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: import_yaml
+    route: "POST /api/import/yaml"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-DESER-001
+    match:
+      http: { method: POST, path: "/api/import/yaml" }
+      file: { path: vuln/app/main.py, symbol: import_yaml, lines: [309, 317] }
+    poc: ground-truth/verify/yaml_001.sh
+    notes: "yaml.load uses the unsafe Loader."
+
+  - id: XXE-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: import_xml
+    route: "POST /api/import/xml"
+    cwe: CWE-611
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/import/xml" }
+      file: { path: vuln/app/main.py, symbol: import_xml, lines: [318, 325] }
+      markers: [FASTAPI-LOCAL-SECRET-9b4d]
+    poc: ground-truth/verify/xxe_001.sh
+    notes: "XML parser resolves external entities and reads local files."
+
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: fetch_url
+    route: "GET /api/fetch?url="
+    cwe: CWE-918
+    owasp: "A10:2021-SSRF"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/fetch", params: [url] }
+      file: { path: vuln/app/main.py, symbol: fetch_url, lines: [331, 336] }
+      markers: [FASTAPI-INTERNAL-SINK]
+    poc: ground-truth/verify/ssrf_001.sh
+    notes: "Server-side fetch reaches internal Mailpit by compose service name."
+
+  - id: CORS-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: reflected_cors
+    route: "GET /api/posts/search (Origin reflected)"
+    cwe: CWE-942
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/posts/search" }
+      file: { path: vuln/app/main.py, symbol: reflected_cors, lines: [39, 75] }
+    poc: ground-truth/verify/cors_001.sh
+    notes: "Middleware reflects arbitrary Origin with Allow-Credentials true."
+
+  - id: REDIRECT-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: goto
+    route: "GET /goto?next="
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/goto", params: [next] }
+      file: { path: vuln/app/main.py, symbol: goto, lines: [337, 341] }
+    poc: ground-truth/verify/redirect_001.sh
+    notes: "Redirect endpoint accepts absolute external next URLs."
+
+  - id: TRAVERSAL-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: download_attachment
+    route: "GET /api/attachments/download?name="
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-TRAVERSAL-001
+    match:
+      http: { method: GET, path: "/api/attachments/download", params: [name] }
+      file: { path: vuln/app/main.py, symbol: download_attachment, lines: [389, 393] }
+      markers: [FASTAPI-LOCAL-SECRET-9b4d]
+    poc: ground-truth/verify/traversal_001.sh
+    notes: "Attachment download joins user filename without containment checking."
+
+  - id: DEBUG-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: error_debug
+    route: "GET /api/error"
+    cwe: CWE-209
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/error" }
+      file: { path: vuln/app/main.py, symbol: error_debug, lines: [342, 360] }
+      markers: [hardcoded-weak-secret]
+    poc: ground-truth/verify/debug_001.sh
+    notes: "Debug endpoint returns stack trace containing a hardcoded secret."
+
+  - id: XSS-STORED-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: post_html
+    route: "GET /posts/{id}/html"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E-M
+    taint: cross-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/posts/{id}/html" }
+      file: { path: vuln/app/main.py, symbol: post_html, lines: [361, 370] }
+    poc: ground-truth/verify/xss_stored_001.sh
+    notes: "Stored comment body is concatenated into HTML without escaping."
+
+  - id: XSS-REFLECT-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: search_page
+    route: "GET /search?q="
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/search", params: [q] }
+      file: { path: vuln/app/main.py, symbol: search_page, lines: [371, 375] }
+    poc: ground-truth/verify/xss_reflect_001.sh
+    notes: "q is reflected directly into an HTML response."
+
+  - id: UPLOAD-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: upload_avatar
+    route: "POST /api/avatar"
+    cwe: CWE-434
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/avatar" }
+      file: { path: vuln/app/main.py, symbol: upload_avatar, lines: [376, 388] }
+    poc: ground-truth/verify/upload_001.sh
+    notes: "Avatar upload accepts SVG and serves it back without validation."
+
+  - id: PRESIGN-IDOR-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: attachment_url
+    route: "GET /api/attachments/{id}/url"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: cross-service
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/attachments/{id}/url" }
+      file: { path: vuln/app/main.py, symbol: attachment_url, lines: [402, 410] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/presign_idor_001.sh
+    notes: "Any authenticated user can request another tenant's attachment URL."
+
+  - id: BILLING-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: billing_seats
+    route: "POST /api/billing/seats"
+    cwe: CWE-840
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/billing/seats" }
+      file: { path: vuln/app/main.py, symbol: billing_seats, lines: [411, 422] }
+    poc: ground-truth/verify/billing_001.sh
+    notes: "Seat quantity accepts negative and huge values."
+
+  - id: RACE-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: invites
+    route: "POST /api/invites"
+    cwe: CWE-362
+    owasp: "A04:2021-Insecure Design"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/invites" }
+      file: { path: vuln/app/main.py, symbol: invites, lines: [423, 443] }
+    poc: ground-truth/verify/race_001.sh
+    notes: "Invite seat check and insert are not atomic under concurrent requests."
+
+  - id: CACHE-POISON-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: cache_widget
+    route: "GET /api/cache/widget?key="
+    cwe: CWE-349
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: M-H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-CACHE-001
+    match:
+      http: { method: GET, path: "/api/cache/widget", params: [key] }
+      file: { path: vuln/app/main.py, symbol: cache_widget, lines: [444, 460] }
+    poc: ground-truth/verify/cache_poison_001.sh
+    notes: "Web cache poisoning: the shared cache is keyed on `key` only but the body reflects the unkeyed X-Forwarded-Host; the safe twin folds the host into the key (see cache_widget_scoped)."
+
+near_misses:
+  - id: NM-SQL-001
+    path: vuln/app/main.py
+    symbol: list_posts
+    of: SQLI-001
+    match:
+      file: { path: vuln/app/main.py, symbol: list_posts, lines: [215, 220] }
+    notes: "Same search shape using bound SQLAlchemy parameters."
+  - id: NM-CACHE-001
+    path: vuln/app/main.py
+    symbol: cache_widget_scoped
+    of: CACHE-POISON-001
+    match:
+      file: { path: vuln/app/main.py, symbol: cache_widget_scoped, lines: [461, 472] }
+    notes: "Same widget cache but the host is part of the cache key, so it cannot be poisoned across users."
+  - id: NM-SSTI-001
+    path: vuln/app/main.py
+    symbol: render_dashboard
+    of: SSTI-001
+    match:
+      file: { path: vuln/app/main.py, symbol: render_dashboard, lines: [266, 270] }
+    notes: "Renders a fixed template with context rather than compiling user input."
+  - id: NM-DESER-001
+    path: vuln/app/main.py
+    symbol: import_json
+    of: PICKLE-001
+    match:
+      file: { path: vuln/app/main.py, symbol: import_json, lines: [326, 330] }
+    notes: "Accepts structured JSON rather than executable serialization formats."
+  - id: NM-TRAVERSAL-001
+    path: vuln/app/main.py
+    symbol: download_avatar_safe
+    of: TRAVERSAL-001
+    match:
+      file: { path: vuln/app/main.py, symbol: download_avatar_safe, lines: [394, 401] }
+    notes: "Resolves the requested path and checks containment under the avatar directory."
+
+# Deferred FastAPI-plan catalog rows for a later expansion: full CSRF form coverage,
+# MinIO presigned URL service integration, and SMTP reset-mail delivery. The current
+# app includes equivalent reachable sinks for auth, IDOR, SSRF, upload, and logic bugs.

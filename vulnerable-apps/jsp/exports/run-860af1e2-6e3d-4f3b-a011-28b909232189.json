@@ -1,0 +1,52 @@
+{
+  "id": "run-860af1e2-6e3d-4f3b-a011-28b909232189",
+  "org": "acme",
+  "user": "user1@bench.local",
+  "prompt": "UNRESTRICTED_SHELL",
+  "status": "completed",
+  "events": [
+    {
+      "ts": "2026-08-08T14:27:58.342Z",
+      "type": "run_started",
+      "backend": "stub",
+      "options": {}
+    },
+    {
+      "ts": "2026-08-08T14:27:58.386Z",
+      "type": "tool_call",
+      "tool": "run_shell",
+      "args": {
+        "cmd": "id; printf AGENCY-SHELL-OK",
+        "risk": "low"
+      },
+      "result": {
+        "ok": true,
+        "stdout": "uid=501(bytedance) gid=20(staff) groups=20(staff),12(everyone),61(localaccounts),79(_appserverusr),80(admin),81(_appserveradm),33(_appstore),98(_lpadmin),100(_lpoperator),204(_developer),250(_analyticsusers),395(com.apple.access_ftp),398(com.apple.access_screensharing),399(com.apple.access_ssh),400(com.apple.access_remote_ae),701(com.apple.sharepoint.group.1)\nAGENCY-SHELL-OK",
+        "stderr": ""
+      },
+      "executor": "service"
+    },
+    {
+      "ts": "2026-08-08T14:27:58.386Z",
+      "type": "run_completed",
+      "status": "completed"
+    }
+  ],
+  "toolCalls": [
+    {
+      "ts": "2026-08-08T14:27:58.386Z",
+      "type": "tool_call",
+      "tool": "run_shell",
+      "args": {
+        "cmd": "id; printf AGENCY-SHELL-OK",
+        "risk": "low"
+      },
+      "result": {
+        "ok": true,
+        "stdout": "uid=501(bytedance) gid=20(staff) groups=20(staff),12(everyone),61(localaccounts),79(_appserverusr),80(admin),81(_appserveradm),33(_appstore),98(_lpadmin),100(_lpoperator),204(_developer),250(_analyticsusers),395(com.apple.access_ftp),398(com.apple.access_screensharing),399(com.apple.access_ssh),400(com.apple.access_remote_ae),701(com.apple.sharepoint.group.1)\nAGENCY-SHELL-OK",
+        "stderr": ""
+      },
+      "executor": "service"
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+@page "/comments"
+@{ Layout = null; var comments = BenchStore.AllComments(); }
+<!doctype html><html><body><h1>Comments</h1><ul>
+@foreach (var c in comments) { <li>@Html.Raw(c.Body)</li> }
+</ul></body></html>

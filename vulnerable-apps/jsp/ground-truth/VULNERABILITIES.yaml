@@ -1,0 +1,537 @@
+app: jsp
+entry: http://127.0.0.1:13311
+seed_notes: >
+  Orgs Acme + Globex; user2 in Globex; Globex DRAFT carries
+  GLOBEX-CONFIDENTIAL-MARKER-7f3a; weak admin/admin manager-style credential.
+vulnerabilities:
+  - id: XSS-001
+    variant_paths: { vuln: vuln/src/main/webapp/reflect.jsp, safe: safe/src/main/webapp/reflect.jsp }
+    symbol: reflect.jsp scriptlet
+    route: "GET /reflect.jsp?q="
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-XSS-001
+    match:
+      http: { method: GET, path: "/reflect.jsp", params: [q] }
+      file: { path: vuln/src/main/webapp/reflect.jsp, symbol: "reflect.jsp scriptlet", lines: [5, 5] }
+    poc: ground-truth/verify/xss_scriptlet_001.sh
+    notes: >
+      JSP scriptlet prints request parameter q directly.
+  - id: UPLOAD-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/UploadServlet.java, safe: safe/src/main/java/bench/web/UploadServlet.java }
+    symbol: UploadServlet#doPost
+    route: "POST /upload"
+    cwe: CWE-434
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-UPLOAD-001
+    match:
+      http: { method: POST, path: "/upload" }
+      file: { path: vuln/src/main/java/bench/web/UploadServlet.java, symbol: "UploadServlet#doPost", lines: [7, 16] }
+      markers: ["JSP-SHELL-MARKER:", "JSP-SHELL-MARKER:ok"]
+    poc: ground-truth/verify/upload_jsp_001.sh
+    notes: >
+      Multipart upload writes attacker controlled .jsp into a servable webapp directory.
+  - id: DESER-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/ImportServlet.java, safe: safe/src/main/java/bench/web/ImportServlet.java }
+    symbol: ImportServlet#doPost type=obj
+    route: "POST /import?type=obj"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: critical
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-DESER-001
+    match:
+      http: { method: POST, path: "/import", query: { type: obj } }
+      file: { path: vuln/src/main/java/bench/web/ImportServlet.java, symbol: "ImportServlet#doPost type=obj", lines: [6, 22] }
+      markers: [DESER-MARKER-jsp]
+    poc: ground-truth/verify/deser_001.sh
+    notes: >
+      ObjectInputStream deserializes base64 attacker data.
+  - id: XXE-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/ImportServlet.java, safe: safe/src/main/java/bench/web/ImportServlet.java }
+    symbol: ImportServlet#doPost type=xml
+    route: "POST /import?type=xml"
+    cwe: CWE-611
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-XXE-001
+    match:
+      http: { method: POST, path: "/import", query: { type: xml } }
+      file: { path: vuln/src/main/java/bench/web/ImportServlet.java, symbol: "ImportServlet#doPost type=xml" }
+      markers: [XXE-LOCAL-FILE-MARKER-jsp-42]
+    poc: ground-truth/verify/xxe_001.sh
+    notes: >
+      DocumentBuilderFactory defaults allow external entity expansion.
+  - id: AUTHZ-001
+    variant_paths: { vuln: vuln/src/main/java/bench/filter/AuthFilter.java, safe: safe/src/main/java/bench/filter/AuthFilter.java }
+    symbol: AuthFilter#doFilter
+    route: "GET /admin;public/users"
+    cwe: CWE-288
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-AUTHZ-001
+    match:
+      http: { method: GET, path: "/admin;public/users" }
+      file: { path: vuln/src/main/java/bench/filter/AuthFilter.java, symbol: "AuthFilter#doFilter", lines: [9, 21] }
+    poc: ground-truth/verify/authfilter_bypass_001.sh
+    notes: >
+      Auth filter trusts raw path handling and allows path-parameter bypass of admin area.
+  - id: SQLI-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/SearchServlet.java, safe: safe/src/main/java/bench/web/SearchServlet.java }
+    symbol: SearchServlet#doGet
+    route: "GET /search?q="
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SQL-001
+    match:
+      http: { method: GET, path: "/search", params: [q] }
+      file: { path: vuln/src/main/java/bench/web/SearchServlet.java, symbol: "SearchServlet#doGet", lines: [7, 22] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_001.sh
+    notes: >
+      Search query concatenates q into a JDBC Statement.
+  - id: SQLI-002
+    variant_paths: { vuln: vuln/src/main/java/bench/web/ReportServlet.java, safe: safe/src/main/java/bench/web/ReportServlet.java }
+    symbol: ReportServlet#doGet
+    route: "GET /report?id="
+    cwe: CWE-89
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    taint: cross-file
+    reachability: user
+    near_miss: NM-SQL-001
+    match:
+      http: { method: GET, path: "/report", params: [id] }
+      file: { path: vuln/src/main/java/bench/web/ReportServlet.java, symbol: "ReportServlet#doGet", lines: [13, 30] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/sqli_second_001.sh
+    notes: >
+      Stored report title is later concatenated into a SQL query.
+  - id: TEMPLATE-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/ReportServlet.java, safe: safe/src/main/java/bench/web/ReportServlet.java }
+    symbol: ReportServlet#doGet mode=el
+    route: "GET /report?mode=el&expr="
+    cwe: CWE-917
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/report", query: { mode: el }, params: [expr] }
+      file: { path: vuln/src/main/java/bench/web/ReportServlet.java, symbol: "ReportServlet#doGet mode=el" }
+      markers: [EL-INJECTION-MARKER-jsp]
+    poc: ground-truth/verify/el_injection_001.sh
+    notes: >
+      User expression is evaluated by Jakarta EL.
+  - id: SSRF-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/FetchServlet.java, safe: safe/src/main/java/bench/web/FetchServlet.java }
+    symbol: FetchServlet#doGet
+    route: "GET /fetch?url="
+    cwe: CWE-918
+    owasp: "A10:2021-Server-Side Request Forgery"
+    severity: high
+    difficulty: M-H
+    taint: cross-service
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/fetch", params: [url] }
+      file: { path: vuln/src/main/java/bench/web/FetchServlet.java, symbol: "FetchServlet#doGet", lines: [3, 4] }
+    poc: ground-truth/verify/ssrf_001.sh
+    notes: >
+      Server fetches arbitrary URL including compose-only internal services.
+  - id: CMD-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/ExportServlet.java, safe: safe/src/main/java/bench/web/ExportServlet.java }
+    symbol: ExportServlet#doGet
+    route: "GET /export?format="
+    cwe: CWE-78
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/export", params: [format] }
+      file: { path: vuln/src/main/java/bench/web/ExportServlet.java, symbol: "ExportServlet#doGet", lines: [3, 4] }
+      markers: [CMD-MARKER-jsp]
+    poc: ground-truth/verify/cmd_001.sh
+    notes: >
+      format parameter is appended to /bin/sh command.
+  - id: TRAVERSAL-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/DownloadServlet.java, safe: safe/src/main/java/bench/web/DownloadServlet.java }
+    symbol: DownloadServlet#doGet
+    route: "GET /download?file="
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/download", params: [file] }
+      file: { path: vuln/src/main/java/bench/web/DownloadServlet.java, symbol: "DownloadServlet#doGet", lines: [3, 4] }
+      markers: [XXE-LOCAL-FILE-MARKER-jsp-42]
+    poc: ground-truth/verify/path_traversal_001.sh
+    notes: >
+      Download path joins user filename without containment checks.
+  - id: IDOR-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/PostServlet.java, safe: safe/src/main/java/bench/web/PostServlet.java }
+    symbol: PostServlet#doGet
+    route: "GET /post?id="
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: GET, path: "/post", params: [id] }
+      file: { path: vuln/src/main/java/bench/web/PostServlet.java, symbol: "PostServlet#doGet", lines: [7, 23] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/idor_001.sh
+    notes: >
+      Post lookup by id omits org/owner check and exposes Globex draft.
+  - id: BFLA-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/AdminServlet.java, safe: safe/src/main/java/bench/web/AdminServlet.java }
+    symbol: AdminServlet#doGet
+    route: "GET /manage/users"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/manage/users" }
+      file: { path: vuln/src/main/java/bench/web/AdminServlet.java, symbol: "AdminServlet#doGet", lines: [4, 7] }
+    poc: ground-truth/verify/bfla_001.sh
+    notes: >
+      Manager-style users route reaches admin function without role enforcement.
+  - id: MASSASSIGN-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/ProfileServlet.java, safe: safe/src/main/java/bench/web/ProfileServlet.java }
+    symbol: ProfileServlet#doPost
+    route: "POST /profile role=admin"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/profile" }
+      file: { path: vuln/src/main/java/bench/web/ProfileServlet.java, symbol: "ProfileServlet#doPost", lines: [3, 4] }
+    poc: ground-truth/verify/massassign_001.sh
+    notes: >
+      Profile update trusts role parameter and lets a user self-promote.
+  - id: SESSION-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/LoginServlet.java, safe: safe/src/main/java/bench/web/LoginServlet.java }
+    symbol: LoginServlet#doPost
+    route: "POST /login"
+    cwe: CWE-384
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/login" }
+      file: { path: vuln/src/main/java/bench/web/LoginServlet.java, symbol: "LoginServlet#doPost", lines: [11, 24] }
+    poc: ground-truth/verify/session_fixation_001.sh
+    notes: >
+      Login reuses the pre-authentication session id.
+  - id: JWT-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/JwtServlet.java, safe: safe/src/main/java/bench/web/JwtServlet.java }
+    symbol: JwtServlet#doGet
+    route: "GET /api/jwt/me"
+    cwe: CWE-347
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/jwt/me" }
+      file: { path: vuln/src/main/java/bench/web/JwtServlet.java, symbol: "JwtServlet#doGet", lines: [3, 4] }
+    poc: ground-truth/verify/jwt_none_001.sh
+    notes: >
+      JWT endpoint accepts alg=none and ignores signature/expiration.
+  - id: RATE-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/LoginServlet.java, safe: safe/src/main/java/bench/web/LoginServlet.java }
+    symbol: LoginServlet#doPost
+    route: "POST /login"
+    cwe: CWE-307
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/login" }
+      file: { path: vuln/src/main/java/bench/web/LoginServlet.java, symbol: "LoginServlet#doPost" }
+    poc: ground-truth/verify/login_rate_001.sh
+    notes: >
+      Login has no rate limiting for repeated failures.
+  - id: ENUM-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/LoginServlet.java, safe: safe/src/main/java/bench/web/LoginServlet.java }
+    symbol: LoginServlet#doPost
+    route: "POST /login"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/login" }
+      file: { path: vuln/src/main/java/bench/web/LoginServlet.java, symbol: "LoginServlet#doPost" }
+    poc: ground-truth/verify/login_enum_001.sh
+    notes: >
+      Login returns distinct no-such-user and bad-password messages.
+  - id: RESET-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/ResetServlet.java, safe: safe/src/main/java/bench/web/ResetServlet.java }
+    symbol: ResetServlet#doPost
+    route: "POST /reset"
+    cwe: CWE-640
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/reset" }
+      file: { path: vuln/src/main/java/bench/web/ResetServlet.java, symbol: "ResetServlet#doPost", lines: [3, 4] }
+    poc: ground-truth/verify/reset_001.sh
+    notes: >
+      Password reset token uses fixed-seed Random and is exposed in response.
+  - id: XSS-002
+    variant_paths: { vuln: vuln/src/main/webapp/comments.jsp, safe: safe/src/main/webapp/comments.jsp }
+    symbol: comments.jsp output
+    route: "GET /comments.jsp"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: E-M
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/comments.jsp" }
+      file: { path: vuln/src/main/webapp/comments.jsp, symbol: "comments.jsp output", lines: [4, 15] }
+    poc: ground-truth/verify/xss_stored_001.sh
+    notes: >
+      Stored comment body is rendered by JSP scriptlet without escaping.
+  - id: REDIRECT-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/LoginServlet.java, safe: safe/src/main/java/bench/web/LoginServlet.java }
+    symbol: LoginServlet#doPost next
+    route: "POST /login?next="
+    cwe: CWE-601
+    owasp: "A01:2021-Broken Access Control"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/login", params: [next] }
+      file: { path: vuln/src/main/java/bench/web/LoginServlet.java, symbol: "LoginServlet#doPost next" }
+    poc: ground-truth/verify/open_redirect_001.sh
+    notes: >
+      Login redirects to arbitrary next URL after authentication.
+  - id: ERROR-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/ErrorDemoServlet.java, safe: safe/src/main/java/bench/web/ErrorDemoServlet.java }
+    symbol: ErrorDemoServlet#doGet
+    route: "GET /error-demo"
+    cwe: CWE-209
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: low
+    difficulty: E
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/error-demo" }
+      file: { path: vuln/src/main/java/bench/web/ErrorDemoServlet.java, symbol: "ErrorDemoServlet#doGet", lines: [3, 4] }
+      markers: [STACKTRACE-MARKER-jsp]
+    poc: ground-truth/verify/error_001.sh
+    notes: >
+      Verbose error endpoint exposes stack traces/exception text.
+  - id: MANAGER-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/ManagerServlet.java, safe: safe/src/main/java/bench/web/ManagerServlet.java }
+    symbol: ManagerServlet#doGet
+    route: "GET /manager/html"
+    cwe: CWE-798
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: E-M
+    taint: config
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/manager/html" }
+      file: { path: vuln/src/main/java/bench/web/ManagerServlet.java, symbol: "ManagerServlet#doGet", lines: [3, 4] }
+    poc: ground-truth/verify/manager_001.sh
+    notes: >
+      Tomcat manager-style surface is reachable with weak admin/admin credential.
+  - id: XFF-001
+    variant_paths: { vuln: vuln/src/main/java/bench/filter/CharsetFilter.java, safe: safe/src/main/java/bench/filter/CharsetFilter.java }
+    symbol: CharsetFilter#doFilter
+    route: "GET /internal/admin"
+    cwe: CWE-290
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/internal/admin" }
+      file: { path: vuln/src/main/java/bench/filter/CharsetFilter.java, symbol: "CharsetFilter#doFilter", lines: [8, 17] }
+      markers: [XFF-TRUST-MARKER]
+    poc: ground-truth/verify/xff_001.sh
+    notes: >
+      Filter trusts X-Forwarded-For for an internal-only authorization decision.
+  - id: CRYPTO-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/CryptoServlet.java, safe: safe/src/main/java/bench/web/CryptoServlet.java }
+    symbol: CryptoServlet#doGet
+    route: "GET /crypto?secret="
+    cwe: CWE-327
+    owasp: "A02:2021-Cryptographic Failures"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/crypto", params: [secret] }
+      file: { path: vuln/src/main/java/bench/web/CryptoServlet.java, symbol: "CryptoServlet#doGet", lines: [3, 4] }
+    poc: ground-truth/verify/crypto_001.sh
+    notes: >
+      DES/ECB with a static key deterministically encrypts equal plaintext.
+  - id: BILLING-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/BillingServlet.java, safe: safe/src/main/java/bench/web/BillingServlet.java }
+    symbol: BillingServlet#doPost
+    route: "POST /billing/seats"
+    cwe: CWE-840
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/billing/seats" }
+      file: { path: vuln/src/main/java/bench/web/BillingServlet.java, symbol: "BillingServlet#doPost", lines: [3, 4] }
+    poc: ground-truth/verify/billing_001.sh
+    notes: >
+      Seat update accepts negative values and corrupts billing state.
+  - id: RACE-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/InviteServlet.java, safe: safe/src/main/java/bench/web/InviteServlet.java }
+    symbol: InviteServlet#doPost
+    route: "POST /invite"
+    cwe: CWE-362
+    owasp: "A04:2021-Insecure Design"
+    severity: high
+    difficulty: H
+    taint: in-file
+    reachability: user
+    near_miss: null
+    match:
+      http: { method: POST, path: "/invite" }
+      file: { path: vuln/src/main/java/bench/web/InviteServlet.java, symbol: "InviteServlet#doPost", lines: [3, 4] }
+    poc: ground-truth/verify/race_invite_001.sh
+    notes: >
+      Invite capacity check and insert run without transaction/lock.
+  - id: CAPTCHA-001
+    variant_paths: { vuln: vuln/src/main/java/bench/web/CaptchaServlet.java, safe: safe/src/main/java/bench/web/CaptchaServlet.java }
+    symbol: CaptchaServlet#doGet
+    route: "GET /captcha"
+    cwe: CWE-330
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: M
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/captcha" }
+      file: { path: vuln/src/main/java/bench/web/CaptchaServlet.java, symbol: "CaptchaServlet#doGet", lines: [3, 4] }
+    poc: ground-truth/verify/captcha_001.sh
+    notes: >
+      CAPTCHA generator uses fixed seed and repeats the same challenge.
+near_misses:
+  - id: NM-XSS-001
+    path: vuln/src/main/webapp/reflect.jsp
+    symbol: near-miss c:out rendering
+    of: XSS-001
+    match:
+      file: { path: vuln/src/main/webapp/reflect.jsp, symbol: "near-miss c:out rendering" }
+    notes: "Adjacent JSTL c:out escapes the same request parameter."
+  - id: NM-UPLOAD-001
+    path: safe/src/main/java/bench/web/UploadServlet.java
+    symbol: UploadServlet#doPost safe storage
+    of: UPLOAD-001
+    match:
+      file: { path: safe/src/main/java/bench/web/UploadServlet.java, symbol: "UploadServlet#doPost safe storage" }
+    notes: "Safe twin rejects JSP extensions and stores outside the webapp."
+  - id: NM-DESER-001
+    path: safe/src/main/java/bench/web/ImportServlet.java
+    symbol: ImportServlet#doPost json-only branch
+    of: DESER-001
+    match:
+      file: { path: safe/src/main/java/bench/web/ImportServlet.java, symbol: "ImportServlet#doPost json-only branch" }
+    notes: "Safe twin refuses ObjectInputStream and accepts typed import only."
+  - id: NM-XXE-001
+    path: safe/src/main/java/bench/web/ImportServlet.java
+    symbol: ImportServlet#doPost hardened XML parser
+    of: XXE-001
+    match:
+      file: { path: safe/src/main/java/bench/web/ImportServlet.java, symbol: "ImportServlet#doPost hardened XML parser" }
+    notes: "Safe twin disables DTDs and external entities."
+  - id: NM-AUTHZ-001
+    path: safe/src/main/java/bench/filter/AuthFilter.java
+    symbol: AuthFilter#doFilter canonical path check
+    of: AUTHZ-001
+    match:
+      file: { path: safe/src/main/java/bench/filter/AuthFilter.java, symbol: "AuthFilter#doFilter canonical path check" }
+    notes: "Safe twin canonicalizes/matches admin paths instead of trusting raw path parameters."
+  - id: NM-SQL-001
+    path: vuln/src/main/java/bench/web/SearchServlet.java
+    symbol: SearchServlet safe-near-miss mode
+    of: SQLI-001
+    match:
+      file: { path: vuln/src/main/java/bench/web/SearchServlet.java, symbol: "SearchServlet safe-near-miss mode", lines: [6, 6] }
+    notes: "PreparedStatement sibling uses a parameterized LIKE predicate."
+deferrals: []

@@ -1,0 +1,41 @@
+name: safe-golang
+services:
+  app:
+    build: .
+    ports: ["127.0.0.1:${DYNAST_PORT:-13311}:3000"]
+    environment:
+      DATABASE_URL: postgres://bench:bench@postgres:5432/bench?sslmode=disable
+      SESSION_KEY: "safe-compose-session-key-32-bytes"
+      JWT_SECRET: "safe-compose-jwt-secret-32-bytes"
+      EXPOSE_PPROF: "false"
+      VERIFY_TOKEN: benchsecret
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:3000/api/_verify/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  postgres:
+    image: postgres:16.4
+    ports: ["127.0.0.1:${DYNAST_PORT_POSTGRES_5432:-13312}:5432"]
+    environment: { POSTGRES_USER: bench, POSTGRES_PASSWORD: bench, POSTGRES_DB: bench }
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bench"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes: ["./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    ports: ["127.0.0.1:${DYNAST_PORT_PROMETHEUS_9090:-13313}:9090"]
+    depends_on: { app: { condition: service_healthy } }
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: AdminSafe123!
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    ports: ["127.0.0.1:${DYNAST_PORT_GRAFANA_3000:-13314}:3000"]
