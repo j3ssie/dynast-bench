@@ -7,11 +7,42 @@ _A DAST benchmark of intentionally-vulnerable apps with ground-truth answer keys
 > security agents. Every app binds to `127.0.0.1`, ships a LOUD banner, and holds
 > no real data. **Never deploy any of this on a public network.**
 
-A suite of **10 intentionally-vulnerable web apps**, one per stack, each with a
+A suite of **19 intentionally-vulnerable apps**, one per stack, each with a
 documented, machine-checkable **ground truth**. The point is to measure how well
 a scanner or agent (a) finds the planted bugs, (b) ignores the safe near-miss
 code sitting right next to them, and (c) doesn't hallucinate findings on the
 patched twin.
+
+## The apps at a glance
+
+**19 apps · 480 planted vulnerabilities · 119 near-misses · 478 runnable PoCs.**
+Every app boots on `127.0.0.1:13311`, ships a `vuln/`+`safe/` twin pair and a
+single-image `--solo` build. `dynast-bench list` prints this table live.
+
+| App | Stack | Datastore | Vulns | Near-miss | Docs |
+|-----|-------|-----------|------:|----------:|------|
+| [aspnet](vulnerable-apps/aspnet) | C# / ASP.NET Core Razor Pages | SQL Server | 28 | 12 | [plan](benchmark-plans/aspnet.md) |
+| [fastapi](vulnerable-apps/fastapi) | Python / FastAPI + Jinja2 | Postgres | 26 | 5 | [plan](benchmark-plans/fastapi.md) |
+| [gin](vulnerable-apps/gin) | Go / Gin | Postgres | 11 | 6 | [readme](vulnerable-apps/gin/README.md) |
+| [golang](vulnerable-apps/golang) | Go / chi | Postgres | 26 | 4 | [plan](benchmark-plans/golang.md) |
+| [graphql](vulnerable-apps/graphql) | Node / GraphQL 16 API-only | Postgres | 31 | 6 | [plan](benchmark-plans/graphql.md) |
+| [jsp](vulnerable-apps/jsp) | Java / JSP + Servlets (Tomcat) | Postgres | 28 | 6 | [plan](benchmark-plans/jsp.md) |
+| [laravel](vulnerable-apps/laravel) | PHP 8.3 / Laravel 11 + Blade | MySQL | 25 | 7 | [plan](benchmark-plans/laravel.md) |
+| [llmagent](vulnerable-apps/llmagent) | Node / Fastify + AI SDK + MCP | Postgres | 29 | 8 | [plan](benchmark-plans/llmagent.md) |
+| [llmchat](vulnerable-apps/llmchat) | Python / FastAPI + LangChain RAG | Postgres+pgvector | 30 | 9 | [plan](benchmark-plans/llmchat.md) |
+| [nestjs](vulnerable-apps/nestjs) | Node / NestJS + Handlebars | Postgres | 23 | 6 | [plan](benchmark-plans/nestjs.md) |
+| [network](vulnerable-apps/network) | Simulated multi-host network range | mixed fleet | 32 | 5 | [plan](benchmark-plans/network.md) |
+| [nextjs](vulnerable-apps/nextjs) | Node / Next.js 15 **(reference impl)** | Postgres | 23 | 9 | [plan](benchmark-plans/nextjs.md) |
+| [php](vulnerable-apps/php) | PHP / procedural LAMP | MySQL | 21 | 5 | [plan](benchmark-plans/php.md) |
+| [rails](vulnerable-apps/rails) | Ruby / Rails 7.2 | Postgres | 26 | 6 | [plan](benchmark-plans/rails.md) |
+| [springboot](vulnerable-apps/springboot) | Java / Spring Boot + Thymeleaf | Postgres | 30 | 4 | [plan](benchmark-plans/springboot.md) |
+| [swagger](vulnerable-apps/swagger) | OpenAPI / Swagger UI + spec loading | Postgres | 19 | 5 | [plan](benchmark-plans/swagger.md) |
+| [websocket](vulnerable-apps/websocket) | Node 22 / `ws` + Socket.IO realtime | Postgres | 28 | 6 | [plan](benchmark-plans/websocket.md) |
+| [weirdproxy](vulnerable-apps/weirdproxy) | nginx + Apache + Traefik over one origin | none | 16 | 4 | [plan](benchmark-plans/weirdproxy.md) |
+| [wordpress](vulnerable-apps/wordpress) | PHP / WordPress + custom plugin | MySQL | 28 | 6 | [plan](benchmark-plans/wordpress.md) |
+
+Extra sidecars per stack (Mailpit, MinIO, Redis, Jenkins, Prometheus, Ollama, …)
+are listed in [The apps](#the-apps) below.
 
 The per-stack **design docs live in [`benchmark-plans/`](benchmark-plans/)** -
 start there for the full vulnerability catalog of each app. This README is the
@@ -25,7 +56,7 @@ dynast-bench/
 ├── Makefile              # top-level runner: list / run / verify / validate / solo any app
 ├── benchmark-plans/      # per-stack design docs (the vulnerability catalogs)
 ├── dynast-bench/           # the `dynast-bench` CLI + scorer (Bun/TS)
-└── vulnerable-apps/      # the 16 apps - each a separated, self-contained folder
+└── vulnerable-apps/      # the 19 apps - each a separated, self-contained folder
     ├── _template/        # skeleton; copy it to start a new app
     ├── fastapi/  golang/  nextjs/  nestjs/  springboot/
     └── rails/  wordpress/  php/  jsp/  aspnet/  ...
@@ -273,8 +304,8 @@ make reset   # fresh state
 
 ## Status
 
-- **18 apps carry a complete answer key**: 469 planted vulnerabilities, 113
-  near-misses, 467 PoCs, and a `Dockerfile.standalone` each (`--solo`).
+- **19 apps carry a complete answer key**: 480 planted vulnerabilities, 119
+  near-misses, 478 PoCs, and a `Dockerfile.standalone` each (`--solo`).
   `dynast-bench list` prints the live table.
 - **`nextjs` is the reference implementation** - built and validated end to end
   (23 vulns + 9 near-misses). `make validate APP=nextjs` proves every PoC
@@ -285,7 +316,7 @@ make reset   # fresh state
 - **The scorer - built** (`dynast-bench/src/`): scanner output → normalized findings
   → precision/recall/F1, per-difficulty recall, a discrimination score over the
   near-misses, and separate discovery (network) and injection-channel (LLM) tracks.
-  183 tests, including per-app invariants over all 18 answer keys: `make test`.
+  191 tests, including per-app invariants over all 19 answer keys: `make test`.
 - **Known gap** (`dynast-bench check --all` reports it): `nextjs` patches a
   predictable-session-id bug (`SESSION-001`, `src/lib/session.ts`) in the safe twin
   without recording it in `VULNERABILITIES.yaml`, so a tool that finds it is scored
