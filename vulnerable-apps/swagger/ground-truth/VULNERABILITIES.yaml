@@ -17,6 +17,7 @@ vulnerabilities:
     owasp: "API8:2023-Security Misconfiguration"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: config
     reachability: pre-auth
     near_miss: NM-DOCS-001
@@ -37,6 +38,7 @@ vulnerabilities:
     owasp: "API8:2023-Security Misconfiguration"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: config
     reachability: pre-auth
     near_miss: NM-DOCS-001
@@ -56,6 +58,7 @@ vulnerabilities:
     owasp: "API9:2023-Improper Inventory Management"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -75,6 +78,7 @@ vulnerabilities:
     owasp: "API9:2023-Improper Inventory Management"
     severity: critical
     difficulty: H
+    discovery: js-runtime
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -95,6 +99,7 @@ vulnerabilities:
     owasp: "API9:2023-Improper Inventory Management"
     severity: high
     difficulty: H
+    discovery: js-runtime
     taint: cross-file
     reachability: user
     near_miss: NM-V1-USER-001
@@ -114,6 +119,7 @@ vulnerabilities:
     owasp: "API3:2023-Broken Object Property Level Authorization"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: cross-file
     reachability: user
     near_miss: NM-USER-SERIALIZER-001
@@ -133,6 +139,7 @@ vulnerabilities:
     owasp: "API5:2023-Broken Function Level Authorization"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -152,6 +159,7 @@ vulnerabilities:
     owasp: "API5:2023-Broken Function Level Authorization"
     severity: high
     difficulty: M-H
+    discovery: js-runtime
     taint: cross-file
     reachability: user
     near_miss: null
@@ -171,6 +179,7 @@ vulnerabilities:
     owasp: "API3:2023-Broken Object Property Level Authorization"
     severity: high
     difficulty: E-M
+    discovery: js-runtime
     taint: in-file
     reachability: user
     near_miss: NM-USER-SERIALIZER-001
@@ -190,6 +199,7 @@ vulnerabilities:
     owasp: "API8:2023-Security Misconfiguration"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: NM-ORDERING-001
@@ -210,6 +220,7 @@ vulnerabilities:
     owasp: "API8:2023-Security Misconfiguration"
     severity: high
     difficulty: E
+    discovery: js-runtime
     taint: config
     reachability: pre-auth
     near_miss: null
@@ -230,6 +241,7 @@ vulnerabilities:
     owasp: "API2:2023-Broken Authentication"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: config
     reachability: pre-auth
     near_miss: null
@@ -249,6 +261,7 @@ vulnerabilities:
     owasp: "API1:2023-Broken Object Level Authorization"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: NM-V1-USER-001
@@ -269,6 +282,7 @@ vulnerabilities:
     owasp: "API5:2023-Broken Function Level Authorization"
     severity: high
     difficulty: M
+    discovery: js-runtime
     taint: in-file
     reachability: user
     near_miss: null
@@ -288,6 +302,7 @@ vulnerabilities:
     owasp: "API7:2023-Server Side Request Forgery"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: cross-service
     reachability: user
     near_miss: NM-SSRF-001
@@ -307,6 +322,7 @@ vulnerabilities:
     owasp: "API10:2023-Unsafe Consumption of APIs"
     severity: high
     difficulty: H
+    discovery: static-html
     taint: cross-service
     reachability: user
     near_miss: NM-SSRF-001
@@ -326,6 +342,7 @@ vulnerabilities:
     owasp: "API8:2023-Security Misconfiguration"
     severity: medium
     difficulty: M
+    discovery: js-runtime
     taint: in-file
     reachability: user
     near_miss: null
@@ -345,6 +362,7 @@ vulnerabilities:
     owasp: "API6:2023-Unrestricted Access to Sensitive Business Flows"
     severity: high
     difficulty: H
+    discovery: js-runtime
     taint: in-file
     reachability: user
     near_miss: null
@@ -364,6 +382,7 @@ vulnerabilities:
     owasp: "API8:2023-Security Misconfiguration"
     severity: low
     difficulty: M
+    discovery: js-runtime
     taint: cross-file
     reachability: pre-auth
     near_miss: null

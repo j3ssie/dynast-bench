@@ -138,6 +138,8 @@ make install                             # compile the CLI + link it into ~/.bun
                                          # (BIN_DIR=/somewhere/else to pick the dir)
 
 dynast-bench list                        # every app: vulns, PoCs, near-misses, what's up
+dynast-bench vulns nextjs                # the planted bugs as a checklist, one title each
+                                         # (--full · --near · --ids for a coverage diff)
 dynast-bench start nextjs                # build + boot, wait for health, print the URL
 dynast-bench verify nextjs               # run the ground-truth PoCs (expect all exploitable)
 dynast-bench validate nextjs             # twin loop: vuln all-exploitable → safe all-fixed
@@ -146,7 +148,8 @@ dynast-bench stop --all                  # stop everything
 dynast-bench clean --all --images --yes  # reclaim containers, volumes, networks, images
 
 dynast-bench start nextjs --variant safe # the patched twin (false-positive run)
-dynast-bench start --all --solo          # whole fleet in parallel, one port each
+dynast-bench start --count 5 --parallel  # 5 apps at once, one port each + a summary table
+dynast-bench start --all --solo --parallel   # whole fleet, one image + port each
 dynast-bench run nextjs -- my-scanner --url '$TARGET'   # start → scan → stop
 ```
 
@@ -155,20 +158,21 @@ Full reference: [`dynast-bench/README.md`](dynast-bench/README.md).
 ### Ports
 
 Everything lives in a quiet slice of the ephemeral range, so the suite doesn't
-fight the usual 3000/8000/8080/5432 crowd:
+fight the usual 3000/8000/8080/5432 crowd - and **every app owns a fixed port**,
+so a URL always means the same app, alone or in a batch of five:
 
 | range | what |
 |-------|------|
-| `13311` | the app under test - **the URL you point a scanner at** |
-| `13312`–`13319` | that stack's sidecars (mailpit, phpMyAdmin, Jenkins, Prometheus, …) |
-| `13320`–`13399` | auto-assigned solo ports (`start --all --solo`) |
-| `13400`–`13499` | relocation pool |
+| `13311`–`13339` | the app under test - **the URL you point a scanner at**, one port per app in `list` order (aspnet `13311`, fastapi `13312`, … nextjs `13322`) |
+| `13340`–`13484` | that app's sidecars (mailpit, phpMyAdmin, Jenkins, Prometheus, …), 5 apiece |
+| `13500`–`13599` | relocation pool |
 
-If anything is already listening on a port it wants, `dynast-bench start` leaves
-it alone and publishes that service from the relocation pool instead, then
-prints (and `--json`-reports) the real URL. Nothing ever binds beyond
-`127.0.0.1`. `dynast-bench doctor` shows the current picture; `make` targets
-don't relocate but honour `DYNAST_PORT=<n>`, and `--port N` pins it explicitly.
+`dynast-bench list` is the map. If anything is already listening on a port an app
+owns, `dynast-bench start` leaves it alone and publishes that one service from
+the relocation pool instead, then prints (and `--json`-reports) the real URL.
+Nothing ever binds beyond `127.0.0.1`. `dynast-bench doctor` shows which app
+ports are free; `make` targets don't relocate and publish the compose defaults
+(`13311`+) one app at a time, honouring `DYNAST_PORT=<n>`; `--port N` pins it.
 
 ## Running apps (top-level Makefile)
 
@@ -404,6 +408,28 @@ dynast-bench score nextjs zap.json --safe safe.json
 output - the format is sniffed. See
 [`dynast-bench/README.md`](dynast-bench/README.md#scoring) for the schema, the
 matching tiers and every metric.
+
+### Reading the report (`Leg │ Precision │ Recall │ F1`)
+
+A **leg** is one scan run against one target state:
+
+| Leg | What it is |
+|---|---|
+| `blackbox` | no credentials - the unauthenticated attacker view |
+| `credentialed` | same target with the seeded logins injected, so authenticated surface (IDOR, privilege escalation) is reachable |
+| `safe-twin` | the patched twin (`--safe`), a false-positive baseline - ideally finds nothing |
+
+All three run `0.0`–`1.0`, and for all three **higher is better** (`1.0` is perfect):
+
+| Metric | Formula | Better | Reads as |
+|---|---|---|---|
+| **Precision** | `TP / (TP + FP)` | ↑ higher | of everything reported, how much was real. `0.38` = ~38% of findings were genuine, the rest noise. High = few false alarms. |
+| **Recall** | `TP / (TP + FN)` | ↑ higher | of the bugs actually planted, how many were found. `0.73` = 8 of 11. High = few misses. |
+| **F1** | `2 × P × R / (P + R)` | ↑ higher | harmonic mean of the two - the headline "overall quality" number. Only high when both are, so it penalises being noisy *and* missing bugs. |
+
+The one inversion: on the **`safe-twin` leg there is nothing real to find**, so
+every finding there is a false alarm - fewer is better, and an empty report is
+the perfect score.
 
 ## License
 

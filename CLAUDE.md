@@ -45,7 +45,8 @@ image.
 
 ## Reference implementation
 
-**`vulnerable-apps/nextjs/` is fully built and validated (23 vulns + 9 near-misses).**
+**`vulnerable-apps/nextjs/` is fully built and validated (33 vulns + 13 near-misses,
+tiered by `discovery:` and using the browser PoC harness).**
 Copy its patterns. `vulnerable-apps/_template/` is the empty skeleton to clone. Each app's
 vulnerability catalog and design notes live in
 **`benchmark-plans/<stack>.md`** - build to that catalog (or document any
@@ -118,6 +119,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high                     # info|low|medium|high|critical
     difficulty: E                      # E|E-M|M|M-H|H  (detection difficulty)
+    discovery: static-html             # static-html|js-static|js-runtime|interaction|flow
     taint: in-file                     # in-file|cross-file|cross-service
     reachability: pre-auth             # pre-auth|user|admin
     near_miss: NM-SQL-001              # or null
@@ -136,6 +138,49 @@ near_misses:
     match: { file: { path: vuln/..., symbol: <safe sibling>, lines: [19, 25] } }
     notes: "why this is safe"
 ```
+
+### `discovery:` - how far a tool has to crawl to find it
+
+`difficulty` says how hard a bug is to recognise once you are looking at it.
+`discovery` is the other axis: what it takes to reach the endpoint at all.
+
+| tier | means |
+|---|---|
+| `static-html` | URL is in the served HTML of a public page |
+| `js-static` | URL is a literal string in a bundle - greppable, no execution |
+| `js-runtime` | URL only exists once JS evaluates (fragments, manifest, lazy chunk) |
+| `interaction` | request only fires on a click/submit/scroll |
+| `flow` | only reachable from one state of a multi-step flow |
+
+Two rules keep this honest:
+
+- **Discovery only.** Every bug stays exploitable over plain HTTP once its URL is
+  known. Gate how a tool *finds* the route, never how it exploits it - PoCs are
+  still curl unless the bug genuinely needs a DOM (see "Browser PoCs").
+- **All-or-nothing per app.** `check` errors if a key tiers some entries and not
+  others, because a partial breakdown reports recall over the labelled subset
+  while looking like it covers the app.
+
+Aim for a spread rather than a cliff: leaving a handful of bugs at `static-html`
+is what lets a request-fuzzer score above zero, which is the number that makes
+the tiers above it mean something.
+
+**Every app in the fleet is tiered.** How much gradient an app has depends on its
+shape, and that is itself the signal:
+
+- **Behaviorally hardened, rich gradient** - `nextjs` (5 tiers) and `laravel`
+  (static/js-runtime/interaction) kill the served route manifest and assemble URLs
+  from a client route registry, so most of the surface is only reachable by running
+  the page. Copy these when an app has a real browser UI.
+- **Naturally structured** - `swagger` maps documented→`static-html`,
+  shadow→`js-runtime`; `graphql` is `static-html` while introspection is on, with
+  the WS subscription `interaction` and the persisted query `js-runtime`.
+- **Honest single tier** - a pure-API app (`rails`, `fastapi`, `aspnet`, …) is
+  uniformly `static-html`: every endpoint is a conventional, request-fuzzable path
+  with no client route assembly, so a browser buys nothing. `network` is
+  `static-html` (a port scan is request-only); `websocket` and the two LLM apps are
+  `interaction` (you must drive the protocol/agent). Do NOT fake a gradient on an
+  API app by inventing a JS front-end - the flat tier is the truthful finding.
 
 ### The `match:` block is generated - do not hand-write it
 
@@ -185,6 +230,32 @@ would be scored as a false positive.
   any order. `make verify` runs on fresh state (`reset` first) - don't rely on that
   for cross-PoC ordering.
 
+### Browser PoCs (`dynast-bench/tools/browser/`)
+
+Most PoCs are curl and **must stay that way** - a bug is gated on how a tool
+*discovers* it, never on how it is exploited. The exception is a bug whose sink
+only exists once the page's JS has run (DOM XSS, `postMessage`, client-side
+routing): a request/response transcript cannot tell you whether anything
+executed, so those get a real browser.
+
+```sh
+. "$(dirname "$0")/_lib.sh"                 # already sources browser.sh
+browser_dialog "$TARGET/p#<payload>" MARKER # exit 0 if a JS dialog carrying MARKER fired
+browser_requested "$TARGET/" /api/hidden    # exit 0 if the page requested that URL
+browser "$TARGET/x" --click '#btn' --eval 'return document.title'
+```
+
+- One shared image (`make browser-image`, or built on first use), Debian chromium
+  + `puppeteer-core` so it is native on arm64 as well as amd64. Chrome for Testing
+  publishes no linux-arm64 build, which is why this is not the stock puppeteer image.
+- `run.sh` builds it **once up front** when any PoC mentions `browser_`. A missing
+  image must fail as "the harness could not run", never as "NOT exploitable" -
+  the latter is a wrong answer about the app.
+- The apps bind `127.0.0.1` only, so the container reaches the host by joining its
+  namespace on Linux (`--network=host`) and via `host.docker.internal` elsewhere.
+  `browser.sh` picks per platform; PoCs still just pass `$TARGET`.
+- A fired dialog is the XSS oracle: reflection alone never produces one.
+
 ## Shared domain + seed (keep IDENTICAL across apps for comparability)
 
 - Orgs (tenants): **Acme**, **Globex**. Roles: `guest/user/editor/admin/service`.
@@ -217,10 +288,17 @@ services:
   that exact name to know which service a scanner should be pointed at.
 - Sidecars: `DYNAST_PORT_<SERVICE>_<CONTAINERPORT>`, defaults `13312`, `13313`, …
   assigned in file order.
-- `13320`–`13399` are auto-assigned solo ports; `13400`–`13499` is the relocation
-  pool the CLI draws from. Don't hardcode anything in those ranges.
-- Each app `Makefile` takes `DYNAST_PORT ?= 13311` and exports it, so
-  `make up` and `dynast-bench start` publish the same places.
+- **The compose defaults are what `make` publishes** (one app at a time). The CLI
+  instead gives every app a **fixed port of its own** and passes it in via those
+  same env vars, so a URL always means the same app and a batch never shuffles:
+  `13311 + <index in \`dynast-bench list\`>` for the app, `13340 + 5 * index` for
+  its sidecar block. Adding an app shifts the ones after it - `list` is the map.
+- `13311`–`13339` are the app ports, `13340`–`13484` the sidecar blocks and
+  `13500`–`13599` the relocation pool the CLI draws from when something else is
+  already holding a port. Don't hardcode anything in those ranges.
+- Each app `Makefile` takes `DYNAST_PORT ?= 13311` and exports it, so a bare
+  `make up` still publishes the compose defaults; `dynast-bench start` prints
+  (and `--json`-reports) the port it actually used.
 - PoCs still read `$TARGET` and must never hardcode a host port. A URL that the
   *container* dials (an SSRF target, a healthcheck) keeps its container port.
 
@@ -286,11 +364,25 @@ start services; Postgres runs under its own user via `su postgres`. See
 
 - Apps **self-validate** via `ground-truth/run.sh` (used by `make verify`).
 - **`dynast-bench/dynast-bench.ts`** is the built CLI (single-file Bun/TypeScript, zero
-  runtime deps): `list · info · doctor · start · stop · restart · reset · clean ·
-  status · target · logs · verify · validate · run`. It derives everything from the
-  apps themselves - compose ports + healthcheck path, the app `Makefile`'s standalone
+  runtime deps): `list · info · vulns · doctor · start · stop · stop-all · restart ·
+  reset · clean · status · target · logs · verify · validate · run`. `vulns <app>`
+  prints the answer key as a checklist (titles; `--full`/`--near`/`--ids`), which
+  is how you check what a scan was supposed to find. It derives everything from
+  the apps themselves - compose ports + healthcheck path, the app `Makefile`'s standalone
   port, and `VULNERABILITIES.yaml` - so **a new app appears automatically**; keep those
   conventions intact and there's nothing to register. `--json` on every command.
+- **Starting a batch**: `start --count N` boots N apps (the ones named, else the
+  first N of the catalog) and `--parallel[=M]` overlaps them - port planning is
+  serialized behind a lock and a planned port stays reserved until docker binds
+  it, so concurrent starts never pick the same one. A batch reports per app: the
+  ports of the apps that came up in a summary table (`{started, failed}` in
+  `--json`), exit `1` if any failed.
+- **Stopping**: `stop` with no app stops everything running (it prompts past one
+  stack); `stop-all` (= `stop --all`) finds stacks from docker rather than from the
+  apps directory, so it also reclaims one whose app was renamed or deleted out from
+  under it; `--force` removes containers directly instead of a `compose down` per
+  stack. All three are scoped to the `vuln-`/`safe-` naming, so unrelated stacks on
+  the same daemon are never touched.
 - `make install` = `bun build --compile` + symlink into `~/.bun/bin` (override
   `BIN_DIR=`), so `dynast-bench` is a normal native binary. It's a snapshot -
   **re-run `make install` after editing the CLI**. `make build` compiles only;
@@ -306,6 +398,8 @@ start services; Postgres runs under its own user via `su postgres`. See
   `Bun.YAML`). Quote values starting with a YAML indicator, e.g. `symbol: "@c.Body"`.
 - PoCs must be **portable shell** - they run on the host, so no GNU-only flags
   (`mktemp --suffix`, `base64 -w`, `grep -P`, `date -d`); macOS ships BSD userland.
+  The browser helpers are the one place that branches on `uname`, and only for
+  container→host networking.
 - The **`dynast-bench/src/` scorer** is built: `score` (findings →
   precision/recall/F1 + per-difficulty recall + a discrimination score over the
   near-misses), `diff` (the twin delta vs the answer key) and `check` (the CI gate).

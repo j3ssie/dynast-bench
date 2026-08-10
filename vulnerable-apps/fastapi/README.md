@@ -9,6 +9,21 @@ SQLAlchemy/Postgres + MinIO + Mailpit) built from
 the shared Acme/Globex seed and plants Python/FastAPI-specific bugs next to
 safe-shaped near-misses.
 
+**Two research-grade classes.** `CLASSPOLL-001` (CWE-1321): Python *class pollution* - a recursive `setattr` merge walks `__class__` to mutate class-level defaults process-wide (POST `/api/flags/merge` then GET `/api/flags/state`). `JWTCONF-001` (CWE-347): RS256->HS256 *algorithm confusion* - the RS256 verifier also accepts HS256 tokens HMAC'd with the (published) RSA public key, so an attacker forges an admin token for `/api/reports/exec-summary`.
+
+**Agent-only surface (deep hardening).** On top of the API catalog it plants an
+8-bug surface a request fuzzer cannot reach - only an agent that behaves like a
+user: a **four-step signup wizard** at `/signup` (client-driven fetch to
+`/api/signup/*`) with four `flow`-tier bugs (clock-derived verification code,
+`role`/`org_slug` mass-assignment, complete-without-verify, draft-IDOR leaking
+another signup's email + code), two browser-only bugs on the wizard page (**DOM
+XSS** via `location.hash`, a **postMessage** sink), and a hidden `eval()` report
+builder (`CODEINJ`, CWE-94 - reaches `os.environ`) referenced only from the panel
+the wizard fetches after an **Advanced** click. Those 8 are tiered
+`flow`/`interaction`/`js-runtime`; the pre-existing REST catalog stays
+`static-html`, so `recall by discovery tier` shows how far past the fuzzable API a
+tool gets. The browser PoCs drive the shared `dynast-bench/tools/browser/` image.
+
 ## Layout
 
 ```text

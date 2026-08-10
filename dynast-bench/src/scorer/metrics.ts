@@ -4,7 +4,13 @@
  * defensible.
  */
 
-import { DIFFICULTIES, REACHABILITIES, SEVERITIES, TAINTS } from "../schema/types.ts";
+import {
+  DIFFICULTIES,
+  DISCOVERY_TIERS,
+  REACHABILITIES,
+  SEVERITIES,
+  TAINTS,
+} from "../schema/types.ts";
 
 export interface Bucket {
   gt: number;
@@ -62,3 +68,4 @@ export const DIFFICULTY_ORDER = DIFFICULTIES;
 export const SEVERITY_ORDER = [...SEVERITIES].reverse();
 export const REACHABILITY_ORDER = REACHABILITIES;
 export const TAINT_ORDER = TAINTS;
+export const DISCOVERY_ORDER = DISCOVERY_TIERS;

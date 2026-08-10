@@ -24,7 +24,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from .db import engine, get_db
-from .models import Attachment, Billing, Comment, Invite, Organization, Post, Report, User
+from .models import Attachment, Billing, Comment, Invite, Organization, Post, Report, SignupDraft, User
 
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN", "benchsecret")
 JWT_SECRET = os.getenv("JWT_SECRET", "hardcoded-weak-secret")
@@ -483,3 +483,297 @@ async def cache_widget_scoped(request: Request, key: str = "home"):
     body = f'<!doctype html><link rel="canonical" href="https://{host}/w/{key}"><p>widget {key}</p>'
     _WIDGET_CACHE[ck] = (time.time(), body)
     return HTMLResponse(body, headers={"x-cache": "MISS"})
+
+
+# ---- multi-step signup wizard (client-driven; endpoints appear in no HTML) ----
+
+import secrets as _secrets
+
+_SIGNUP_RESEND: dict[str, int] = {}
+
+
+def _signup_code() -> str:
+    # FIXED SIGNUP-TOKEN-001: the verification code is a CSPRNG draw, unrelated to
+    # when the signup started, so it can only be received in the email.
+    return f"{_secrets.randbelow(1000000):06d}"
+
+
+def _invite_token() -> str:
+    return _secrets.token_hex(32)
+
+
+_WIZARD_HTML = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Create account</title></head><body>
+<h1>Create your account</h1><p><small data-step>step 1 of 4</small></p>
+<div data-ref-banner></div><div data-panel></div><p data-msg></p>
+<button type="button" data-advanced>Advanced</button><div data-advanced-panel></div>
+<div data-notice></div>
+<script>
+  // FIXED DOMXSS-001: the fragment is rendered as text via textContent, never HTML.
+  (function(){function ap(){var raw=decodeURIComponent((location.hash||'').replace(/^#/,''));
+    document.querySelector('[data-ref-banner]').textContent=raw?('Referred by '+raw):'';}
+    ap();window.addEventListener('hashchange',ap);})();
+  // FIXED POSTMSG-001: the bridge rejects a foreign origin and renders text.
+  window.addEventListener('message',function(ev){if(ev.origin!==window.location.origin)return;var d=ev.data||{};
+    if(d.type==='taskflow:notice'){document.querySelector('[data-notice]').textContent=String(d.text||'');}});
+  var API='';var ROUTES={start:['api','signup','start'],verify:['api','signup','verify'],
+    profile:['api','signup','profile'],complete:['api','signup','complete'],
+    resend:['api','signup','resend'],report:['api','tools','report']};
+  function url(n){return [API].concat(ROUTES[n]).join('/');}
+  var draftId=null,email='';var panel=document.querySelector('[data-panel]');
+  var msg=document.querySelector('[data-msg]');var stepLabel=document.querySelector('[data-step]');
+  function post(n,b){return fetch(url(n),{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify(b)}).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});});}
+  function render(s){var f={1:'<form data-f="start"><input name="email" placeholder="work email"><button>Continue</button></form>',
+    2:'<form data-f="verify"><input name="code" placeholder="6-digit code"><button>Verify</button> <button type="button" data-resend>Resend</button></form>',
+    3:'<form data-f="profile"><input name="display_name" placeholder="display name"><button>Continue</button></form>',
+    4:'<form data-f="complete"><input name="password" type="password" placeholder="choose a password"><button>Finish</button></form>'};
+    stepLabel.textContent='step '+s+' of 4';panel.innerHTML=f[s];}
+  panel.addEventListener('submit',function(e){e.preventDefault();var f=e.target.getAttribute('data-f');
+    var fd=new FormData(e.target);
+    if(f==='start'){email=fd.get('email');post('start',{email:email}).then(function(r){
+      if(!r.ok){msg.textContent=r.j.error||'could not start';return;}draftId=r.j.draftId;
+      msg.textContent='We emailed you a 6-digit code.';render(2);});}
+    else if(f==='verify'){post('verify',{draftId:draftId,code:fd.get('code')}).then(function(r){
+      if(!r.ok){msg.textContent=r.j.error||'could not verify';return;}msg.textContent='';render(3);});}
+    else if(f==='profile'){post('profile',{draftId:draftId,display_name:fd.get('display_name')}).then(function(r){
+      if(!r.ok){msg.textContent=r.j.error||'could not save';return;}msg.textContent='';render(4);});}
+    else if(f==='complete'){post('complete',{draftId:draftId,password:fd.get('password')}).then(function(r){
+      msg.textContent=r.ok?('Welcome, '+r.j.email+' ('+r.j.role+').'):(r.j.error||'could not finish');});}});
+  panel.addEventListener('click',function(e){if(e.target.hasAttribute('data-resend')){
+    post('resend',{email:email}).then(function(){msg.textContent='If that signup exists, a code is on its way.';});}});
+  document.querySelector('[data-advanced]').addEventListener('click',function(){
+    var ap=document.querySelector('[data-advanced-panel]');
+    ap.innerHTML='<h3>Report builder</h3><input data-formula value="len(row[\\'title\\'])"> <button type="button" data-run>Run</button><pre data-out></pre>';
+    ap.querySelector('[data-run]').addEventListener('click',function(){
+      fetch(url('report'),{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({formula:ap.querySelector('[data-formula]').value})}).then(function(r){return r.text();})
+        .then(function(t){ap.querySelector('[data-out]').textContent=t;});});});
+  render(1);
+</script></body></html>"""
+
+
+@app.get("/signup")
+async def signup_wizard():
+    return HTMLResponse(_WIZARD_HTML)
+
+
+@app.post("/api/signup/start")
+async def signup_start(request: Request, db: Session = Depends(get_db)):
+    # FIXED SIGNUP-ENUM-001: step 1 answers the same way whether or not the
+    # address is already registered - always 200 with a draft id.
+    data = await request.json()
+    email = str(data.get("email", ""))
+    if not email:
+        return JSONResponse({"error": "email required"}, status_code=400)
+    draft = SignupDraft(email=email, code=_signup_code())
+    db.add(draft)
+    db.commit()
+    return {"draftId": draft.id, "step": "verify"}
+
+
+@app.post("/api/signup/verify")
+async def signup_verify(request: Request, db: Session = Depends(get_db)):
+    data = await request.json()
+    draft = db.get(SignupDraft, int(data.get("draftId") or 0))
+    if not draft:
+        return JSONResponse({"error": "unknown draft"}, status_code=404)
+    if draft.code != str(data.get("code", "")):
+        return JSONResponse({"error": "incorrect code"}, status_code=400)
+    draft.verified = True
+    db.commit()
+    return {"ok": True, "step": "profile"}
+
+
+@app.post("/api/signup/profile")
+async def signup_profile(request: Request, db: Session = Depends(get_db)):
+    # FIXED SIGNUP-MASSASSIGN-001: only the one field this step owns is written;
+    # role and org_slug are never client-writable.
+    data = await request.json()
+    draft = db.get(SignupDraft, int(data.get("draftId") or 0))
+    if not draft:
+        return JSONResponse({"error": "unknown draft"}, status_code=404)
+    draft.display_name = str(data.get("display_name", ""))
+    db.commit()
+    return {"ok": True, "step": "complete", "displayName": draft.display_name}
+
+
+@app.post("/api/signup/complete")
+async def signup_complete(request: Request, db: Session = Depends(get_db)):
+    # FIXED SIGNUP-STEPSKIP-001: the final step enforces the verified state, so a
+    # draft that never verified cannot be completed.
+    data = await request.json()
+    draft = db.get(SignupDraft, int(data.get("draftId") or 0))
+    if not draft:
+        return JSONResponse({"error": "unknown draft"}, status_code=404)
+    if not draft.verified:
+        return JSONResponse({"error": "email not verified"}, status_code=403)
+    if draft.completed:
+        return JSONResponse({"error": "already completed"}, status_code=409)
+    org = db.query(Organization).filter(Organization.slug == draft.org_slug).first()
+    if not org:
+        return JSONResponse({"error": "unknown org"}, status_code=400)
+    user = User(
+        email=draft.email,
+        password_hash=md5_password(str(data.get("password") or "Changeme123!")),
+        role=draft.role,
+        is_admin=(draft.role == "admin"),
+        verified=draft.verified,
+        org_id=org.id,
+    )
+    db.add(user)
+    draft.completed = True
+    db.commit()
+    return {"ok": True, "id": user.id, "email": user.email, "role": user.role}
+
+
+@app.get("/api/signup/draft/{draft_id}")
+async def signup_draft(draft_id: int, request: Request, db: Session = Depends(get_db)):
+    # FIXED SIGNUP-IDOR-001: reading a draft requires the code emailed to that
+    # address (proof of ownership), and the code is never echoed back.
+    draft = db.get(SignupDraft, draft_id)
+    if not draft:
+        return JSONResponse({"error": "unknown draft"}, status_code=404)
+    if not hmac.compare_digest(draft.code, request.headers.get("x-draft-code", "")):
+        return JSONResponse({"error": "forbidden"}, status_code=403)
+    return {
+        "id": draft.id, "email": draft.email, "verified": draft.verified,
+        "display_name": draft.display_name, "role": draft.role, "org_slug": draft.org_slug,
+        "completed": draft.completed,
+    }
+
+
+@app.post("/api/signup/resend")
+async def signup_resend(request: Request):
+    data = await request.json()
+    email = str(data.get("email", "")).lower()
+    constant = {"ok": True, "message": "if that signup exists, a code is on its way"}
+    if not email:
+        return constant
+    _SIGNUP_RESEND[email] = _SIGNUP_RESEND.get(email, 0) + 1
+    return constant
+
+
+@app.post("/api/tools/report")
+async def tools_report(request: Request, db: Session = Depends(get_db)):
+    # FIXED CODEINJ-001: the "computed column" is resolved through a fixed set of
+    # named projections instead of being eval'd; an unknown formula is rejected.
+    data = await request.json()
+    posts = db.query(Post).limit(20).all()
+    rows = [{"id": p.id, "title": p.title, "n": i + 1} for i, p in enumerate(posts)]
+    if data.get("agg"):
+        aggregates = {"count": lambda r: len(r), "sum": lambda r: sum(x["n"] for x in r), "max": lambda r: max((x["n"] for x in r), default=0)}
+        fn = aggregates.get(str(data["agg"]))
+        if not fn:
+            return JSONResponse({"error": "unknown aggregate"}, status_code=400)
+        return {"agg": data["agg"], "value": fn(rows)}
+    formula = str(data.get("formula", ""))
+    if not formula:
+        return JSONResponse({"error": "formula or agg required"}, status_code=400)
+    columns = {"len(row['title'])": lambda row: len(row["title"]), "row['n']": lambda row: row["n"], "row['id']": lambda row: row["id"]}
+    project = columns.get(formula)
+    if not project:
+        return JSONResponse({"error": "unknown column"}, status_code=400)
+    return {"formula": formula, "computed": [{"id": row["id"], "value": project(row)} for row in rows]}
+
+
+# ============================================================================
+# Two novel/complex bugs, layered on top of the catalog (patched twin).
+# ============================================================================
+
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding as _rsa_padding
+
+_KEYS_DIR = Path(__file__).resolve().parent / "keys"
+RSA_PRIVATE_PEM = (_KEYS_DIR / "rs_priv.pem").read_bytes()
+RSA_PUBLIC_PEM = (_KEYS_DIR / "rs_pub.pem").read_bytes()
+_rsa_priv = serialization.load_pem_private_key(RSA_PRIVATE_PEM, password=None)
+_rsa_pub = serialization.load_pem_public_key(RSA_PUBLIC_PEM)
+
+
+def sign_rs_jwt(payload: dict[str, Any]) -> str:
+    header = {"alg": "RS256", "typ": "JWT"}
+    h = b64url_encode(json.dumps(header, separators=(",", ":")).encode())
+    p = b64url_encode(json.dumps(payload, separators=(",", ":")).encode())
+    sig = _rsa_priv.sign(f"{h}.{p}".encode(), _rsa_padding.PKCS1v15(), hashes.SHA256())
+    return f"{h}.{p}.{b64url_encode(sig)}"
+
+
+def verify_rs_jwt(token: str) -> dict[str, Any]:
+    # FIXED JWTCONF-001: the algorithm is pinned to RS256, so a token cannot
+    # downgrade itself to HS256 and be verified against the (public) key material.
+    h, p, s = token.split(".")
+    header = json.loads(b64url_decode(h))
+    payload = json.loads(b64url_decode(p))
+    if header.get("alg") != "RS256":
+        raise HTTPException(status_code=401, detail="unsupported alg")
+    try:
+        _rsa_pub.verify(b64url_decode(s), f"{h}.{p}".encode(), _rsa_padding.PKCS1v15(), hashes.SHA256())
+        return payload
+    except Exception:
+        raise HTTPException(status_code=401, detail="bad token")
+
+
+@app.get("/api/auth/rs-public-key")
+async def rs_public_key():
+    return Response(content=RSA_PUBLIC_PEM, media_type="application/x-pem-file")
+
+
+@app.post("/api/auth/token-rs")
+async def token_rs(request: Request, db: Session = Depends(get_db)):
+    data = await request.json()
+    user = db.query(User).filter(User.email == data.get("email", "")).first()
+    if not user or user.password_hash != md5_password(data.get("password", "")):
+        raise HTTPException(status_code=401, detail="invalid")
+    return {"token": sign_rs_jwt({"sub": user.id, "email": user.email, "role": user.role})}
+
+
+@app.get("/api/reports/exec-summary")
+async def exec_summary(request: Request, db: Session = Depends(get_db)):
+    auth = request.headers.get("authorization", "")
+    if not auth.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="bearer required")
+    payload = verify_rs_jwt(auth.split(" ", 1)[1])
+    if payload.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="admin required")
+    marker = db.query(Post).filter(Post.slug == "globex-internal").first().body
+    return {"exec": True, "marker": marker}
+
+
+# --- Python class pollution (patched) ---------------------------------------
+
+class FeatureFlags:
+    premium = False
+    role_override = None
+
+
+def _deep_merge_attrs(src: dict, dst: Any) -> None:
+    # FIXED CLASSPOLL-001: an allow-list of scalar keys applied to the INSTANCE
+    # only. Dunder keys and nested objects are refused, so no attribute walk can
+    # reach __class__ / __globals__ and mutate class-level state.
+    allowed = {"premium", "role_override"}
+    for key, value in src.items():
+        if key in allowed and not isinstance(value, dict):
+            setattr(dst, key, value)
+
+
+@app.post("/api/flags/merge")
+async def flags_merge(request: Request):
+    data = await request.json()
+    _deep_merge_attrs(data, FeatureFlags())
+    return {"ok": True}
+
+
+@app.get("/api/flags/state")
+async def flags_state():
+    f = FeatureFlags()
+    return {"premium": f.premium, "roleOverride": f.role_override}
+
+
+@app.post("/api/flags/set")
+async def flags_set(request: Request):
+    data = await request.json()
+    f = FeatureFlags()
+    for key in ("premium", "role_override"):
+        if key in data and not isinstance(data[key], dict):
+            setattr(f, key, data[key])
+    return {"ok": True}

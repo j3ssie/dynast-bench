@@ -109,3 +109,30 @@ class RestoreBlob implements Serializable {
     public String marker;
     public RestoreBlob() {}
 }
+
+@Entity @Table(name = "signup_drafts")
+class SignupDraft {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) Long id;
+    String email;
+    String code;
+    boolean verified;
+    String displayName = "";
+    String role = "user";
+    String orgSlug = "acme";
+    boolean completed;
+    protected SignupDraft() {}
+    SignupDraft(String email, String code) { this.email = email; this.code = code; }
+    public Long getId() { return id; }
+    public String getEmail() { return email; }
+    public String getCode() { return code; }
+    public boolean isVerified() { return verified; }
+    public void setVerified(boolean v) { this.verified = v; }
+    public String getDisplayName() { return displayName; }
+    public void setDisplayName(String d) { this.displayName = d; }
+    public String getRole() { return role; }
+    public void setRole(String r) { this.role = r; }
+    public String getOrgSlug() { return orgSlug; }
+    public void setOrgSlug(String s) { this.orgSlug = s; }
+    public boolean isCompleted() { return completed; }
+    public void setCompleted(boolean c) { this.completed = c; }
+}

@@ -7,6 +7,7 @@ services:
       PORT: "3000"
       LLM_BACKEND: "stub"
       VERIFY_TOKEN: "benchsecret"
+      # FIXED SECRET-001: JWT/service secrets are rotated out of hardcoded values.
       JWT_SECRET: "rotated-safe-secret"
       SERVICE_TOKEN: "svc-rotated-token"
     healthcheck:

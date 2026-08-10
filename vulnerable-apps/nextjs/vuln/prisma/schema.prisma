@@ -60,6 +60,22 @@ model Comment {
   createdAt DateTime @default(now())
 }
 
+/// An in-progress registration. The wizard writes one row on step 1 and carries
+/// its id across the remaining steps, so the server holds the flow state rather
+/// than trusting the client to.
+model SignupDraft {
+  /// Sequential rather than a cuid, so a draft is addressable by counting.
+  id          Int      @id @default(autoincrement())
+  email       String
+  code        String
+  verified    Boolean  @default(false)
+  displayName String   @default("")
+  role        String   @default("user")
+  orgSlug     String   @default("acme")
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
 model Invitation {
   id        String   @id @default(cuid())
   orgId     String

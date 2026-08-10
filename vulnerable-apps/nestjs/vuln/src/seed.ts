@@ -7,7 +7,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL || 'postgresq
 
 async function main() {
   await pool.query(`
-    DROP TABLE IF EXISTS reset_tokens, invites, attachments, comments, reports, posts, users, orgs CASCADE;
+    DROP TABLE IF EXISTS signup_drafts, reset_tokens, invites, attachments, comments, reports, posts, users, orgs CASCADE;
     CREATE TABLE orgs (id SERIAL PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, seat_limit INT NOT NULL DEFAULT 3, seats_used INT NOT NULL DEFAULT 1);
     CREATE TABLE users (id SERIAL PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, display_name TEXT NOT NULL, role TEXT NOT NULL, is_admin BOOLEAN NOT NULL DEFAULT FALSE, verified BOOLEAN NOT NULL DEFAULT TRUE, org_id INT NOT NULL REFERENCES orgs(id));
     CREATE TABLE posts (id SERIAL PRIMARY KEY, slug TEXT UNIQUE NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, status TEXT NOT NULL, org_id INT NOT NULL REFERENCES orgs(id), author_id INT NOT NULL REFERENCES users(id));
@@ -16,6 +16,7 @@ async function main() {
     CREATE TABLE attachments (id SERIAL PRIMARY KEY, filename TEXT NOT NULL, path TEXT NOT NULL, org_id INT NOT NULL REFERENCES orgs(id), owner_id INT NOT NULL REFERENCES users(id));
     CREATE TABLE invites (id SERIAL PRIMARY KEY, email TEXT NOT NULL, org_id INT NOT NULL REFERENCES orgs(id));
     CREATE TABLE reset_tokens (id SERIAL PRIMARY KEY, email TEXT NOT NULL, token TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+    CREATE TABLE signup_drafts (id SERIAL PRIMARY KEY, email TEXT NOT NULL, code TEXT NOT NULL, verified BOOLEAN NOT NULL DEFAULT FALSE, display_name TEXT NOT NULL DEFAULT '', role TEXT NOT NULL DEFAULT 'user', org_slug TEXT NOT NULL DEFAULT 'acme', completed BOOLEAN NOT NULL DEFAULT FALSE);
   `);
   const acme = (await pool.query("INSERT INTO orgs(name, slug, seat_limit, seats_used) VALUES ('Acme','acme',3,1) RETURNING id")).rows[0].id;
   const globex = (await pool.query("INSERT INTO orgs(name, slug, seat_limit, seats_used) VALUES ('Globex','globex',3,1) RETURNING id")).rows[0].id;

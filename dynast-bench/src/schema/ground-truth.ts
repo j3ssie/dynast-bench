@@ -11,6 +11,7 @@ import { isObj, str } from "./coerce.ts";
 import { normalizeCwe } from "./cwe.ts";
 import {
   DIFFICULTIES,
+  DISCOVERY_TIERS,
   REACHABILITIES,
   SEVERITIES,
   TAINTS,
@@ -153,6 +154,16 @@ export function validateGroundTruth(doc: unknown): ValidationResult<GroundTruth>
     const taint = str(raw.taint);
     if (taint && !TAINTS.includes(taint)) {
       warnings.push({ at: `${at}.taint`, msg: `unusual taint "${taint}"` });
+    }
+    // Optional, but a typo would silently drop the entry out of the discovery
+    // breakdown instead of showing up as a bad value - so once it is set, it
+    // has to be a real tier.
+    const discovery = str(raw.discovery);
+    if (discovery && !DISCOVERY_TIERS.includes(discovery)) {
+      errors.push({
+        at: `${at}.discovery`,
+        msg: `must be one of ${DISCOVERY_TIERS.join("|")} (got "${discovery}")`,
+      });
     }
     const reach = str(raw.reachability);
     if (reach && !REACHABILITIES.includes(reach)) {

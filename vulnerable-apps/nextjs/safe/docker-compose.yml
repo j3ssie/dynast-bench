@@ -10,6 +10,7 @@ services:
       SMTP_PORT: "1025"
       APP_URL: http://localhost:3000
       JWT_SECRET: dev-super-secret-change-me
+      # FIXED SECRET-001: no NEXT_PUBLIC_ key is handed to the browser bundle.
       VERIFY_TOKEN: benchsecret
     depends_on:
       postgres: { condition: service_healthy }

@@ -188,6 +188,71 @@ describe("ground-truth validation", () => {
     });
     expect(res.errors.some((e) => e.msg.includes("nothing to anchor"))).toBe(true);
   });
+
+  test("a discovery tier outside the vocabulary is an error", () => {
+    const res = validateGroundTruth({
+      app: "t",
+      vulnerabilities: [
+        {
+          id: "X-001",
+          cwe: "CWE-89",
+          severity: "high",
+          difficulty: "E",
+          discovery: "needs-a-browser",
+          route: "GET /x",
+        },
+      ],
+    });
+    expect(res.ok).toBe(false);
+    expect(res.errors.some((e) => e.at === "vulnerabilities[0].discovery")).toBe(true);
+  });
+});
+
+describe("recall by discovery tier", () => {
+  const key = (tiers: (string | undefined)[]) => ({
+    app: "t",
+    entry: "http://127.0.0.1:13311",
+    vulnerabilities: tiers.map((discovery, i) => ({
+      id: `BUG-00${i + 1}`,
+      cwe: "CWE-89",
+      severity: "high",
+      difficulty: "E",
+      ...(discovery ? { discovery } : {}),
+      route: `GET /bug${i + 1}`,
+      match: { http: { method: "GET", path: `/bug${i + 1}` } },
+    })),
+    near_misses: [],
+  });
+  /** a tool that found only /bug1 */
+  const run = envelope("t", [
+    {
+      id: "f1",
+      title: "sqli",
+      cwe: "CWE-89",
+      severity: "high",
+      location: { http: { method: "GET", path: "/bug1" } },
+    } as any,
+  ]);
+
+  test("splits recall across the tiers a key declares", () => {
+    const gt = validateGroundTruth(key(["static-html", "js-runtime", "flow"])).value!;
+    const r = scoreApp({ app: "t", groundTruth: gt, runs: [run] });
+    expect(r.by_discovery["static-html"]).toEqual({ gt: 1, tp: 1, recall: 1 });
+    expect(r.by_discovery["js-runtime"]).toEqual({ gt: 1, tp: 0, recall: 0 });
+    expect(r.by_discovery["flow"]).toEqual({ gt: 1, tp: 0, recall: 0 });
+  });
+
+  test("orders tiers cheapest-crawl first, not alphabetically", () => {
+    const gt = validateGroundTruth(key(["flow", "static-html", "interaction"])).value!;
+    const r = scoreApp({ app: "t", groundTruth: gt, runs: [run] });
+    expect(Object.keys(r.by_discovery)).toEqual(["static-html", "interaction", "flow"]);
+  });
+
+  test("an untiered key reports nothing rather than one all-unknown bucket", () => {
+    const gt = validateGroundTruth(key([undefined, undefined])).value!;
+    const r = scoreApp({ app: "t", groundTruth: gt, runs: [run] });
+    expect(r.by_discovery).toEqual({});
+  });
 });
 
 // ------------------------------------------------------------- the matcher ---

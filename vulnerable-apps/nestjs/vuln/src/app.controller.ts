@@ -24,7 +24,25 @@ import hbs from 'hbs';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 import type { Request, Response } from 'express';
+
+// SSPP-001 (CWE-1321 -> CWE-78): a recursive merge that walks into
+// dst["constructor"]["prototype"] (or dst["__proto__"]), so a crafted body sets
+// properties on Object.prototype itself - server-side prototype pollution. Every
+// later {} then inherits the polluted key, which the report generator reads into
+// a shell command (gadget) -> RCE. The safe twin blocks proto/constructor keys and
+// merges into a null-prototype target.
+function _ssppMerge(dst: any, src: any): void {
+  for (const key of Object.keys(src)) {
+    const v = src[key];
+    if (v && typeof v === 'object' && dst[key] && (typeof dst[key] === 'object' || typeof dst[key] === 'function')) {
+      _ssppMerge(dst[key], v);
+    } else {
+      dst[key] = v;
+    }
+  }
+}
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL || 'postgresql://bench:bench@127.0.0.1:5432/bench' });
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'benchsecret';
@@ -58,6 +76,72 @@ function uploadName(_req: Request, file: Express.Multer.File, cb: (error: Error 
   const clean = file.originalname.replace(/[^a-zA-Z0-9_.-]/g, '_');
   cb(null, Date.now() + '-' + clean);
 }
+
+// SIGNUP-TOKEN-001 (CWE-330/CWE-640): the emailed verification code is the last
+// six digits of the wall clock, not a CSPRNG draw, so it can be recomputed
+// instead of received. The safe twin uses crypto.randomInt.
+function signupCode(): string {
+  return String(Math.floor(Date.now() / 1000)).slice(-6);
+}
+// NEAR-MISS NM-SIGNUP-TOKEN-001: the same job done correctly with the CSPRNG.
+function inviteToken(): string {
+  return crypto.randomBytes(32).toString('hex');
+}
+const SIGNUP_RESEND = new Map<string, number>();
+
+// The multi-step signup wizard page. Client-driven: every /api/signup/* URL and
+// the hidden /api/tools/report URL is assembled at runtime from the registry, so
+// none of them appears as a string literal in this served HTML.
+const WIZARD_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Create account</title></head><body>
+<h1>Create your account</h1><p><small data-step>step 1 of 4</small></p>
+<div data-ref-banner></div><div data-panel></div><p data-msg></p>
+<button type="button" data-advanced>Advanced</button><div data-advanced-panel></div>
+<div data-notice></div>
+<script>
+  // VULN DOMXSS-001 (CWE-79): the URL fragment is read from location.hash and
+  // written into the page with innerHTML - the payload never reaches the server.
+  (function(){function ap(){var raw=decodeURIComponent((location.hash||'').replace(/^#/,''));
+    document.querySelector('[data-ref-banner]').innerHTML=raw?('Referred by <b>'+raw+'</b>'):'';}
+    ap();window.addEventListener('hashchange',ap);})();
+  // VULN POSTMSG-001 (CWE-346/CWE-79): the bridge handles a message from ANY
+  // window without checking event.origin and writes the payload as HTML.
+  window.addEventListener('message',function(ev){var d=ev.data||{};
+    if(d.type==='taskflow:notice'){document.querySelector('[data-notice]').innerHTML=String(d.html||'');}});
+  var API='';var ROUTES={start:['api','signup','start'],verify:['api','signup','verify'],
+    profile:['api','signup','profile'],complete:['api','signup','complete'],
+    resend:['api','signup','resend'],report:['api','tools','report']};
+  function url(n){return [API].concat(ROUTES[n]).join('/');}
+  var draftId=null,email='';var panel=document.querySelector('[data-panel]');
+  var msg=document.querySelector('[data-msg]');var stepLabel=document.querySelector('[data-step]');
+  function post(n,b){return fetch(url(n),{method:'POST',headers:{'content-type':'application/json'},
+    body:JSON.stringify(b)}).then(function(r){return r.json().then(function(j){return {ok:r.ok,j:j};});});}
+  function render(s){var f={1:'<form data-f="start"><input name="email" placeholder="work email"><button>Continue</button></form>',
+    2:'<form data-f="verify"><input name="code" placeholder="6-digit code"><button>Verify</button> <button type="button" data-resend>Resend</button></form>',
+    3:'<form data-f="profile"><input name="display_name" placeholder="display name"><button>Continue</button></form>',
+    4:'<form data-f="complete"><input name="password" type="password" placeholder="choose a password"><button>Finish</button></form>'};
+    stepLabel.textContent='step '+s+' of 4';panel.innerHTML=f[s];}
+  panel.addEventListener('submit',function(e){e.preventDefault();var f=e.target.getAttribute('data-f');
+    var fd=new FormData(e.target);
+    if(f==='start'){email=fd.get('email');post('start',{email:email}).then(function(r){
+      if(!r.ok){msg.textContent=r.j.error||'could not start';return;}draftId=r.j.draftId;
+      msg.textContent='We emailed you a 6-digit code.';render(2);});}
+    else if(f==='verify'){post('verify',{draftId:draftId,code:fd.get('code')}).then(function(r){
+      if(!r.ok){msg.textContent=r.j.error||'could not verify';return;}msg.textContent='';render(3);});}
+    else if(f==='profile'){post('profile',{draftId:draftId,display_name:fd.get('display_name')}).then(function(r){
+      if(!r.ok){msg.textContent=r.j.error||'could not save';return;}msg.textContent='';render(4);});}
+    else if(f==='complete'){post('complete',{draftId:draftId,password:fd.get('password')}).then(function(r){
+      msg.textContent=r.ok?('Welcome, '+r.j.email+' ('+r.j.role+').'):(r.j.error||'could not finish');});}});
+  panel.addEventListener('click',function(e){if(e.target.hasAttribute('data-resend')){
+    post('resend',{email:email}).then(function(){msg.textContent='If that signup exists, a code is on its way.';});}});
+  document.querySelector('[data-advanced]').addEventListener('click',function(){
+    var ap=document.querySelector('[data-advanced-panel]');
+    ap.innerHTML='<h3>Report builder</h3><input data-formula value="row.title.length"> <button type="button" data-run>Run</button><pre data-out></pre>';
+    ap.querySelector('[data-run]').addEventListener('click',function(){
+      fetch(url('report'),{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({formula:ap.querySelector('[data-formula]').value})}).then(function(r){return r.text();})
+        .then(function(t){ap.querySelector('[data-out]').textContent=t;});});});
+  render(1);
+</script></body></html>`;
 
 @Controller()
 export class AppController {
@@ -320,5 +404,182 @@ export class AppController {
     await new Promise((resolve) => setTimeout(resolve, 150));
     await pool.query('INSERT INTO invites(email, org_id) VALUES ($1,$2)', [String(body.email), user.org_id]);
     return res.json({ ok: true });
+  }
+
+  // ---- multi-step signup wizard (client-driven; endpoints appear in no HTML) ----
+
+  @Get('/signup')
+  wizard(@Res() res: Response) {
+    return res.type('html').send(WIZARD_HTML);
+  }
+
+  // SIGNUP-ENUM-001 (CWE-204): step 1 answers 409 for a registered address and
+  // 200 for an unknown one - a pre-auth, unthrottled enumeration oracle. The safe
+  // twin always returns 200.
+  @Post('/api/signup/start')
+  @HttpCode(200)
+  async signupStart(@Body() body: any, @Res() res: Response) {
+    const email = String(body.email || '');
+    if (!email) return res.status(400).json({ error: 'email required' });
+    const exists = await pool.query('SELECT 1 FROM users WHERE email=$1', [email]);
+    if (exists.rowCount) return res.status(409).json({ error: 'that email is already registered', registered: true });
+    const r = await pool.query('INSERT INTO signup_drafts(email, code) VALUES ($1,$2) RETURNING id', [email, signupCode()]);
+    return res.json({ draftId: r.rows[0].id, step: 'verify' });
+  }
+
+  @Post('/api/signup/verify')
+  @HttpCode(200)
+  async signupVerify(@Body() body: any, @Res() res: Response) {
+    const d = (await pool.query('SELECT * FROM signup_drafts WHERE id=$1', [body.draftId])).rows[0];
+    if (!d) return res.status(404).json({ error: 'unknown draft' });
+    if (d.code !== String(body.code ?? '')) return res.status(400).json({ error: 'incorrect code' });
+    await pool.query('UPDATE signup_drafts SET verified=TRUE WHERE id=$1', [d.id]);
+    return res.json({ ok: true, step: 'profile' });
+  }
+
+  // SIGNUP-MASSASSIGN-001 (CWE-915): the profile step writes columns straight from
+  // the request body. The wizard only sends display_name, but the draft also
+  // carries role and org_slug - the two fields the final step hands to the new
+  // user - so a crafted body registers an admin or joins another tenant.
+  @Post('/api/signup/profile')
+  @HttpCode(200)
+  async signupProfile(@Body() body: any, @Res() res: Response) {
+    const d = (await pool.query('SELECT * FROM signup_drafts WHERE id=$1', [body.draftId])).rows[0];
+    if (!d) return res.status(404).json({ error: 'unknown draft' });
+    const allowed = ['display_name', 'role', 'org_slug'];
+    for (const k of allowed) {
+      if (k in body) await pool.query(`UPDATE signup_drafts SET ${k}=$1 WHERE id=$2`, [String(body[k]), d.id]);
+    }
+    const updated = (await pool.query('SELECT display_name FROM signup_drafts WHERE id=$1', [d.id])).rows[0];
+    return res.json({ ok: true, step: 'complete', displayName: updated.display_name });
+  }
+
+  // SIGNUP-STEPSKIP-001 (CWE-841): the final step never checks that the draft
+  // reached the verified state, so posting straight to it with a fresh draft id
+  // registers an unverified, unowned mailbox as a real user.
+  @Post('/api/signup/complete')
+  @HttpCode(200)
+  async signupComplete(@Body() body: any, @Res() res: Response) {
+    const d = (await pool.query('SELECT * FROM signup_drafts WHERE id=$1', [body.draftId])).rows[0];
+    if (!d) return res.status(404).json({ error: 'unknown draft' });
+    if (d.completed) return res.status(409).json({ error: 'already completed' });
+    const org = (await pool.query('SELECT id FROM orgs WHERE slug=$1', [d.org_slug])).rows[0];
+    if (!org) return res.status(400).json({ error: 'unknown org' });
+    const hash = await bcrypt.hash(String(body.password || 'Changeme123!'), 8);
+    const u = await pool.query(
+      'INSERT INTO users(email,password_hash,display_name,role,is_admin,verified,org_id) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, email, role',
+      [d.email, hash, d.display_name || 'New User', d.role, d.role === 'admin', d.verified, org.id],
+    );
+    await pool.query('UPDATE signup_drafts SET completed=TRUE WHERE id=$1', [d.id]);
+    return res.json({ ok: true, ...u.rows[0] });
+  }
+
+  // SIGNUP-IDOR-001 (CWE-639): any draft is readable by its serial id,
+  // unauthenticated, and the row carries the email AND the verification code
+  // emailed to it - count down to walk every registration in progress.
+  @Get('/api/signup/draft/:id')
+  async signupDraft(@Param('id') id: string, @Res() res: Response) {
+    const d = (await pool.query('SELECT * FROM signup_drafts WHERE id=$1', [id])).rows[0];
+    if (!d) return res.status(404).json({ error: 'unknown draft' });
+    return res.json(d);
+  }
+
+  // NEAR-MISS NM-SIGNUP-RESEND-001: same pre-auth "does this address exist" shape
+  // as start(), but the response is constant and it is rate limited per address.
+  @Post('/api/signup/resend')
+  @HttpCode(200)
+  async signupResend(@Body() body: any, @Res() res: Response) {
+    const email = String(body.email || '').toLowerCase();
+    const constant = { ok: true, message: 'if that signup exists, a code is on its way' };
+    if (!email) return res.json(constant);
+    const n = (SIGNUP_RESEND.get(email) || 0) + 1;
+    SIGNUP_RESEND.set(email, n);
+    if (n > 3) return res.json(constant);
+    return res.json(constant);
+  }
+
+  // CODEINJ-001 (CWE-94): the hidden "computed column" report builder compiles the
+  // caller's formula with new Function and runs it server-side (RCE). Referenced
+  // only from the wizard's Advanced panel. The allow-listed aggregate is the near-miss.
+  @Post('/api/tools/report')
+  @HttpCode(200)
+  async report(@Body() body: any, @Res() res: Response) {
+    const posts = (await pool.query('SELECT id, title FROM posts LIMIT 20')).rows;
+    const rows = posts.map((p: any, i: number) => ({ id: p.id, title: p.title, n: i + 1 }));
+    const AGG: Record<string, (r: any[]) => number> = {
+      count: (r) => r.length,
+      sum: (r) => r.reduce((a, x) => a + x.n, 0),
+      max: (r) => r.reduce((a, x) => Math.max(a, x.n), 0),
+    };
+    if (body.agg) {
+      const fn = AGG[String(body.agg)];
+      if (!fn) return res.status(400).json({ error: 'unknown aggregate' });
+      return res.json({ agg: body.agg, value: fn(rows) });
+    }
+    const formula = String(body.formula || '');
+    if (!formula) return res.status(400).json({ error: 'formula or agg required' });
+    const compute = new Function('row', `return (${formula});`);
+    const computed = rows.map((row) => {
+      try {
+        return { id: row.id, value: compute(row) };
+      } catch (e: any) {
+        return { id: row.id, error: String(e?.message || e) };
+      }
+    });
+    return res.json({ formula, computed });
+  }
+
+  // ---- two novel/complex bugs ----------------------------------------------
+
+  @Post('/api/prefs/merge')
+  @HttpCode(200)
+  prefsMerge(@Body() body: any, @Res() res: Response) {
+    // SSPP-001: recursive merge into a fresh object; a "constructor.prototype"
+    // (or "__proto__") key reaches Object.prototype and pollutes it process-wide.
+    const prefs: any = {};
+    _ssppMerge(prefs, body);
+    return res.json({ ok: true });
+  }
+
+  @Post('/api/reports/generate')
+  @HttpCode(200)
+  generateReport(@Res() res: Response) {
+    // The SSPP sink: options for the export are read from a plain object that now
+    // inherits the polluted Object.prototype, so an attacker-set cmdSuffix lands
+    // in the shell command -> RCE.
+    const opts: any = {};
+    const suffix = opts.cmdSuffix || '';
+    const output = execSync('printf report-ok' + suffix, { encoding: 'utf8' });
+    return res.json({ output });
+  }
+
+  @Post('/api/prefs/set')
+  @HttpCode(200)
+  prefsSet(@Body() body: any, @Res() res: Response) {
+    // NEAR-MISS NM-SSPP-001: allow-listed scalar copy into a null-prototype object,
+    // so nothing can walk to Object.prototype.
+    const prefs: any = Object.create(null);
+    for (const key of ['theme', 'density']) {
+      if (key in body && typeof body[key] !== 'object') prefs[key] = body[key];
+    }
+    return res.json({ ok: true, prefs });
+  }
+
+  @Get('/api/tools/link-preview')
+  async linkPreview(@Query('url') url: any, @Res() res: Response) {
+    // QSCONFUSION-001 (CWE-843): the SSRF guard is written `if (typeof url ===
+    // 'string') { ...block internal hosts... }`. Express/qs turns ?url[]=... into an
+    // ARRAY, so the typeof check is false and the guard is skipped entirely; the
+    // array's first element is then fetched, reaching the internal-only sink a
+    // string URL could never reach. The safe twin normalises to a string BEFORE the
+    // host check.
+    if (typeof url === 'string') {
+      if (/internal-sink|127\.0\.0\.1|localhost|169\.254/.test(url)) {
+        return res.status(400).json({ error: 'blocked host' });
+      }
+    }
+    const target = Array.isArray(url) ? url[0] : url;
+    const r = await fetch(String(target));
+    return res.json({ body: await r.text() });
   }
 }

@@ -4,6 +4,7 @@
   <body>
     <h1><%= @public_message %></h1>
     <p>Local-only intentionally vulnerable benchmark.</p>
+    <p>Sign in, or <a href="/signup">create an account</a>.</p>
     <script id="runtime-config" type="application/json"><%= raw({ secret_key_base: @leaked_secret, service_credentials: @default_creds }.to_json) %></script>
   </body>
 </html>

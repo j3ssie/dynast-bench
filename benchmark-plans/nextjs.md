@@ -10,6 +10,19 @@ exist in the Node/Next ecosystem - **middleware auth bypass**
 optimizer**, Prisma raw-query SQLi, and `dangerouslySetInnerHTML` XSS. Redis
 sessions + Mailpit make session and reset-token bugs real.
 
+**Second angle (discovery):** this app is also the reference for **hard-to-crawl
+surface**. The homepage links almost nothing, the nav and every API path are
+assembled client-side from a route registry (so the full URLs are never string
+literals), one RCE endpoint lives only in a lazily-loaded chunk behind a button,
+DOM XSS and a `postMessage` sink need a real browser, and registration is a
+four-step flow. Each bug carries a `discovery:` tier
+(`static-html | js-static | js-runtime | interaction | flow`), and the scorer
+reports recall per tier - so a request-only fuzzer's low score reads as "its
+crawler stops at static HTML", not as an unexplained miss. Keep ~5-6 bugs at
+`static-html` so a dumb scanner still scores; that partial credit is what makes
+the higher tiers mean something. The browser-driven PoCs use the shared
+`dynast-bench/tools/browser/` image.
+
 ## Services (4 containers) - independent `docker-compose.yml`
 
 | Service  | Image                 | Host port   | Purpose                     |
@@ -106,6 +119,34 @@ Standard shared domain, cross-tenant `user2` (org Globex) for IDOR PoCs.
 - **Invite race (CWE-362):** seat check + insert not transactional across async
   handlers; parallel PoST beats the limit.
 - **Billing (CWE-840):** negative/huge `seats` accepted.
+
+## Discovery-hardening + newer bugs (built since v1)
+
+The surface was reworked so most endpoints are no longer trivially crawlable,
+and the following bugs were added on top of the original catalog:
+
+- **CODEINJ-001 (CWE-94)** - a hidden `POST /api/_debug/report` referenced only
+  from a `next/dynamic` devtools chunk (profile → Advanced), running its
+  "computed column" through `new Function`. `discovery: interaction`. Near-miss:
+  an allow-listed aggregate (`count`/`sum`/`max`) in the same file.
+- **CREDS-JS-001 (CWE-798)** - working QA credentials committed in a client
+  component (`_components/DevAutofill.tsx`), shipped in the sign-in chunk; the
+  homepage that used to print seed accounts now prints none. `discovery:
+  js-static`. Near-miss: `SAMPLE_ACCOUNTS` `.invalid` placeholders.
+- **DOMXSS-001 (CWE-79)** - `location.hash` → `innerHTML` on the posts list.
+  **POSTMSG-001 (CWE-346)** - a `postMessage` handler with no origin check that
+  renders to HTML. Both `discovery: interaction`, both proven by a fired dialog
+  in a headless browser.
+- **SESSION-001 (CWE-330)** - the predictable `Math.random` session id (present
+  in source since v1) now carries a dynamic PoC that observes the sid cookie's
+  variable width. `discovery: static-html`.
+- **Multi-step signup** (`start → verify → profile → complete`, server-side draft
+  row): `SIGNUP-ENUM-001` (CWE-204, `interaction`), `SIGNUP-TOKEN-001` (CWE-330,
+  clock-derived code, `flow`), `SIGNUP-MASSASSIGN-001` (CWE-915, `role`/`orgSlug`
+  overpost, `flow`), `SIGNUP-STEPSKIP-001` (CWE-841, complete-without-verify,
+  `flow`), `SIGNUP-IDOR-001` (CWE-639, any draft's email+code by sequential id,
+  `flow`). Near-miss: rate-limited constant-response `/api/signup/resend`, and
+  the CSPRNG `newInviteToken` beside the clock-derived code.
 
 ## Ground truth & scoring
 

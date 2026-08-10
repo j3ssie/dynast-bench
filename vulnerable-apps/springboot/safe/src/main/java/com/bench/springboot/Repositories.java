@@ -10,3 +10,4 @@ interface PostRepository extends JpaRepository<Post, Long> { Optional<Post> find
 interface CommentRepository extends JpaRepository<Comment, Long> { List<Comment> findByPostId(Long postId); }
 interface ReportRepository extends JpaRepository<ReportDefinition, Long> {}
 interface InviteRepository extends JpaRepository<Invite, Long> { long countByOrgId(Long orgId); void deleteByOrgId(Long orgId); }
+interface SignupDraftRepository extends JpaRepository<SignupDraft, Long> {}

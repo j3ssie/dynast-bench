@@ -21,6 +21,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-INFO-001
@@ -41,6 +42,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -58,6 +60,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: NM-IDOR-001
@@ -80,6 +83,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -97,6 +101,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: H
+    discovery: static-html
     taint: cross-file
     reachability: user
     near_miss: NM-SQL-001
@@ -117,6 +122,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: critical
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-RCE-001
@@ -136,6 +142,7 @@ vulnerabilities:
     owasp: "A10:2021-Server-Side Request Forgery (SSRF)"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-SSRF-001
@@ -155,6 +162,7 @@ vulnerabilities:
     owasp: "A04:2021-Insecure Design"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-DOS-001
@@ -174,6 +182,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -191,6 +200,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: low
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -208,6 +218,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null

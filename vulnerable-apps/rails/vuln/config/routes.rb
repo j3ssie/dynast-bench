@@ -3,6 +3,17 @@ Rails.application.routes.draw do
   post "/api/auth/login", to: "sessions#create"
   delete "/api/auth/logout", to: "sessions#destroy"
 
+  # Multi-step signup wizard (client-driven; the /api/signup/* endpoints appear in
+  # no served HTML) and the click-gated Advanced report builder.
+  get "/signup", to: "signups#wizard"
+  post "/api/signup/start", to: "signups#start"
+  post "/api/signup/verify", to: "signups#verify"
+  post "/api/signup/profile", to: "signups#profile"
+  post "/api/signup/complete", to: "signups#complete"
+  post "/api/signup/resend", to: "signups#resend"
+  get "/api/signup/draft/:id", to: "signups#draft"
+  post "/api/tools/report", to: "advanced#report"
+
   get "/api/_verify/health", to: "verify#health"
   get "/api/_verify/user", to: "verify#user"
   get "/api/_verify/post", to: "verify#post"

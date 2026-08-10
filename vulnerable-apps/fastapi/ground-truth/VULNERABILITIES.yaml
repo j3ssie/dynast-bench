@@ -17,6 +17,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: low
     difficulty: E-M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -34,6 +35,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -51,6 +53,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -69,6 +72,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -86,6 +90,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-SQL-001
@@ -104,6 +109,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -122,6 +128,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -139,6 +146,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -156,6 +164,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: critical
     difficulty: H
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: NM-SSTI-001
@@ -173,6 +182,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: critical
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -190,6 +200,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: H
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -208,6 +219,7 @@ vulnerabilities:
     owasp: "A08:2021-Software and Data Integrity Failures"
     severity: critical
     difficulty: H
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-DESER-001
@@ -225,6 +237,7 @@ vulnerabilities:
     owasp: "A08:2021-Software and Data Integrity Failures"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-DESER-001
@@ -242,6 +255,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -260,6 +274,7 @@ vulnerabilities:
     owasp: "A10:2021-SSRF"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -278,6 +293,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -295,6 +311,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: low
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -312,6 +329,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-TRAVERSAL-001
@@ -330,6 +348,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: low
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -348,6 +367,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: medium
     difficulty: E-M
+    discovery: static-html
     taint: cross-file
     reachability: user
     near_miss: null
@@ -365,6 +385,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -382,6 +403,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -399,6 +421,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: user
     near_miss: null
@@ -417,6 +440,7 @@ vulnerabilities:
     owasp: "A04:2021-Insecure Design"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -434,6 +458,7 @@ vulnerabilities:
     owasp: "A04:2021-Insecure Design"
     severity: high
     difficulty: H
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -451,6 +476,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-CACHE-001
@@ -460,7 +486,253 @@ vulnerabilities:
     poc: ground-truth/verify/cache_poison_001.sh
     notes: "Web cache poisoning: the shared cache is keyed on `key` only but the body reflects the unkeyed X-Forwarded-Host; the safe twin folds the host into the key (see cache_widget_scoped)."
 
+  - id: CODEINJ-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: tools_report
+    route: "POST /api/tools/report"
+    cwe: CWE-94
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: H
+    discovery: js-runtime
+    discovery: js-runtime
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-AGG-001
+    match:
+      http: { method: POST, path: "/api/tools/report" }
+      file: { path: vuln/app/main.py, symbol: tools_report, lines: [654, 700] }
+    poc: ground-truth/verify/codeinj_001.sh
+    notes: >
+      Hidden report-builder referenced ONLY from the wizard's Advanced panel. The
+      "computed column" formula is eval'd server-side (RCE - reaches os.environ).
+      The allow-listed aggregate in the same handler is the near-miss.
+
+  - id: DOMXSS-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: _WIZARD_HTML applyRef
+    route: "GET /signup (#<payload>)"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: M
+    discovery: interaction
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/signup" }
+      file: { path: vuln/app/main.py, symbol: "_WIZARD_HTML applyRef", lines: [499, 503] }
+    poc: ground-truth/verify/domxss_001.sh
+    notes: >
+      location.hash is read into innerHTML on the signup wizard; the payload lives
+      in the fragment, never sent to the server, so only a real browser sees it.
+
+  - id: POSTMSG-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: _WIZARD_HTML message
+    route: "GET /signup (window.postMessage)"
+    cwe: CWE-346
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: H
+    discovery: interaction
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/signup" }
+      file: { path: vuln/app/main.py, symbol: "_WIZARD_HTML message", lines: [504, 550] }
+    poc: ground-truth/verify/postmsg_001.sh
+    notes: >
+      The wizard's widget bridge accepts a message from any origin and renders it
+      as HTML. Provable only in a browser; the safe twin checks origin, renders text.
+
+  - id: SIGNUP-ENUM-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: signup_start
+    route: "POST /api/signup/start"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    discovery: interaction
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SIGNUP-RESEND-001
+    match:
+      http: { method: POST, path: "/api/signup/start" }
+      file: { path: vuln/app/main.py, symbol: signup_start, lines: [551, 580] }
+    poc: ground-truth/verify/signup_enum_001.sh
+    notes: >
+      Step 1 returns 409 for a registered address and 200 for an unknown one - a
+      pre-auth enumeration oracle. The constant, rate-limited resend is the near-miss.
+
+  - id: SIGNUP-TOKEN-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: _signup_code
+    route: "POST /api/signup/verify"
+    cwe: CWE-330
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: H
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SIGNUP-TOKEN-001
+    match:
+      http: { method: POST, path: "/api/signup/verify" }
+      file: { path: vuln/app/main.py, symbol: _signup_code, lines: [481, 487] }
+    poc: ground-truth/verify/signup_token_001.sh
+    notes: >
+      The emailed code is the last 6 digits of time(), so it can be recomputed.
+      _invite_token (secrets CSPRNG) is the near-miss.
+
+  - id: SIGNUP-MASSASSIGN-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: signup_profile
+    route: "POST /api/signup/profile"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/signup/profile" }
+      file: { path: vuln/app/main.py, symbol: signup_profile, lines: [581, 597] }
+    poc: ground-truth/verify/signup_massassign_001.sh
+    notes: >
+      The profile step copies role and org_slug from the body, so registration can
+      self-assign admin or join another tenant.
+
+  - id: SIGNUP-STEPSKIP-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: signup_complete
+    route: "POST /api/signup/complete"
+    cwe: CWE-841
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M-H
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/signup/complete" }
+      file: { path: vuln/app/main.py, symbol: signup_complete, lines: [598, 625] }
+    poc: ground-truth/verify/signup_stepskip_001.sh
+    notes: >
+      The final step never checks the draft reached the verified state, so posting
+      straight to it registers an unverified, unowned mailbox.
+
+  - id: SIGNUP-IDOR-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: signup_draft
+    route: "GET /api/signup/draft/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/signup/draft/{id}" }
+      file: { path: vuln/app/main.py, symbol: signup_draft, lines: [626, 640] }
+    poc: ground-truth/verify/signup_idor_001.sh
+    notes: >
+      Any draft is readable by its serial id, unauthenticated, and the row carries
+      the email AND the verification code emailed to it.
+
+  - id: CLASSPOLL-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: _deep_merge_attrs
+    route: "POST /api/flags/merge"
+    cwe: CWE-1321
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: high
+    difficulty: H
+    discovery: static-html
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-CLASSPOLL-001
+    match:
+      http: { method: POST, path: "/api/flags/merge" }
+      file: { path: vuln/app/main.py, symbol: _deep_merge_attrs, lines: [757, 784] }
+    poc: ground-truth/verify/classpoll_001.sh
+    notes: >
+      Python class pollution (the analogue of JS prototype pollution). A recursive
+      attribute merge descends via getattr(dst, "__class__"), so a "__class__"
+      key walks from the instance to the FeatureFlags CLASS and setattr mutates
+      class-level defaults that persist across requests/instances. Two-step:
+      POST /api/flags/merge to pollute, then GET /api/flags/state shows a fresh
+      instance carrying the polluted role_override. flags/set is the safe near-miss.
+
+  - id: JWTCONF-001
+    variant_paths: { vuln: vuln/app/main.py, safe: safe/app/main.py }
+    symbol: verify_rs_jwt
+    route: "GET /api/reports/exec-summary (Bearer)"
+    cwe: CWE-347
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: critical
+    difficulty: H
+    discovery: static-html
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/reports/exec-summary" }
+      file: { path: vuln/app/main.py, symbol: verify_rs_jwt, lines: [701, 756] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/jwtconf_001.sh
+    notes: >
+      RS256->HS256 JWT algorithm confusion. verify_rs_jwt trusts the token's `alg`
+      header; for HS256 it HMAC-verifies with the RSA PUBLIC KEY PEM as the secret.
+      The public key is published at /api/auth/rs-public-key, so an attacker signs
+      an HS256 admin token with it and reads the exec summary. Safe twin pins RS256.
+
 near_misses:
+  - id: NM-CLASSPOLL-001
+    path: vuln/app/main.py
+    symbol: flags_set
+    of: CLASSPOLL-001
+    match:
+      file: { path: vuln/app/main.py, symbol: flags_set, lines: [785, 794] }
+    notes: >
+      Same "update my flags" feature, done safely: an allow-list of scalar keys
+      applied to the instance only, never reaching __class__.
+  - id: NM-AGG-001
+    path: vuln/app/main.py
+    symbol: tools_report aggregate branch
+    of: CODEINJ-001
+    match:
+      file: { path: vuln/app/main.py, symbol: "tools_report aggregate branch" }
+    notes: "Same endpoint's allow-listed aggregate path (count/sum/max); unknown names rejected."
+  - id: NM-SIGNUP-RESEND-001
+    path: vuln/app/main.py
+    symbol: signup_resend
+    of: SIGNUP-ENUM-001
+    match:
+      file: { path: vuln/app/main.py, symbol: signup_resend, lines: [641, 653] }
+    notes: "Constant, rate-limited sibling of signup_start; not an enumeration oracle."
+  - id: NM-SIGNUP-TOKEN-001
+    path: vuln/app/main.py
+    symbol: _invite_token
+    of: SIGNUP-TOKEN-001
+    match:
+      file: { path: vuln/app/main.py, symbol: _invite_token, lines: [488, 498] }
+    notes: "secrets.token_hex CSPRNG beside the clock-derived signup code."
   - id: NM-SQL-001
     path: vuln/app/main.py
     symbol: list_posts
@@ -473,7 +745,7 @@ near_misses:
     symbol: cache_widget_scoped
     of: CACHE-POISON-001
     match:
-      file: { path: vuln/app/main.py, symbol: cache_widget_scoped, lines: [461, 472] }
+      file: { path: vuln/app/main.py, symbol: cache_widget_scoped, lines: [461, 480] }
     notes: "Same widget cache but the host is part of the cache key, so it cannot be poisoned across users."
   - id: NM-SSTI-001
     path: vuln/app/main.py

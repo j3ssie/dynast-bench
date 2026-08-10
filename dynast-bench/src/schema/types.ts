@@ -24,6 +24,26 @@ export const DIFFICULTIES = ["E", "E-M", "M", "M-H", "H"];
 export const TAINTS = ["in-file", "cross-file", "cross-service", "config"];
 export const REACHABILITIES = ["pre-auth", "user", "admin", "service", "internal"];
 
+/**
+ * How much crawling capability it takes to *find* the endpoint at all, as
+ * opposed to `difficulty`, which is how hard the bug is to recognise once you
+ * are looking at it. Ordered cheapest to most capable, so recall down this axis
+ * reads as "how far into the app did this tool actually get".
+ *
+ *   static-html   URL appears in the served HTML of a public page
+ *   js-static     URL is a literal string in a bundle - greppable, no execution
+ *   js-runtime    URL only exists once JS evaluates (fragments, manifest, lazy chunk)
+ *   interaction   request only fires on a click/submit/scroll
+ *   flow          only reachable from one state of a multi-step flow
+ */
+export const DISCOVERY_TIERS = [
+  "static-html",
+  "js-static",
+  "js-runtime",
+  "interaction",
+  "flow",
+];
+
 // ------------------------------------------------------------- findings/v1 ---
 
 export interface HttpLocation {
@@ -177,6 +197,8 @@ export interface GtVulnerability {
   severity?: Severity;
   /** detection difficulty: E | E-M | M | M-H | H */
   difficulty?: string;
+  /** crawl capability needed to reach it at all - see DISCOVERY_TIERS */
+  discovery?: string;
   taint?: string;
   reachability?: string;
   near_miss?: string | null;

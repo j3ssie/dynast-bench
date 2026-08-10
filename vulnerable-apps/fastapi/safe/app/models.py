@@ -80,3 +80,15 @@ class Report(Base):
     name = Column(String(255), nullable=False)
     template = Column(Text, nullable=False, default="Hello {{ user }}")
     query_filter = Column(Text, nullable=True)
+
+
+class SignupDraft(Base):
+    __tablename__ = "signup_drafts"
+    id = Column(Integer, primary_key=True)
+    email = Column(String(255), nullable=False)
+    code = Column(String(16), nullable=False)
+    verified = Column(Boolean, nullable=False, default=False)
+    display_name = Column(String(255), nullable=False, default="")
+    role = Column(String(32), nullable=False, default="user")
+    org_slug = Column(String(120), nullable=False, default="acme")
+    completed = Column(Boolean, nullable=False, default=False)

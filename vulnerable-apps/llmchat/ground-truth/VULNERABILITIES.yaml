@@ -15,6 +15,7 @@ vulnerabilities:
     llm_owasp: "LLM01:2025-Prompt Injection"
     severity: high
     difficulty: E-M
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: NM-CHAT-V2
@@ -34,6 +35,7 @@ vulnerabilities:
     llm_owasp: "LLM01:2025-Prompt Injection"
     severity: critical
     difficulty: H
+    discovery: interaction
     taint: cross-file
     reachability: user
     near_miss: NM-CHAT-V2
@@ -53,6 +55,7 @@ vulnerabilities:
     llm_owasp: "LLM01:2025-Prompt Injection"
     severity: high
     difficulty: M-H
+    discovery: interaction
     taint: cross-service
     reachability: user
     near_miss: NM-CHAT-V2
@@ -72,6 +75,7 @@ vulnerabilities:
     llm_owasp: "LLM01:2025-Prompt Injection"
     severity: high
     difficulty: M
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: NM-CHAT-V2
@@ -91,6 +95,7 @@ vulnerabilities:
     llm_owasp: "LLM07:2025-System Prompt Leakage"
     severity: medium
     difficulty: E-M
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: null
@@ -110,6 +115,7 @@ vulnerabilities:
     llm_owasp: "LLM07:2025-System Prompt Leakage"
     severity: medium
     difficulty: E
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: null
@@ -129,6 +135,7 @@ vulnerabilities:
     llm_owasp: "LLM01:2025-Prompt Injection"
     severity: medium
     difficulty: M-H
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: NM-GUARD-001
@@ -148,6 +155,7 @@ vulnerabilities:
     llm_owasp: "LLM05:2025-Improper Output Handling"
     severity: high
     difficulty: M
+    discovery: interaction
     taint: cross-file
     reachability: user
     near_miss: NM-XSS-001
@@ -166,6 +174,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: medium
     difficulty: E
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: null
@@ -183,6 +192,7 @@ vulnerabilities:
     llm_owasp: "LLM05:2025-Improper Output Handling"
     severity: critical
     difficulty: M
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: NM-SQL-001
@@ -202,6 +212,7 @@ vulnerabilities:
     llm_owasp: "LLM05:2025-Improper Output Handling"
     severity: critical
     difficulty: M
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: NM-EXEC-001
@@ -221,6 +232,7 @@ vulnerabilities:
     llm_owasp: "LLM05:2025-Improper Output Handling"
     severity: high
     difficulty: M-H
+    discovery: interaction
     taint: cross-service
     reachability: user
     near_miss: NM-SSRF-001
@@ -240,6 +252,7 @@ vulnerabilities:
     llm_owasp: "LLM09:2025-Misinformation"
     severity: low
     difficulty: E
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: null
@@ -257,6 +270,7 @@ vulnerabilities:
     llm_owasp: "LLM08:2025-Vector and Embedding Weaknesses"
     severity: critical
     difficulty: M-H
+    discovery: interaction
     taint: cross-file
     reachability: user
     near_miss: NM-VECTOR-001
@@ -277,6 +291,7 @@ vulnerabilities:
     llm_owasp: "LLM08:2025-Vector and Embedding Weaknesses"
     severity: high
     difficulty: E-M
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: NM-VECTOR-001
@@ -297,6 +312,7 @@ vulnerabilities:
     llm_owasp: "LLM02:2025-Sensitive Information Disclosure"
     severity: high
     difficulty: H
+    discovery: interaction
     taint: cross-service
     reachability: user
     near_miss: NM-CACHE-001
@@ -317,6 +333,7 @@ vulnerabilities:
     llm_owasp: "LLM02:2025-Sensitive Information Disclosure"
     severity: medium
     difficulty: E
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: null
@@ -334,6 +351,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: E
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: null
@@ -352,6 +370,7 @@ vulnerabilities:
     llm_owasp: "LLM04:2025-Data and Model Poisoning"
     severity: critical
     difficulty: M
+    discovery: interaction
     taint: cross-file
     reachability: user
     near_miss: null
@@ -370,6 +389,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: null
@@ -388,6 +408,7 @@ vulnerabilities:
     llm_owasp: "LLM02:2025-Sensitive Information Disclosure"
     severity: medium
     difficulty: M
+    discovery: interaction
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -407,6 +428,7 @@ vulnerabilities:
     llm_owasp: "LLM10:2025-Unbounded Consumption"
     severity: high
     difficulty: M
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: NM-OPTIONS-001
@@ -424,6 +446,7 @@ vulnerabilities:
     llm_owasp: "LLM10:2025-Unbounded Consumption"
     severity: high
     difficulty: H
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: null
@@ -441,6 +464,7 @@ vulnerabilities:
     llm_owasp: "LLM10:2025-Unbounded Consumption"
     severity: medium
     difficulty: M-H
+    discovery: interaction
     taint: cross-service
     reachability: user
     near_miss: NM-OPTIONS-001
@@ -458,6 +482,7 @@ vulnerabilities:
     llm_owasp: "LLM10:2025-Unbounded Consumption"
     severity: medium
     difficulty: H
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: null
@@ -475,6 +500,7 @@ vulnerabilities:
     llm_owasp: "LLM03:2025-Supply Chain"
     severity: critical
     difficulty: M
+    discovery: interaction
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -493,6 +519,7 @@ vulnerabilities:
     llm_owasp: "LLM03:2025-Supply Chain"
     severity: critical
     difficulty: M
+    discovery: interaction
     taint: in-file
     reachability: user
     near_miss: null
@@ -510,6 +537,7 @@ vulnerabilities:
     llm_owasp: "LLM02:2025-Sensitive Information Disclosure"
     severity: medium
     difficulty: M
+    discovery: interaction
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -527,6 +555,7 @@ vulnerabilities:
     llm_owasp: "LLM07:2025-System Prompt Leakage"
     severity: low
     difficulty: E
+    discovery: interaction
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -544,6 +573,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: E
+    discovery: interaction
     taint: in-file
     reachability: pre-auth
     near_miss: null

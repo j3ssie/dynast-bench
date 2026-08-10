@@ -12,6 +12,20 @@ command injection, unsafe reflection, default credentials/hardcoded secrets,
 IDOR, XSS, CSRF/open-redirect/CORS/traversal, upload, billing, and invite-race
 logic bugs.
 
+**Agent-only surface (deep hardening).** On top of the API catalog it now plants
+an 8-bug surface a request fuzzer cannot reach, only an agent that behaves like a
+user: a **four-step signup wizard** (client-driven fetch to `/api/signup/*`) with
+four `flow`-tier bugs (clock-derived verification code, `role`/`org_slug`
+mass-assignment, complete-without-verify, and draft-IDOR leaking another signup's
+email + code), two browser-only bugs on the pre-auth wizard page (**DOM XSS** via
+`location.hash`, a **postMessage** sink), and a hidden Ruby-`eval` report builder
+(`CODEINJ`, CWE-94) referenced only from the panel the wizard fetches after an
+**Advanced** click. Those 8 are tiered `flow`/`interaction`/`js-runtime`; the
+pre-existing REST catalog stays `static-html` (a conventional `/api/*` path is
+request-fuzzable regardless), so `recall by discovery tier` shows exactly how far
+past the fuzzable API a tool actually gets. The browser PoCs drive the shared
+`dynast-bench/tools/browser/` image.
+
 ## Layout
 
 ```

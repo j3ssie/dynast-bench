@@ -22,6 +22,14 @@ but misses the parameter-level bugs. Neither strategy alone scores well. The
 Swagger UI itself is also a sink - an old `swagger-ui-dist` with the `?url=`
 spec-load bug.
 
+**Discovery tiers.** This app maps onto the `discovery:` axis exactly along the
+documented/shadow split: every entry in the OpenAPI document is `static-html`
+(a spec-driven tool reads `/api/schema/` and has it), and every shadow/zombie
+route that the spec omits is `js-runtime` (its URL exists nowhere a request-only
+crawler is handed - it has to be modelled or brute-forced). `recall by
+discovery tier` is therefore a second, independent read on the same
+inventory-management story `by_documented` tells.
+
 ## Services (5 containers) - independent `docker-compose.yml`
 
 | Service     | Image                        | Host port   | Purpose                                       |

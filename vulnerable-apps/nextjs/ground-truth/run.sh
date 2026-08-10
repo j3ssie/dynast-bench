@@ -8,6 +8,19 @@ MODE="${1:-expect-vuln}"
 DIR="$(cd "$(dirname "$0")/verify" && pwd)"
 export TARGET="${TARGET:-http://127.0.0.1:13311}"
 
+# Some PoCs drive a real browser. Build that image once, up front: doing it
+# lazily inside the first such PoC would bill its ~1min build to that PoC's
+# timeout, and a missing image would surface as "NOT exploitable" — a wrong
+# answer about the app — instead of "the harness could not run".
+if grep -q 'browser_' "$DIR"/*.sh 2>/dev/null; then
+  # shellcheck source=/dev/null
+  . "$DIR/_lib.sh"
+  if ! browser_require; then
+    echo "!! browser PoCs cannot run — see the message above" >&2
+    exit 2
+  fi
+fi
+
 pass=0; fail=0; bad=""
 for f in $(ls "$DIR"/*.sh | grep -v '/_lib.sh'); do
   name=$(basename "$f")

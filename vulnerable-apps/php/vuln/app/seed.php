@@ -1,11 +1,12 @@
 <?php
 require_once __DIR__ . '/inc/db.php';
 $pdo = pdo();
-foreach (['comments', 'posts', 'users', 'orgs'] as $table) { $pdo->exec("DROP TABLE IF EXISTS $table"); }
+foreach (['signup_drafts', 'comments', 'posts', 'users', 'orgs'] as $table) { $pdo->exec("DROP TABLE IF EXISTS $table"); }
 $pdo->exec("CREATE TABLE orgs (id INT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100), slug VARCHAR(50) UNIQUE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 $pdo->exec("CREATE TABLE users (id INT AUTO_INCREMENT PRIMARY KEY, org_id INT NOT NULL, email VARCHAR(190) UNIQUE, password_hash VARCHAR(255), role VARCHAR(50), is_admin TINYINT(1) DEFAULT 0, verified TINYINT(1) DEFAULT 1, display_name VARCHAR(100), reset_token VARCHAR(100), FOREIGN KEY (org_id) REFERENCES orgs(id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 $pdo->exec("CREATE TABLE posts (id INT AUTO_INCREMENT PRIMARY KEY, org_id INT NOT NULL, author_id INT NOT NULL, slug VARCHAR(120) UNIQUE, title VARCHAR(255), body TEXT, status VARCHAR(40), FOREIGN KEY (org_id) REFERENCES orgs(id), FOREIGN KEY (author_id) REFERENCES users(id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 $pdo->exec("CREATE TABLE comments (id INT AUTO_INCREMENT PRIMARY KEY, post_id INT NOT NULL, user_id INT NOT NULL, body TEXT, FOREIGN KEY (post_id) REFERENCES posts(id), FOREIGN KEY (user_id) REFERENCES users(id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+$pdo->exec("CREATE TABLE signup_drafts (id INT AUTO_INCREMENT PRIMARY KEY, email VARCHAR(190) NOT NULL, code VARCHAR(16) NOT NULL, verified TINYINT(1) DEFAULT 0, display_name VARCHAR(100) DEFAULT '', role VARCHAR(50) DEFAULT 'user', org_slug VARCHAR(50) DEFAULT 'acme', completed TINYINT(1) DEFAULT 0) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 $pdo->prepare('INSERT INTO orgs (name, slug) VALUES (?, ?), (?, ?)')->execute(['Acme', 'acme', 'Globex', 'globex']);
 $orgs = [];
 foreach ($pdo->query('SELECT id, slug FROM orgs') as $row) { $orgs[$row['slug']] = (int)$row['id']; }

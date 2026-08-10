@@ -28,6 +28,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-NGINX-DOTSEG
@@ -44,6 +45,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -60,6 +62,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -76,6 +79,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -92,6 +96,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -108,6 +113,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-APACHE-DOTSEG
@@ -124,6 +130,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -140,6 +147,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -156,6 +164,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -172,6 +181,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -188,6 +198,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-TRAEFIK-TRAILSLASH
@@ -204,6 +215,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -220,6 +232,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -236,6 +249,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -252,6 +266,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -268,6 +283,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null

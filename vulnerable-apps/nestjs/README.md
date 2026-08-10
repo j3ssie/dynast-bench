@@ -9,6 +9,21 @@ Postgres + Redis sessions behind nginx) built from
 the shared Acme/Globex seed and plants Nest/proxy-specific footguns next to
 safe-shaped near-misses.
 
+**Two research-grade classes.** `SSPP-001` (CWE-1321->78): *server-side prototype pollution* to RCE - a recursive merge walks `constructor.prototype` onto `Object.prototype`, and a fresh `{}` in `/api/reports/generate` inherits a polluted `cmdSuffix` that lands in a shell command. `QSCONFUSION-001` (CWE-843): Express/`qs` *parameter type confusion* - `?url[]=` makes the value an array, skipping an `if (typeof url === 'string')` SSRF guard and reaching the internal sink a string URL can't.
+
+**Agent-only surface (deep hardening).** On top of the API catalog it plants an
+8-bug surface a request fuzzer cannot reach - only an agent that behaves like a
+user: a **four-step signup wizard** at `/signup` (client-driven fetch to
+`/api/signup/*`) with four `flow`-tier bugs (clock-derived verification code,
+`role`/`org_slug` mass-assignment, complete-without-verify, draft-IDOR leaking
+another signup's email + code), two browser-only bugs on the wizard page (**DOM
+XSS** via `location.hash`, a **postMessage** sink), and a hidden `new Function`
+report builder (`CODEINJ`, CWE-94) referenced only from the panel the wizard
+fetches after an **Advanced** click. Those 8 are tiered
+`flow`/`interaction`/`js-runtime`; the pre-existing REST catalog stays
+`static-html`, so `recall by discovery tier` shows how far past the fuzzable API a
+tool gets. The browser PoCs drive the shared `dynast-bench/tools/browser/` image.
+
 ## Layout
 
 ```text

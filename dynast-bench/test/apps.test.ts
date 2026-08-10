@@ -81,6 +81,16 @@ describe.each(apps)("%s", (app) => {
     expect(clashes, `indistinguishable: ${JSON.stringify(clashes)}`).toEqual([]);
   });
 
+  // The tier vocabulary itself is not re-checked here: an out-of-vocabulary
+  // value is a hard error from the validator, which "answer key validates"
+  // above already asserts is empty for every app.
+  test("discovery tiers are all-or-nothing", () => {
+    const tiered = gt.vulnerabilities.filter((v) => v.discovery);
+    if (!tiered.length) return; // app not migrated to the discovery axis yet
+    const untiered = gt.vulnerabilities.filter((v) => !v.discovery).map((v) => v.id);
+    expect(untiered, "recall by tier would cover only the labelled subset").toEqual([]);
+  });
+
   test("near-miss anchors never collide with a bug's route", () => {
     const bugPaths = new Set(
       gt.vulnerabilities.flatMap((v) => gtAnchors(v).http.map((h) => h.path)),

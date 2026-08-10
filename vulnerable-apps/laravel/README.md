@@ -7,9 +7,35 @@
 built from [`../../benchmark-plans/laravel.md`](../../benchmark-plans/laravel.md).
 It keeps the shared Acme/Globex seed and plants Laravel/PHP-signature bugs - Blade
 `{!! !!}` XSS, `Blade::render` SSTI, mass assignment via `$guarded = []`,
-route-model-binding IDOR, `unserialize` object injection, `APP_DEBUG` leakage -
-right next to safe-shaped near-misses (bound queries, escaped `{{ }}`,
-policy-checked siblings, `json_decode`, allowlisted redirects).
+route-model-binding IDOR, `unserialize` object injection, `APP_DEBUG` leakage,
+an `libxml` **XXE**, a **DOM XSS** and a **postMessage** sink, and a four-step
+signup flow - right next to safe-shaped near-misses (bound queries, escaped
+`{{ }}`, policy-checked siblings, `json_decode`, allowlisted redirects, CSPRNG
+tokens, rate-limited resend).
+
+**Built to reward a smart agent over a dumb scanner.** The home page is not a
+sitemap: the nav is rendered client-side from a session-scoped `/nav` manifest,
+every app URL is assembled at runtime from a JS route registry, the signup wizard
+is four independent fetch calls, and the XXE endpoint is referenced only from a
+panel the dashboard fetches after an **Advanced** click. Of the **33** bugs, each
+carries a `discovery:` tier and **only 7 are `static-html`** (a request-only tool
+like ffuf/nuclei finds these: `/login`, `/.env.backup`, phpMyAdmin, the health
+path). The other 26 need more:
+
+- **12 `js-runtime`** - the URL only exists once the page's JS assembles it
+  (`/search`, `/tools/*`, `/reports/titles`, `/admin/users`, `/posts/{id}`, and
+  the click-gated `import-mapping` XXE).
+- **10 `interaction`** - the sink only fires on a click / submit / browser event
+  (stored XSS, upload, CSRF, deser, billing, invite race, **DOM XSS** via
+  `location.hash`, **postMessage**, and signup step 1).
+- **4 `flow`** - only reachable from a specific state of the multi-step signup
+  (clock-derived verification code, `role`/`org_slug` mass assignment, complete
+  without verifying, and draft IDOR that leaks another signup's email + code).
+
+So an agent that logs in, drives the DOM, and completes the signup flow uncovers
+~4x what a path fuzzer can. The browser-driven PoCs (`domxss_001`, `postmsg_001`)
+reuse a curl login and hand the session cookie to the shared
+`dynast-bench/tools/browser/` image via `--cookie`.
 
 ## Layout
 

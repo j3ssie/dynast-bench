@@ -4,6 +4,12 @@
 #
 # Reachability: pre-auth | user | admin.  Taint: in-file | cross-file | cross-service.
 # Difficulty (detection): E | E-M | M | M-H | H.
+# Discovery (crawl tier): static-html | js-static | js-runtime | interaction | flow.
+#   static-html  in the served HTML / a conventional path - a request-only tool finds it
+#   js-static    a literal string in a bundle - grep the JS
+#   js-runtime   only exists once the JS assembles it (route registry, lazy chunk)
+#   interaction  the request only fires on a click / submit / browser event
+#   flow         only reachable from one state of the multi-step signup
 
 app: nextjs
 entry: http://127.0.0.1:13311
@@ -11,6 +17,10 @@ seed_notes: >
   Orgs Acme + Globex (tenants). user2@bench.local is in Globex for cross-tenant
   IDOR. A Globex DRAFT ("globex-internal") carries GLOBEX-CONFIDENTIAL-MARKER-7f3a,
   returned only via SQLi or IDOR. Weak default service credential admin/admin.
+  The homepage no longer lists seed accounts; working QA credentials ship in the
+  sign-in page's browser chunk (CREDS-JS-001). The nav and every API path are
+  assembled client-side from a route registry, so most endpoints are only
+  discoverable by running the page, and registration is a four-step flow.
 
 vulnerabilities:
   - id: MW-BYPASS-001
@@ -21,6 +31,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: critical
     difficulty: H
+    discovery: js-runtime
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -40,6 +51,7 @@ vulnerabilities:
     owasp: "A08:2021-Software and Data Integrity Failures"
     severity: high
     difficulty: H
+    discovery: js-runtime
     taint: cross-file
     reachability: pre-auth
     near_miss: NM-MERGE-001
@@ -59,6 +71,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: E
+    discovery: js-runtime
     taint: in-file
     reachability: pre-auth
     near_miss: NM-SQL-001
@@ -77,6 +90,7 @@ vulnerabilities:
     owasp: "A10:2021-SSRF"
     severity: high
     difficulty: M-H
+    discovery: js-runtime
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-FETCH-001
@@ -94,6 +108,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: E-M
+    discovery: js-runtime
     taint: in-file
     reachability: user
     near_miss: null
@@ -112,6 +127,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: medium
     difficulty: M
+    discovery: js-runtime
     taint: in-file
     reachability: user
     near_miss: null
@@ -129,6 +145,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: js-runtime
     taint: in-file
     reachability: user
     near_miss: null
@@ -146,6 +163,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: high
     difficulty: M
+    discovery: js-runtime
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -163,6 +181,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: medium
     difficulty: E-M
+    discovery: interaction
     taint: cross-file
     reachability: user
     near_miss: NM-XSS-001
@@ -180,6 +199,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: medium
     difficulty: E
+    discovery: js-runtime
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -197,6 +217,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: E-M
+    discovery: js-runtime
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -214,6 +235,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: M
+    discovery: js-runtime
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -231,6 +253,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: low
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -238,7 +261,7 @@ vulnerabilities:
       http: { method: GET, path: "/goto", params: [next] }
       file: { path: vuln/src/app/goto/route.ts, symbol: GET, lines: [6, 13] }
     poc: ground-truth/verify/redirect_001.sh
-    notes: "Redirects to arbitrary external URL (models login ?next=)."
+    notes: "Redirects to arbitrary external URL (models login ?next=). Conventional path a wordlist covers."
 
   - id: SECRET-001
     variant_paths: { vuln: vuln/src/lib/config.ts, safe: safe/src/lib/config.ts }
@@ -248,6 +271,7 @@ vulnerabilities:
     owasp: "A02:2021-Cryptographic Failures"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -265,6 +289,7 @@ vulnerabilities:
     owasp: "A02:2021-Cryptographic Failures"
     severity: high
     difficulty: E-M
+    discovery: js-static
     taint: cross-file
     reachability: pre-auth
     near_miss: NM-B64-001
@@ -285,6 +310,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: critical
     difficulty: E-M
+    discovery: js-static
     taint: cross-file
     reachability: pre-auth
     near_miss: NM-TOKEN-001
@@ -298,6 +324,29 @@ vulnerabilities:
       header in client code. Harvest from the chunk, replay it against
       /api/integrations/sync (role=service), or decode and log in outright.
 
+  - id: CREDS-JS-001
+    variant_paths: { vuln: vuln/src/app/_components/DevAutofill.tsx, safe: safe/src/app/_components/DevAutofill.tsx }
+    symbol: DEBUG_ACCOUNTS
+    route: "GET /login (-> /_next/static/chunks/app/login/page-*.js)"
+    cwe: CWE-798
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: critical
+    difficulty: E-M
+    discovery: js-static
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-CREDS-001
+    match:
+      http: { method: GET, path: "/login" }
+      file: { path: vuln/src/app/_components/DevAutofill.tsx, symbol: DEBUG_ACCOUNTS, lines: [10, 24] }
+    poc: ground-truth/verify/creds_js_001.sh
+    notes: >
+      Working credentials for every seeded account, committed in a client
+      component behind a ?debug=1 gate. They ship in the sign-in page's chunk on
+      every build whether or not the gate ever renders them; harvest and log in.
+      The homepage that used to list these now shows none. SAMPLE_ACCOUNTS in the
+      same file is the placeholder near-miss.
+
   - id: SOURCEMAP-001
     variant_paths: { vuln: vuln/next.config.js, safe: safe/next.config.js }
     symbol: productionBrowserSourceMaps
@@ -306,6 +355,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: E
+    discovery: js-static
     taint: config
     reachability: pre-auth
     near_miss: null
@@ -326,6 +376,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: critical
     difficulty: E
+    discovery: static-html
     taint: config
     reachability: pre-auth
     near_miss: NM-PUBFILE-001
@@ -347,12 +398,13 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: NM-CONFIG-001
     match:
       http: { method: GET, path: "/" }
-      file: { path: vuln/src/app/layout.tsx, symbol: RootLayout, lines: [12, 39] }
+      file: { path: vuln/src/app/layout.tsx, symbol: RootLayout, lines: [13, 32] }
     poc: ground-truth/verify/config_leak_001.sh
     notes: >
       The bootstrap <script id="app-config"> blob embedded in every page (pre-auth
@@ -368,6 +420,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: low
     difficulty: E-M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -375,7 +428,29 @@ vulnerabilities:
       http: { method: POST, path: "/api/auth/login" }
       file: { path: vuln/src/app/api/auth/login/route.ts, symbol: POST, lines: [9, 25] }
     poc: ground-truth/verify/enum_001.sh
-    notes: "Distinct 404 (no user) vs 401 (wrong password). Also no rate limit."
+    notes: "Distinct 404 (no user) vs 401 (wrong password). Also no rate limit. Conventional auth path."
+
+  - id: SESSION-001
+    variant_paths: { vuln: vuln/src/lib/session.ts, safe: safe/src/lib/session.ts }
+    symbol: newSessionId
+    route: "POST /api/auth/login (Set-Cookie: sid)"
+    cwe: CWE-330
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: medium
+    difficulty: M
+    discovery: static-html
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/auth/login" }
+      file: { path: vuln/src/lib/session.ts, symbol: newSessionId, lines: [8, 56] }
+    poc: ground-truth/verify/session_001.sh
+    notes: >
+      Session id is two Math.random().toString(36) draws — low entropy and
+      variable width (the base36 stringify of a float drops leading zeros), which
+      is observable in the sid cookie without any source access. Safe twin uses
+      randomUUID.
 
   - id: BILLING-001
     variant_paths: { vuln: vuln/src/app/api/billing/seats/route.ts, safe: safe/src/app/api/billing/seats/route.ts }
@@ -385,6 +460,7 @@ vulnerabilities:
     owasp: "A04:2021-Insecure Design"
     severity: medium
     difficulty: M
+    discovery: js-runtime
     taint: in-file
     reachability: user
     near_miss: null
@@ -402,6 +478,7 @@ vulnerabilities:
     owasp: "A04:2021-Insecure Design"
     severity: high
     difficulty: H
+    discovery: js-runtime
     taint: in-file
     reachability: user
     near_miss: null
@@ -419,6 +496,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: high
     difficulty: M-H
+    discovery: js-runtime
     taint: in-file
     reachability: pre-auth
     near_miss: NM-CACHE-001
@@ -427,6 +505,175 @@ vulnerabilities:
       file: { path: vuln/src/app/api/cache/route.ts, symbol: GET, lines: [7, 18] }
     poc: ground-truth/verify/cache_poison_001.sh
     notes: "Web cache poisoning: the Redis entry is keyed on `key` only but the body reflects the unkeyed X-Forwarded-Host; the safe twin folds the host into the key (see cache-scoped)."
+
+  - id: CODEINJ-001
+    variant_paths: { vuln: "vuln/src/app/api/%5Fdebug/report/route.ts", safe: "safe/src/app/api/%5Fdebug/report/route.ts" }
+    symbol: POST
+    route: "POST /api/_debug/report"
+    cwe: CWE-94
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: H
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-AGG-001
+    match:
+      http: { method: POST, path: "/api/_debug/report" }
+      file: { path: "vuln/src/app/api/%5Fdebug/report/route.ts", symbol: POST, lines: [39, 53] }
+    poc: ground-truth/verify/codeinj_001.sh
+    notes: >
+      Hidden report-builder endpoint referenced ONLY from the lazily-loaded
+      devtools chunk (profile → Advanced), so it appears in no HTML and no
+      initial bundle. The "computed column" expr is run through new Function on
+      the server (RCE). The allow-listed aggregate path in the same file is the
+      near-miss.
+
+  - id: DOMXSS-001
+    variant_paths: { vuln: vuln/src/app/_components/PostFilter.tsx, safe: safe/src/app/_components/PostFilter.tsx }
+    symbol: PostFilter
+    route: "GET /posts (#<payload>)"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: M
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/posts" }
+      file: { path: vuln/src/app/_components/PostFilter.tsx, symbol: PostFilter, lines: [12, 38] }
+    poc: ground-truth/verify/domxss_001.sh
+    notes: >
+      location.hash is read and written into the document with innerHTML. The
+      payload lives in the URL fragment, never sent to the server, so no response
+      body contains it — only a real browser observes the sink firing.
+
+  - id: POSTMSG-001
+    variant_paths: { vuln: vuln/src/app/profile/page.tsx, safe: safe/src/app/profile/page.tsx }
+    symbol: ProfilePage
+    route: "GET /profile (window.postMessage)"
+    cwe: CWE-346
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: H
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/profile" }
+      file: { path: vuln/src/app/profile/page.tsx, symbol: ProfilePage, lines: [24, 67] }
+    poc: ground-truth/verify/postmsg_001.sh
+    notes: >
+      The widget-bridge message handler never checks event.origin and renders the
+      payload as HTML, so any frame/opener can script the page. Provable only in a
+      browser. Safe twin checks origin and renders text.
+
+  - id: SIGNUP-ENUM-001
+    variant_paths: { vuln: vuln/src/app/api/signup/start/route.ts, safe: safe/src/app/api/signup/start/route.ts }
+    symbol: POST
+    route: "POST /api/signup/start"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SIGNUP-RESEND-001
+    match:
+      http: { method: POST, path: "/api/signup/start" }
+      file: { path: vuln/src/app/api/signup/start/route.ts, symbol: POST, lines: [9, 30] }
+    poc: ground-truth/verify/signup_enum_001.sh
+    notes: >
+      Step 1 of registration returns 409 for a known address and 200 for an
+      unknown one — a pre-auth, unthrottled enumeration oracle. The rate-limited,
+      constant-response /api/signup/resend is the near-miss.
+
+  - id: SIGNUP-TOKEN-001
+    variant_paths: { vuln: vuln/src/lib/signup.ts, safe: safe/src/lib/signup.ts }
+    symbol: newVerificationCode
+    route: "POST /api/signup/verify"
+    cwe: CWE-330
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: H
+    discovery: flow
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-SIGNUP-TOKEN-001
+    match:
+      http: { method: POST, path: "/api/signup/verify" }
+      file: { path: vuln/src/lib/signup.ts, symbol: newVerificationCode, lines: [11, 22] }
+    poc: ground-truth/verify/signup_token_001.sh
+    notes: >
+      The emailed verification code is the last 6 digits of the unix clock, so it
+      can be recomputed instead of received. newInviteToken one function down is
+      the CSPRNG near-miss.
+
+  - id: SIGNUP-MASSASSIGN-001
+    variant_paths: { vuln: vuln/src/app/api/signup/profile/route.ts, safe: safe/src/app/api/signup/profile/route.ts }
+    symbol: POST
+    route: "POST /api/signup/profile"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/signup/profile" }
+      file: { path: vuln/src/app/api/signup/profile/route.ts, symbol: POST, lines: [7, 24] }
+    poc: ground-truth/verify/signup_massassign_001.sh
+    notes: >
+      The profile step spreads the request body into the draft, which carries
+      role and orgSlug — so registration can self-assign admin or join another
+      tenant, and finishing the flow mints that user for real.
+
+  - id: SIGNUP-STEPSKIP-001
+    variant_paths: { vuln: vuln/src/app/api/signup/complete/route.ts, safe: safe/src/app/api/signup/complete/route.ts }
+    symbol: POST
+    route: "POST /api/signup/complete"
+    cwe: CWE-841
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M-H
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/signup/complete" }
+      file: { path: vuln/src/app/api/signup/complete/route.ts, symbol: POST, lines: [8, 38] }
+    poc: ground-truth/verify/signup_stepskip_001.sh
+    notes: >
+      The final step never checks the draft reached the verified state, so posting
+      straight to it registers an unverified, unowned mailbox as a real user.
+
+  - id: SIGNUP-IDOR-001
+    variant_paths: { vuln: "vuln/src/app/api/signup/draft/[id]/route.ts", safe: "safe/src/app/api/signup/draft/[id]/route.ts" }
+    symbol: GET
+    route: "GET /api/signup/draft/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/signup/draft/{id}" }
+      file: { path: "vuln/src/app/api/signup/draft/[id]/route.ts", symbol: GET, lines: [7, 18] }
+    poc: ground-truth/verify/signup_idor_001.sh
+    notes: >
+      Any draft is readable by its autoincrement id, unauthenticated, and the row
+      carries the email AND the verification code emailed to it — counting down
+      from your own id walks every registration in progress.
 
 near_misses:
   # Safe code planted next to a vulnerable sibling. Flagging any of these is a
@@ -507,8 +754,49 @@ near_misses:
     notes: >
       A config file deliberately served from the web root, same shape as the
       exposed env file, but every field is public by design.
+  - id: NM-CREDS-001
+    path: vuln/src/app/_components/DevAutofill.tsx
+    symbol: SAMPLE_ACCOUNTS
+    of: CREDS-JS-001
+    match:
+      file: { path: vuln/src/app/_components/DevAutofill.tsx, symbol: SAMPLE_ACCOUNTS, lines: [25, 57] }
+    notes: >
+      Same shape and an equally credential-ish name in the same chunk, but the
+      addresses are .invalid docs placeholders and the passwords are literal
+      "<your-password>" — nothing here authenticates.
+  - id: NM-AGG-001
+    path: "vuln/src/app/api/%5Fdebug/report/route.ts"
+    symbol: AGGREGATES
+    of: CODEINJ-001
+    match:
+      file: { path: "vuln/src/app/api/%5Fdebug/report/route.ts", symbol: AGGREGATES, lines: [19, 38] }
+    notes: >
+      The same "let the caller choose the computation" idea in the same endpoint,
+      resolved through a fixed allow-list of named aggregates (count/sum/max); an
+      unknown name is rejected, never evaluated.
+  - id: NM-SIGNUP-RESEND-001
+    path: vuln/src/app/api/signup/resend/route.ts
+    symbol: POST
+    of: SIGNUP-ENUM-001
+    match:
+      http: { path: "/api/signup/resend" }
+      file: { path: vuln/src/app/api/signup/resend/route.ts, symbol: POST }
+    notes: >
+      Same pre-auth "does this address exist" shape as signup/start, but the
+      response is constant whatever the answer and it is rate limited per address,
+      so it is neither an enumeration oracle nor a mail cannon.
+  - id: NM-SIGNUP-TOKEN-001
+    path: vuln/src/lib/signup.ts
+    symbol: newInviteToken
+    of: SIGNUP-TOKEN-001
+    match:
+      file: { path: vuln/src/lib/signup.ts, symbol: newInviteToken, lines: [23, 26] }
+    notes: >
+      Same "mint a secret the user must present back" job one function down, done
+      with 32 bytes from the CSPRNG and unrelated to the clock.
 
 # Catalog items from benchmark-plans/nextjs.md deferred in v1 (not yet planted):
-#   next/image SSRF, upload SVG XSS, second-order SQLi, predictable session id
-#   (present in source as SESSION-001 but no dynamic PoC), reset token,
-#   verbose-error leak, dependency CVE, CSRF on server actions.
+#   next/image SSRF, upload SVG XSS, second-order SQLi, reset token, verbose-error
+#   leak, dependency CVE, CSRF on server actions.
+# Planted since v1: SESSION-001 (predictable session id, now with a dynamic PoC),
+#   SIGNUP-TOKEN-001 (predictable verification token, the "reset token" class).

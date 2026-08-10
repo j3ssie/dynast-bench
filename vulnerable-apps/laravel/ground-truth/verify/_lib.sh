@@ -6,6 +6,21 @@ VT="x-verify-token: ${VERIFY_TOKEN:-benchsecret}"
 JAR="$(mktemp)"
 TOKEN=""
 
+# Headless-browser helpers, for the few bugs whose sink only exists once the
+# page's own JS has run (DOM XSS, postMessage). Walk up to the repo root.
+_dynast_root() {
+  [ -n "${DYNAST_BENCH_ROOT:-}" ] && { printf '%s' "$DYNAST_BENCH_ROOT"; return; }
+  local d
+  d="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  while [ -n "$d" ]; do
+    [ -f "$d/dynast-bench/tools/browser/browser.sh" ] && { printf '%s' "$d"; return; }
+    d="${d%/*}"
+  done
+}
+# shellcheck source=/dev/null
+_DYNAST_BROWSER_LIB="$(_dynast_root)/dynast-bench/tools/browser/browser.sh"
+[ -f "$_DYNAST_BROWSER_LIB" ] && . "$_DYNAST_BROWSER_LIB"
+
 # Scrape a CSRF token (and seat a session cookie) from a Blade form page.
 csrf_from() {
   curl -s -c "$JAR" -b "$JAR" "$TARGET${1:-/login}" \
@@ -28,6 +43,11 @@ post() {
   local path="$1"; shift
   curl -s -c "$JAR" -b "$JAR" -X POST "$TARGET$path" -d "_token=$TOKEN" "$@"
 }
+
+# Emit the current session's cookies as `--cookie name=value` flags for the
+# browser driver, so a headless-browser PoC can reuse a curl login to drive an
+# authenticated page.
+cookie_args() { awk 'NF>=7 && $6!=""{printf "--cookie %s=%s ", $6, $7}' "$JAR"; }
 
 jget()      { python3 -c 'import sys,json;print(json.load(sys.stdin).get(sys.argv[1],""))' "$1"; }
 post_id()   { curl -s -H "$VT" "$TARGET/api/_verify/post?slug=$1"  | jget id; }

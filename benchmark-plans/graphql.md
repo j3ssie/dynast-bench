@@ -13,6 +13,16 @@ GraphQL: **field-level authorization holes** (object authorized, field isn't),
 root `posts` query applies), **alias/batch amplification** that defeats
 rate limiting, and **APQ cache poisoning**.
 
+**Discovery tiers.** Introspection is on (that is itself `GQL-INTROSPECT-001`), so
+the entire schema - every type, field and operation - is served to anyone who
+asks. That makes the operations `static-html`: a tool that introspects has the
+whole surface. Two things sit above that tier: the WebSocket subscription
+(`GQL-SUBAUTH-001`) needs a live `graphql-ws` connection, so it is `interaction`,
+and the persisted-query operation (`GQL-APQ-001`) is referenced by hash rather
+than sent, so its body only exists once the client assembles it - `js-runtime`.
+The lesson the tier makes explicit: **turning introspection off is what would
+move this whole app up the discovery ladder.**
+
 ## Services (4 containers) - independent `docker-compose.yml`
 
 | Service     | Image                    | Host port | Purpose                                    |

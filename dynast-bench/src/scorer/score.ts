@@ -28,6 +28,7 @@ import { assign, candidatesFor, type Candidate, type Tier } from "./match.ts";
 import {
   bucketize,
   DIFFICULTY_ORDER,
+  DISCOVERY_ORDER,
   f1 as harmonic,
   orderBuckets,
   ratio,
@@ -127,6 +128,8 @@ export interface ScoreReport {
   by_severity: Record<string, Bucket>;
   by_reachability: Record<string, Bucket>;
   by_taint: Record<string, Bucket>;
+  /** recall per crawl tier; empty for an app whose key declares no tiers */
+  by_discovery: Record<string, Bucket>;
   by_cwe: Record<string, Bucket>;
   by_family: Record<string, Bucket>;
   extra: Record<string, Record<string, Bucket>>;
@@ -442,6 +445,13 @@ export function scoreApp(input: ScoreInput): ScoreReport {
       REACHABILITY_ORDER,
     ),
     by_taint: orderBuckets(bucketize(vulns, found, (v) => v.taint ?? "?"), TAINT_ORDER),
+    // Opt-in: entries with no `discovery:` are dropped rather than bucketed as
+    // "?", so an app that has not declared tiers reports nothing here at all
+    // instead of one meaningless all-unknown row.
+    by_discovery: orderBuckets(
+      bucketize(vulns, found, (v) => v.discovery ?? null),
+      DISCOVERY_ORDER,
+    ),
     by_cwe: orderBuckets(bucketize(vulns, found, (v) => v.cwe ?? "?")),
     // the family the matcher actually credited against, not a second derivation
     by_family: orderBuckets(bucketize(anchors, found, (a) => a.family ?? "unclassified")),

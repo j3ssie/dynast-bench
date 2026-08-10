@@ -32,7 +32,7 @@ DIST       := $(abspath dynast-bench/dist/dynast-bench)
 BIN_DIR    ?= $(HOME)/.bun/bin
 BIN        := $(BIN_DIR)/dynast-bench
 
-.PHONY: help build install uninstall test list run down stop clean verify validate score check diff solo solo-down guard-app
+.PHONY: help build install uninstall test list run down stop stop-all browser-image clean verify validate score check diff solo solo-down guard-app
 
 help:            ## show usage + app list
 	@echo "DynAST-Bench — intentionally vulnerable app suite"
@@ -98,14 +98,13 @@ down: guard-app  ## stop one APP (both variants)
 	-$(MAKE) -C vulnerable-apps/$(APP) down
 	-$(MAKE) -C vulnerable-apps/$(APP) safe-down
 
-stop:            ## stop ALL apps (every compose variant + standalone images)
-	@for a in $(APPS); do \
-	  echo ">> stopping $$a"; \
-	  $(MAKE) --no-print-directory -C vulnerable-apps/$$a down >/dev/null 2>&1 || true; \
-	  $(MAKE) --no-print-directory -C vulnerable-apps/$$a safe-down >/dev/null 2>&1 || true; \
-	  docker rm -f -v vuln-$$a-solo safe-$$a-solo >/dev/null 2>&1 || true; \
-	done; \
-	echo ">> all apps stopped"
+stop:            ## stop ALL apps (every compose variant + standalone image)
+	@bun "$(CLI)" stop --all --force
+
+stop-all: stop   ## alias for `make stop`
+
+browser-image:   ## build the headless browser image the browser PoCs drive
+	@docker build -t "$${DYNAST_BROWSER_IMAGE:-dynast-bench-browser:1}" dynast-bench/tools/browser
 
 clean:           ## remove EVERY app's containers, volumes and networks (frees disk)
 	@bun "$(CLI)" clean --all --yes

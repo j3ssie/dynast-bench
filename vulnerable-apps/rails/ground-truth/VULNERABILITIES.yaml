@@ -17,6 +17,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: NM-MASSASSIGN-001
@@ -35,6 +36,7 @@ vulnerabilities:
     owasp: "A08:2021-Software and Data Integrity Failures"
     severity: critical
     difficulty: H
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-YAML-001
@@ -53,6 +55,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: critical
     difficulty: H
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: NM-SSTI-001
@@ -71,6 +74,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: M-H
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-REGEX-001
@@ -89,6 +93,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -107,6 +112,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-SQL-001
@@ -126,6 +132,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: H
+    discovery: static-html
     taint: cross-file
     reachability: user
     near_miss: null
@@ -145,6 +152,7 @@ vulnerabilities:
     owasp: "A10:2021-Server-Side Request Forgery"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -163,6 +171,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: critical
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -181,6 +190,7 @@ vulnerabilities:
     owasp: "A08:2021-Software and Data Integrity Failures"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -199,6 +209,7 @@ vulnerabilities:
     owasp: "A02:2021-Cryptographic Failures"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: config
     reachability: pre-auth
     near_miss: null
@@ -218,6 +229,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -237,6 +249,7 @@ vulnerabilities:
     owasp: "A02:2021-Cryptographic Failures"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: config
     reachability: pre-auth
     near_miss: null
@@ -256,6 +269,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: config
     reachability: pre-auth
     near_miss: null
@@ -275,6 +289,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: config
     reachability: pre-auth
     near_miss: null
@@ -294,6 +309,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -312,6 +328,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -331,6 +348,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: medium
     difficulty: E-M
+    discovery: static-html
     taint: cross-file
     reachability: user
     near_miss: NM-XSS-001
@@ -349,6 +367,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -367,6 +386,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: low
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -385,6 +405,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -403,6 +424,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -421,6 +443,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -439,6 +462,7 @@ vulnerabilities:
     owasp: "A04:2021-Insecure Design"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -457,6 +481,7 @@ vulnerabilities:
     owasp: "A04:2021-Insecure Design"
     severity: high
     difficulty: H
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -475,6 +500,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -485,7 +511,209 @@ vulnerabilities:
     notes: >
       SVG upload is accepted and served from the web root as active content.
 
+  - id: CODEINJ-001
+    variant_paths: { vuln: vuln/app/controllers/advanced_controller.rb, safe: safe/app/controllers/advanced_controller.rb }
+    symbol: AdvancedController#report
+    route: "POST /api/tools/report"
+    cwe: CWE-94
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: H
+    discovery: js-runtime
+    discovery: js-runtime
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-AGG-001
+    match:
+      http: { method: POST, path: "/api/tools/report" }
+      file: { path: vuln/app/controllers/advanced_controller.rb, symbol: "AdvancedController#report", lines: [12, 42] }
+    poc: ground-truth/verify/codeinj_001.sh
+    notes: >
+      Hidden report-builder endpoint referenced ONLY from the signup page's
+      Advanced panel (assembled from segments, fetched on click). The "computed
+      column" formula is Ruby eval'd server-side (RCE). The allow-listed aggregate
+      path in the same file is the near-miss.
+
+  - id: DOMXSS-001
+    variant_paths: { vuln: vuln/app/views/signups/wizard.html.erb, safe: safe/app/views/signups/wizard.html.erb }
+    symbol: wizard#applyRef
+    route: "GET /signup (#<payload>)"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: M
+    discovery: interaction
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/signup" }
+      file: { path: vuln/app/views/signups/wizard.html.erb, symbol: "wizard#applyRef", lines: [22, 35] }
+    poc: ground-truth/verify/domxss_001.sh
+    notes: >
+      location.hash is read and written to the page with innerHTML on the signup
+      wizard. The payload lives in the URL fragment, never sent to the server, so
+      only a real browser observes the sink.
+
+  - id: POSTMSG-001
+    variant_paths: { vuln: vuln/app/views/signups/wizard.html.erb, safe: safe/app/views/signups/wizard.html.erb }
+    symbol: wizard#message
+    route: "GET /signup (window.postMessage)"
+    cwe: CWE-346
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: H
+    discovery: interaction
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/signup" }
+      file: { path: vuln/app/views/signups/wizard.html.erb, symbol: "wizard#message", lines: [36, 96] }
+    poc: ground-truth/verify/postmsg_001.sh
+    notes: >
+      The signup page's widget bridge accepts a message from any origin (no
+      event.origin check) and renders the payload as HTML. Provable only in a
+      browser; the safe twin checks origin and renders text.
+
+  - id: SIGNUP-ENUM-001
+    variant_paths: { vuln: vuln/app/controllers/signups_controller.rb, safe: safe/app/controllers/signups_controller.rb }
+    symbol: SignupsController#start
+    route: "POST /api/signup/start"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    discovery: interaction
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SIGNUP-RESEND-001
+    match:
+      http: { method: POST, path: "/api/signup/start" }
+      file: { path: vuln/app/controllers/signups_controller.rb, symbol: "SignupsController#start", lines: [29, 52] }
+    poc: ground-truth/verify/signup_enum_001.sh
+    notes: >
+      Step 1 returns 409 for a registered address and 200 for an unknown one - a
+      pre-auth, unthrottled enumeration oracle. The constant, rate-limited resend
+      is the near-miss.
+
+  - id: SIGNUP-TOKEN-001
+    variant_paths: { vuln: vuln/app/controllers/signups_controller.rb, safe: safe/app/controllers/signups_controller.rb }
+    symbol: SignupsController#new_code
+    route: "POST /api/signup/verify"
+    cwe: CWE-330
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: H
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SIGNUP-TOKEN-001
+    match:
+      http: { method: POST, path: "/api/signup/verify" }
+      file: { path: vuln/app/controllers/signups_controller.rb, symbol: "SignupsController#new_code", lines: [16, 21] }
+    poc: ground-truth/verify/signup_token_001.sh
+    notes: >
+      The emailed verification code is the last 6 digits of Time.now, so it can be
+      recomputed instead of received. new_invite_token (SecureRandom) is the near-miss.
+
+  - id: SIGNUP-MASSASSIGN-001
+    variant_paths: { vuln: vuln/app/controllers/signups_controller.rb, safe: safe/app/controllers/signups_controller.rb }
+    symbol: SignupsController#profile
+    route: "POST /api/signup/profile"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/signup/profile" }
+      file: { path: vuln/app/controllers/signups_controller.rb, symbol: "SignupsController#profile", lines: [53, 64] }
+    poc: ground-truth/verify/signup_massassign_001.sh
+    notes: >
+      The profile step permits role and org_slug, so registration can self-assign
+      admin or join another tenant, and finishing the flow mints that user.
+
+  - id: SIGNUP-STEPSKIP-001
+    variant_paths: { vuln: vuln/app/controllers/signups_controller.rb, safe: safe/app/controllers/signups_controller.rb }
+    symbol: SignupsController#complete
+    route: "POST /api/signup/complete"
+    cwe: CWE-841
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M-H
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/signup/complete" }
+      file: { path: vuln/app/controllers/signups_controller.rb, symbol: "SignupsController#complete", lines: [65, 88] }
+    poc: ground-truth/verify/signup_stepskip_001.sh
+    notes: >
+      The final step never checks the draft reached the verified state, so posting
+      straight to it registers an unverified, unowned mailbox as a real user.
+
+  - id: SIGNUP-IDOR-001
+    variant_paths: { vuln: vuln/app/controllers/signups_controller.rb, safe: safe/app/controllers/signups_controller.rb }
+    symbol: SignupsController#draft
+    route: "GET /api/signup/draft/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/signup/draft/{id}" }
+      file: { path: vuln/app/controllers/signups_controller.rb, symbol: "SignupsController#draft", lines: [89, 99] }
+    poc: ground-truth/verify/signup_idor_001.sh
+    notes: >
+      Any draft is readable by its auto-increment id, unauthenticated, and the row
+      carries the email AND the verification code emailed to it - counting down
+      walks every registration in progress.
+
 near_misses:
+  - id: NM-AGG-001
+    path: vuln/app/controllers/advanced_controller.rb
+    symbol: AGGREGATES
+    of: CODEINJ-001
+    match:
+      file: { path: vuln/app/controllers/advanced_controller.rb, symbol: AGGREGATES, lines: [6, 11] }
+    notes: >
+      Same "let the caller choose the computation" idea in the same endpoint,
+      resolved through a fixed allow-list of named aggregates (count/sum/max); an
+      unknown name is rejected, never evaluated.
+  - id: NM-SIGNUP-RESEND-001
+    path: vuln/app/controllers/signups_controller.rb
+    symbol: SignupsController#resend
+    of: SIGNUP-ENUM-001
+    match:
+      file: { path: vuln/app/controllers/signups_controller.rb, symbol: "SignupsController#resend", lines: [100, 113] }
+    notes: >
+      Same pre-auth "does this address exist" shape as signup/start, but the
+      response is constant whatever the answer and it is rate limited per address.
+  - id: NM-SIGNUP-TOKEN-001
+    path: vuln/app/controllers/signups_controller.rb
+    symbol: SignupsController#new_invite_token
+    of: SIGNUP-TOKEN-001
+    match:
+      file: { path: vuln/app/controllers/signups_controller.rb, symbol: "SignupsController#new_invite_token", lines: [22, 28] }
+    notes: >
+      Same "mint a secret the user presents back" job one method down, done with
+      SecureRandom.hex(32) and unrelated to the clock.
   - id: NM-MASSASSIGN-001
     path: vuln/app/controllers/profiles_controller.rb
     symbol: ProfilesController#update

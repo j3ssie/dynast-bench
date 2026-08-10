@@ -1,0 +1,2 @@
+class SignupDraft < ApplicationRecord
+end

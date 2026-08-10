@@ -11,6 +11,7 @@ vulnerabilities:
     owasp: "A02:2021-Cryptographic Failures"
     severity: medium
     difficulty: E-M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-TLS-001
@@ -32,6 +33,7 @@ vulnerabilities:
     owasp: "A02:2021-Cryptographic Failures"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-TLS-001
@@ -53,6 +55,7 @@ vulnerabilities:
     owasp: "A02:2021-Cryptographic Failures"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-TLS-001
@@ -74,6 +77,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: low
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -95,6 +99,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: critical
     difficulty: H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -116,6 +121,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-SSH-001
@@ -137,6 +143,7 @@ vulnerabilities:
     owasp: "A06:2021-Vulnerable and Outdated Components"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-SSH-001
@@ -158,6 +165,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-FTP-001
@@ -179,6 +187,7 @@ vulnerabilities:
     owasp: "A02:2021-Cryptographic Failures"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-FTP-001
@@ -200,6 +209,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -221,6 +231,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: low
     difficulty: E-M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -242,6 +253,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: critical
     difficulty: M-H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -263,6 +275,7 @@ vulnerabilities:
     owasp: "A02:2021-Cryptographic Failures"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -284,6 +297,7 @@ vulnerabilities:
     owasp: "A06:2021-Vulnerable and Outdated Components"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -305,6 +319,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: critical
     difficulty: E-M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -326,6 +341,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: critical
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-REDIS-001
@@ -347,6 +363,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: critical
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -368,6 +385,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -389,6 +407,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -410,6 +429,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: critical
     difficulty: H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -431,6 +451,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: critical
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -452,6 +473,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -473,6 +495,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -494,6 +517,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -515,6 +539,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -536,6 +561,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -557,6 +583,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -578,6 +605,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: low
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -599,6 +627,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -620,6 +649,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-SSH-001
@@ -641,6 +671,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: low
     difficulty: M
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: NM-PORT-001
@@ -662,6 +693,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null

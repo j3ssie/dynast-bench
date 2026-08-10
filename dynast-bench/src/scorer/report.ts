@@ -82,6 +82,12 @@ export function renderReport(r: ScoreReport, opts: RenderOpts = {}): string[] {
   out.push(...bucketLines("recall by severity", r.by_severity));
   out.push("");
   out.push(...bucketLines("recall by reachability", r.by_reachability));
+  // Headline for a tiered app: how far into the app the tool actually crawled.
+  // Silent for a key with no tiers, so untiered apps report exactly as before.
+  if (Object.keys(r.by_discovery).length) {
+    out.push("");
+    out.push(...bucketLines("recall by discovery tier", r.by_discovery));
+  }
   if (opts.full) {
     out.push("");
     out.push(...bucketLines("recall by taint", r.by_taint));

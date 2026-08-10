@@ -11,4 +11,6 @@ node /app/internal-sink.mjs &
 export SPRING_DATASOURCE_URL="${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/bench}"
 export SPRING_DATASOURCE_USERNAME="${SPRING_DATASOURCE_USERNAME:-bench}"
 export SPRING_DATASOURCE_PASSWORD="${SPRING_DATASOURCE_PASSWORD:-bench}"
+export SPRINGBOOT_ACTUATOR_SECRET="${SPRINGBOOT_ACTUATOR_SECRET:-actuator-secret-from-env-42}"
+export JWT_SECRET="${JWT_SECRET:-hardcoded-weak-secret}"
 exec java ${JAVA_OPTS:-} -jar /app/app.jar

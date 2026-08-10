@@ -18,6 +18,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: critical
     difficulty: E-M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-LFI-001
@@ -34,6 +35,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-AUTH-001
@@ -50,12 +52,13 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
     match:
       http: { method: POST, path: "/login.php" }
-      file: { path: vuln/app/seed.php, symbol: "seed users", lines: [4, 32] }
+      file: { path: vuln/app/seed.php, symbol: "seed users", lines: [4, 33] }
     poc: ground-truth/verify/default_creds_001.sh
     notes: "Seeded service account uses admin/admin."
   - id: UNSERIALIZE-001
@@ -66,6 +69,7 @@ vulnerabilities:
     owasp: "A08:2021-Software and Data Integrity Failures"
     severity: critical
     difficulty: H
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-DESER-001
@@ -82,6 +86,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: critical
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -98,6 +103,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-SQL-001
@@ -115,6 +121,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: critical
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -131,6 +138,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -147,6 +155,7 @@ vulnerabilities:
     owasp: "A10:2021-SSRF"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -164,6 +173,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -180,6 +190,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -197,6 +208,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -213,6 +225,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -229,6 +242,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-XSS-001
@@ -245,6 +259,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: medium
     difficulty: E-M
+    discovery: static-html
     taint: cross-file
     reachability: user
     near_miss: NM-XSS-001
@@ -261,6 +276,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: low
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -277,6 +293,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -293,6 +310,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -309,6 +327,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -325,6 +344,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -341,6 +361,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: config
     reachability: pre-auth
     near_miss: null
@@ -350,7 +371,198 @@ vulnerabilities:
     poc: ground-truth/verify/phpmyadmin_001.sh
     notes: "phpMyAdmin is exposed on localhost with bench/bench database credentials in vuln compose."
 
+  - id: CODEINJ-001
+    variant_paths: { vuln: vuln/app/public/tools/report.php, safe: safe/app/public/tools/report.php }
+    symbol: report.php
+    route: "POST /tools/report.php"
+    cwe: CWE-94
+    owasp: "A03:2021-Injection"
+    severity: critical
+    difficulty: H
+    discovery: js-runtime
+    discovery: js-runtime
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-AGG-001
+    match:
+      http: { method: POST, path: "/tools/report.php" }
+      file: { path: vuln/app/public/tools/report.php, symbol: report.php, lines: [3, 16] }
+    poc: ground-truth/verify/codeinj_001.sh
+    notes: >
+      Hidden report-builder referenced ONLY from the wizard's Advanced panel. The
+      "computed column" formula is eval'd server-side (RCE). The allow-listed
+      aggregate branch in the same file is the near-miss.
+
+  - id: DOMXSS-001
+    variant_paths: { vuln: vuln/app/public/signup.php, safe: safe/app/public/signup.php }
+    symbol: applyRef
+    route: "GET /signup.php (#<payload>)"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: M
+    discovery: interaction
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/signup.php" }
+      file: { path: vuln/app/public/signup.php, symbol: applyRef, lines: [8, 12] }
+    poc: ground-truth/verify/domxss_001.sh
+    notes: >
+      location.hash is read into innerHTML on the signup wizard; the payload lives
+      in the fragment, never sent to the server, so only a real browser sees it.
+
+  - id: POSTMSG-001
+    variant_paths: { vuln: vuln/app/public/signup.php, safe: safe/app/public/signup.php }
+    symbol: message bridge
+    route: "GET /signup.php (window.postMessage)"
+    cwe: CWE-346
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: H
+    discovery: interaction
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/signup.php" }
+      file: { path: vuln/app/public/signup.php, symbol: "message bridge", lines: [13, 52] }
+    poc: ground-truth/verify/postmsg_001.sh
+    notes: >
+      The wizard's widget bridge accepts a message from any origin and renders it
+      as HTML. Provable only in a browser; the safe twin checks origin, renders text.
+
+  - id: SIGNUP-ENUM-001
+    variant_paths: { vuln: vuln/app/public/api/signup/start.php, safe: safe/app/public/api/signup/start.php }
+    symbol: start.php
+    route: "POST /api/signup/start.php"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    discovery: interaction
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SIGNUP-RESEND-001
+    match:
+      http: { method: POST, path: "/api/signup/start.php" }
+      file: { path: vuln/app/public/api/signup/start.php, symbol: start.php, lines: [3, 10] }
+    poc: ground-truth/verify/signup_enum_001.sh
+    notes: >
+      Step 1 returns 409 for a registered address and 200 for an unknown one - a
+      pre-auth enumeration oracle. The constant, rate-limited resend is the near-miss.
+
+  - id: SIGNUP-TOKEN-001
+    variant_paths: { vuln: vuln/app/inc/signup.php, safe: safe/app/inc/signup.php }
+    symbol: signup_code
+    route: "POST /api/signup/verify.php"
+    cwe: CWE-330
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: H
+    discovery: flow
+    discovery: flow
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-SIGNUP-TOKEN-001
+    match:
+      http: { method: POST, path: "/api/signup/verify.php" }
+      file: { path: vuln/app/inc/signup.php, symbol: signup_code, lines: [7, 10] }
+    poc: ground-truth/verify/signup_token_001.sh
+    notes: >
+      The emailed code is the last 6 digits of time(), so it can be recomputed.
+      invite_token (random_bytes CSPRNG) is the near-miss.
+
+  - id: SIGNUP-MASSASSIGN-001
+    variant_paths: { vuln: vuln/app/public/api/signup/profile.php, safe: safe/app/public/api/signup/profile.php }
+    symbol: profile.php
+    route: "POST /api/signup/profile.php"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/signup/profile.php" }
+      file: { path: vuln/app/public/api/signup/profile.php, symbol: profile.php, lines: [3, 17] }
+    poc: ground-truth/verify/signup_massassign_001.sh
+    notes: >
+      The profile step writes role and org_slug from the body, so registration can
+      self-assign admin or join another tenant.
+
+  - id: SIGNUP-STEPSKIP-001
+    variant_paths: { vuln: vuln/app/public/api/signup/complete.php, safe: safe/app/public/api/signup/complete.php }
+    symbol: complete.php
+    route: "POST /api/signup/complete.php"
+    cwe: CWE-841
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M-H
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/signup/complete.php" }
+      file: { path: vuln/app/public/api/signup/complete.php, symbol: complete.php, lines: [9, 19] }
+    poc: ground-truth/verify/signup_stepskip_001.sh
+    notes: >
+      The final step never checks the draft reached the verified state, so posting
+      straight to it registers an unverified, unowned mailbox.
+
+  - id: SIGNUP-IDOR-001
+    variant_paths: { vuln: vuln/app/public/api/signup/draft.php, safe: safe/app/public/api/signup/draft.php }
+    symbol: draft.php
+    route: "GET /api/signup/draft.php?id="
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/signup/draft.php", params: [id] }
+      file: { path: vuln/app/public/api/signup/draft.php, symbol: draft.php, lines: [7, 9] }
+    poc: ground-truth/verify/signup_idor_001.sh
+    notes: >
+      Any draft is readable by its serial id, unauthenticated, and the row carries
+      the email AND the verification code emailed to it.
+
 near_misses:
+  - id: NM-AGG-001
+    path: vuln/app/public/tools/report.php
+    symbol: report.php aggregate branch
+    of: CODEINJ-001
+    match:
+      file: { path: vuln/app/public/tools/report.php, symbol: "report.php aggregate branch", lines: [17, 28] }
+    notes: "Same file's allow-listed aggregate path (count/sum/max); unknown names rejected."
+  - id: NM-SIGNUP-RESEND-001
+    path: vuln/app/public/api/signup/resend.php
+    symbol: resend.php
+    of: SIGNUP-ENUM-001
+    match:
+      http: { path: "/api/signup/resend.php" }
+      file: { path: vuln/app/public/api/signup/resend.php, symbol: resend.php, lines: [9, 13] }
+    notes: "Constant, rate-limited sibling of start.php; not an enumeration oracle."
+  - id: NM-SIGNUP-TOKEN-001
+    path: vuln/app/inc/signup.php
+    symbol: invite_token
+    of: SIGNUP-TOKEN-001
+    match:
+      file: { path: vuln/app/inc/signup.php, symbol: invite_token, lines: [11, 24] }
+    notes: "random_bytes CSPRNG beside the clock-derived signup code."
   - id: NM-LFI-001
     path: vuln/app/public/page.php
     symbol: allowed_page_near_miss

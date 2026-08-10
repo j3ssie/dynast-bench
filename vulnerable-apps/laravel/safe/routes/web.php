@@ -1,17 +1,38 @@
 <?php
 
 use App\Http\Controllers\AdminController;
+use App\Http\Controllers\AdvancedController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BillingController;
 use App\Http\Controllers\CommentController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
+use App\Http\Controllers\SignupController;
 use App\Http\Controllers\ToolsController;
 use App\Http\Controllers\VerifyController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', fn () => view('home'));
+
+// Session-scoped navigation manifest. The home page renders its nav from this
+// (client-side), so the route surface is only visible to a client that runs the
+// page - and the authenticated links only to a client that has a session. This
+// is app behaviour, present in both twins; it is not itself a bug.
+Route::get('/nav', function () {
+    $items = [
+        ['label' => 'Search', 'route' => 'search'],
+    ];
+    if (auth()->check()) {
+        array_push(
+            $items,
+            ['label' => 'Posts', 'route' => 'posts'],
+            ['label' => 'Profile', 'route' => 'profile'],
+            ['label' => 'Billing', 'route' => 'billing'],
+        );
+    }
+    return response()->json(['items' => $items, 'authenticated' => auth()->check()]);
+});
 
 // --- auth (pre-auth) ---
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
@@ -21,6 +42,18 @@ Route::get('/register', [AuthController::class, 'showRegister']);
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/password/email', [AuthController::class, 'sendReset']);
 Route::post('/password/reset', [AuthController::class, 'doReset']);
+
+// --- multi-step signup wizard (client-driven; endpoints appear in no HTML) ---
+Route::get('/signup', fn () => view('signup'));
+Route::post('/api/signup/start', [SignupController::class, 'start']);
+Route::post('/api/signup/verify', [SignupController::class, 'verify']);
+Route::post('/api/signup/profile', [SignupController::class, 'profile']);
+Route::post('/api/signup/complete', [SignupController::class, 'complete']);
+Route::post('/api/signup/resend', [SignupController::class, 'resend']);
+Route::get('/api/signup/draft/{id}', [SignupController::class, 'draft']); // SIGNUP-IDOR-001
+
+// --- "Advanced" tools panel (fetched only after a click on the dashboard) ---
+Route::post('/api/tools/import-mapping', [AdvancedController::class, 'importMapping']); // XXE-001
 
 // --- public tools & search (pre-auth surface) ---
 Route::get('/search', [PostController::class, 'search']);

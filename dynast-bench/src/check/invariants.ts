@@ -217,6 +217,26 @@ export async function checkApp(target: CheckTarget, run: Differ): Promise<CheckI
     }
   }
 
+  // Discovery tiers are all-or-nothing per app. Tiering only half a key is worse
+  // than tiering none of it: the breakdown still renders, but "recall 3/3 at
+  // static-html" silently means "of the three entries anyone bothered to label".
+  const tiered = gt.vulnerabilities.filter((v) => v.discovery);
+  if (!tiered.length) {
+    add(
+      "warn",
+      "VULNERABILITIES.yaml",
+      "no discovery: tiers - recall by crawl tier will be empty for this app",
+    );
+  } else if (tiered.length < gt.vulnerabilities.length) {
+    const missing = gt.vulnerabilities.filter((v) => !v.discovery).map((v) => v.id);
+    add(
+      "error",
+      missing.join(","),
+      `no discovery: tier while ${tiered.length} sibling(s) have one - ` +
+        `a partial breakdown reports recall over the labelled subset only`,
+    );
+  }
+
   // the twin delta stays inside the answer key
   const diff = await twinDiff(target, gt, run);
   const knownIds = new Set(gt.vulnerabilities.map((v) => v.id));

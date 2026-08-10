@@ -492,6 +492,206 @@
         }
       },
       "exploited": true
+    },
+    {
+      "id": "ref-24",
+      "title": "CODEINJ-001",
+      "cwe": "CWE-94",
+      "severity": "critical",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/_debug/report",
+          "path": "/api/_debug/report"
+        },
+        "file": {
+          "path": "vuln/src/app/api/%5Fdebug/report/route.ts",
+          "symbol": "POST",
+          "line": 39
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-25",
+      "title": "DOMXSS-001",
+      "cwe": "CWE-79",
+      "severity": "medium",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/posts",
+          "path": "/posts"
+        },
+        "file": {
+          "path": "vuln/src/app/_components/PostFilter.tsx",
+          "symbol": "PostFilter",
+          "line": 12
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-26",
+      "title": "POSTMSG-001",
+      "cwe": "CWE-346",
+      "severity": "medium",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/profile",
+          "path": "/profile"
+        },
+        "file": {
+          "path": "vuln/src/app/profile/page.tsx",
+          "symbol": "ProfilePage",
+          "line": 24
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-27",
+      "title": "SESSION-001",
+      "cwe": "CWE-330",
+      "severity": "medium",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/auth/login",
+          "path": "/api/auth/login"
+        },
+        "file": {
+          "path": "vuln/src/lib/session.ts",
+          "symbol": "newSessionId",
+          "line": 8
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-28",
+      "title": "CREDS-JS-001",
+      "cwe": "CWE-798",
+      "severity": "critical",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/login",
+          "path": "/login"
+        },
+        "file": {
+          "path": "vuln/src/app/_components/DevAutofill.tsx",
+          "symbol": "DEBUG_ACCOUNTS",
+          "line": 10
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-29",
+      "title": "SIGNUP-ENUM-001",
+      "cwe": "CWE-204",
+      "severity": "low",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/signup/start",
+          "path": "/api/signup/start"
+        },
+        "file": {
+          "path": "vuln/src/app/api/signup/start/route.ts",
+          "symbol": "POST",
+          "line": 9
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-30",
+      "title": "SIGNUP-TOKEN-001",
+      "cwe": "CWE-330",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/signup/verify",
+          "path": "/api/signup/verify"
+        },
+        "file": {
+          "path": "vuln/src/lib/signup.ts",
+          "symbol": "newVerificationCode",
+          "line": 11
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-31",
+      "title": "SIGNUP-MASSASSIGN-001",
+      "cwe": "CWE-915",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/signup/profile",
+          "path": "/api/signup/profile"
+        },
+        "file": {
+          "path": "vuln/src/app/api/signup/profile/route.ts",
+          "symbol": "POST",
+          "line": 7
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-32",
+      "title": "SIGNUP-STEPSKIP-001",
+      "cwe": "CWE-841",
+      "severity": "medium",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/signup/complete",
+          "path": "/api/signup/complete"
+        },
+        "file": {
+          "path": "vuln/src/app/api/signup/complete/route.ts",
+          "symbol": "POST",
+          "line": 8
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-33",
+      "title": "SIGNUP-IDOR-001",
+      "cwe": "CWE-639",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/signup/draft/1",
+          "path": "/api/signup/draft/{id}"
+        },
+        "file": {
+          "path": "vuln/src/app/api/signup/draft/[id]/route.ts",
+          "symbol": "GET",
+          "line": 7
+        }
+      },
+      "exploited": true
     }
   ]
 }

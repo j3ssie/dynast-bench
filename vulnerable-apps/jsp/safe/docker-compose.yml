@@ -10,6 +10,7 @@ services:
       VERIFY_TOKEN: benchsecret
       APP_URL: "http://127.0.0.1:${DYNAST_PORT:-13311}"
       CAPTCHA_SEED: "42"
+      # FIXED MANAGER-001: the Tomcat manager surface is disabled in the safe twin.
       TOMCAT_MANAGER_ENABLED: "false"
     depends_on:
       postgres:

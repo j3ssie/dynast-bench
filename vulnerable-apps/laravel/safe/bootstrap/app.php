@@ -16,9 +16,14 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => AdminOnly::class,
         ]);
 
-        // No CSRF exemptions: every state-changing POST requires a valid token.
+        // FIXED CSRF-001: the account/name exemption is gone - that route is
+        // protected like every other Blade POST. The signup and import-mapping
+        // endpoints stay exempt in BOTH twins: they are fetch-driven JSON APIs
+        // with no form token, and that exemption is not the bug (the bugs on
+        // those endpoints are in their handlers).
         $middleware->validateCsrfTokens(except: [
-            //
+            'api/signup/*',
+            'api/tools/import-mapping',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

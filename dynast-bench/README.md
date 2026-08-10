@@ -47,11 +47,16 @@ Optional dev extras (`bun install` in this folder) add `@types/bun` +
 CATALOG
   list                     apps with vuln/PoC counts and what's running
   info <app>               ground-truth summary (severity, CWE, difficulty)  [--full]
+  vulns <app...>           every planted bug, one title per line — the checklist
+                           a scan gets compared against  [--full] [--near] [--ids]
   doctor                   docker/bun checks + which ports are taken
 
 LIFECYCLE
   start <app...>           build + boot, wait for health, print the target URL
-  stop [app...|--all]      stop stacks (volumes kept unless --volumes)
+  start --count N          the same for N apps at once, one port each
+                           [--parallel[=N]]
+  stop [app...]            stop stacks; with no app, everything that is running
+  stop-all                 stop every stack, orphans included (= stop --all)
   restart <app>            stop, then start the same variant/mode
   reset <app>              drop volumes and boot fresh (re-seeded state)
   clean [app...|--all]     remove containers + volumes + networks, reclaiming the
@@ -83,7 +88,12 @@ Aliases: `ls`/`apps` → `list`, `up` → `start`, `down` → `stop`, `ps` → `
 | `--variant vuln\|safe` | which twin (default `vuln`; `safe` = false-positive run) |
 | `--solo` | one self-contained image instead of compose |
 | `--port N` | pin the app's host port (default `13311`, else the next free one) |
+| `--count N`, `-c N` | `start` N apps: the ones named, else the first N of the catalog |
+| `--parallel[=N]` | bring them up 3 at a time, or N (`start`) |
+| `--near` | also list the near-misses (`vulns`) |
+| `--ids` | bare ids, one per line, for a coverage diff (`vulns`) |
 | `--all` | every app (`stop`/`clean`; `start` also needs `--solo`) |
+| `--force` | remove containers directly instead of a `compose down` per stack (`stop`) |
 | `--no-build` | skip the docker build (reuse the existing image) |
 | `--timeout S` | health-wait budget, default 300s (cold JVM/.NET builds are slow) |
 | `--no-takeover` | relocate rather than stop this app's other twin for its port |
@@ -95,7 +105,7 @@ Aliases: `ls`/`apps` → `list`, `up` → `start`, `down` → `stop`, `ps` → `
 | `--yes` | skip the confirmation prompt (`clean`) |
 | `--safe FILE` | findings from the patched twin (`score`) - all false alarms |
 | `--format F` | force an input format (`score`): findings/v1 zap sarif nuclei burp nmap |
-| `--full` | every match/miss/false-positive row (`score`, `diff`, `check`) |
+| `--full` | every match/miss/false-positive row (`score`, `diff`, `check`); route + PoC + full notes (`vulns`) |
 | `--limit N` | detail rows per section (`score`, default 10) |
 | `--lenient-cwe` | accept a match whose CWE is unrelated (`score`) |
 
@@ -122,48 +132,114 @@ older checkout) leaves volumes nothing can attribute any more. `clean` counts
 those and says so; `--orphan-volumes` deletes them - same set `docker volume
 prune` would take (unused **anonymous** volumes only, never named ones).
 
-## Compose vs solo - why it matters
+## Several apps at once
 
-Every app's compose stack publishes the **same host ports** (3000 for the app,
-plus 5432/8025/1025/… for its datastores), so **only one app runs at a time in
-compose mode**. That's the canonical topology the ground truth targets.
-
-Solo mode (`--solo`) runs the app's `Dockerfile.standalone` - one image with the
-datastores embedded - so the port is free to choose and **apps can run in
-parallel**:
+Under `make` every app publishes the same compose defaults, so only one runs at a
+time. The CLI gives each app [a port of its own](#ports), which is what lets a
+batch coexist - and lets the same app keep its URL run after run:
 
 ```bash
-dynast-bench start --all --solo --json   # 16 apps, one image + port each
+dynast-bench start --count 5 --parallel          # 5 apps, one port each
+dynast-bench start nextjs golang gin --parallel  # or name them
+```
+
+`--count N` takes the apps you name, or the first N of the catalog when you name
+none - catalog order, so the same machine picks the same N twice. `--parallel`
+brings 3 up at a time (`--parallel=6` for more); without it they boot one after
+another, streaming their build output. Either way the batch ends in a table:
+
+```
+APP      VARIANT  MODE     PORT   TARGET                  HEALTH
+fastapi  vuln     compose  13312  http://127.0.0.1:13312  ok
+gin      vuln     compose  13313  http://127.0.0.1:13313  ok
+golang   vuln     compose  13314  http://127.0.0.1:13314  ok
+```
+
+An app that never comes up is reported and the rest still start - the batch exits
+`1` with `{ started: [...], failed: [...] }` under `--json`, so a harness always
+gets the ports it did win:
+
+```bash
+dynast-bench start --count 3 --parallel --json | jq -r '.started[] | "\(.app) \(.target)"'
+```
+
+Solo mode (`--solo`) runs the app's `Dockerfile.standalone` - one image with the
+datastores embedded, no sidecar ports at all - which is the cheapest way to hold
+the whole fleet open:
+
+```bash
+dynast-bench start --all --solo --parallel --json   # every app, one image + port each
 ```
 
 ## Ports
 
+**Every app owns a fixed port.** It is the app's index in `dynast-bench list`,
+counted from 13311, so `nextjs` is `:13322` whether it booted on its own, inside
+a batch of five, or in solo mode - and two runs of the same batch hand back the
+same URLs.
+
 | range | what |
 |-------|------|
-| `13311` | the app under test - the URL a scanner gets |
-| `13312`–`13319` | that stack's sidecars (mailpit, phpMyAdmin, Jenkins, Prometheus, …) |
-| `13320`–`13399` | auto-assigned solo ports (`start --all --solo`) |
-| `13400`–`13499` | relocation pool |
+| `13311`–`13339` | the app under test - the URL a scanner gets. aspnet `13311`, fastapi `13312`, gin `13313`, … nextjs `13322`, … wordpress `13329` |
+| `13340`–`13484` | that app's sidecars (mailpit, phpMyAdmin, Jenkins, Prometheus, …) - a block of 5 per app, `13340 + 5 × index`, filled in compose-file order |
+| `13500`–`13599` | relocation pool |
 
-Compose files declare these as `127.0.0.1:${DYNAST_PORT:-13311}:3000`, so a
-default is only ever a *preference*. At `start` the CLI checks each one and:
+`dynast-bench list` prints the map (the `TARGET` column), `doctor` shows which of
+those ports are free right now. Adding an app to the suite shifts the ports of
+the apps after it alphabetically.
 
-- free → keeps it, so runs stay reproducible;
+Compose files still declare `127.0.0.1:${DYNAST_PORT:-13311}:3000`, so their
+defaults are what a bare `make up` publishes; the CLI passes each app's own port
+in through those env vars. At `start` it checks every port it is about to take:
+
+- free → takes it, so the URL is the same every run;
 - held by this app's **other twin** (or the same app in the other mode) → stops
   that one and takes the port, which is what the vuln→safe loop wants (pass
   `--no-takeover` to relocate instead);
 - held by **anything else** - another benchmark app, an unrelated container, a
-  stray process → left strictly alone; this publish moves into the relocation
+  stray process → left strictly alone; that one publish moves into the relocation
   pool and the real URL is printed and reported in `--json`.
 
 So a machine already running something on 3000, 8080 or 5432 needs no
-arrangement, and two benchmark apps can run side by side. `--port N` pins the
-app port explicitly (compose or solo); `DYNAST_PORT=N make up` does the same for
-the `make` targets, which don't relocate.
+arrangement, the whole suite can be up at once, and `--port N` pins the app port
+explicitly (compose or solo); `DYNAST_PORT=N make up` does the same for the
+`make` targets, which don't relocate.
 
 The port check deliberately combines a bind test, docker's published ports and
 `lsof`: Docker Desktop publishes on the IPv6 wildcard, which leaves IPv4
 `127.0.0.1:13311` bindable even while something already answers there.
+
+## What is planted in an app
+
+`vulns <app>` prints the answer key as a checklist - one title per bug, which is
+what a scan run gets measured against:
+
+```
+$ dynast-bench vulns gin
+gin  11 vulns · 11 PoCs · 6 near-misses
+
+ID                 CWE       SEV       TITLE
+INFO-001           CWE-200   medium    The debug endpoint dumps the full process environment…
+DEFAULT-CREDS-001  CWE-1392  medium    Seeded service account uses the weak default credential admin/admin.
+IDOR-001           CWE-639   high      Multi-step IDOR: POST /api/posts/{id}/grant mints an access grant…
+...
+```
+
+- `--full` - route, PoC path and the whole note per bug, as a block per entry.
+- `--near` - also the near-misses, i.e. the safe lookalikes that cost precision
+  when a tool flags them.
+- `--ids` - bare ids, one per line, which is the form a coverage diff wants:
+
+  ```bash
+  dynast-bench vulns gin --ids | sort > expected.txt
+  jq -r '.findings[].id' my-run.json | sort > reported.txt
+  comm -23 expected.txt reported.txt          # what the scanner missed
+  ```
+
+`--json` carries every field of the entry (cwe, owasp, severity, difficulty,
+reachability, discovery, route, symbol, poc, notes). `info <app>` stays the
+aggregate view - counts by severity/difficulty/discovery - and `score` is the
+one that actually grades a findings file.
 
 ## Driving a scanner
 
@@ -336,21 +412,53 @@ CWE handling, which is the part that decides whether a match is allowed at all:
 
 ### What comes out
 
+Every metric is `0.0`–`1.0`. The arrow is which direction is good:
+
 ```
-precision        tp / (tp + fp)      duplicates and closed-port reports excluded
-recall           tp / planted bugs
-recall_reachable tp / bugs reachable over http or net (source-only bugs excluded)
-recall_exact_cwe share of planted bugs found AND named exactly
-cwe_credit       mean classification credit over all planted bugs
-discrimination   1 - near-misses flagged / near-misses planted
-noise_ratio      duplicate findings / all findings
-exploit_rate     share of true positives that carried proof
+↑ precision        tp / (tp + fp)      of what was reported, how much was real
+                                       (duplicates and closed-port reports excluded)
+↑ recall           tp / planted bugs   of what was planted, how much was found
+↑ f1               2PR / (P + R)       harmonic mean - only high when both are
+↑ recall_reachable tp / bugs reachable over http or net (source-only bugs excluded)
+↑ recall_exact_cwe share of planted bugs found AND named exactly
+↑ cwe_credit       mean classification credit over all planted bugs
+↑ discrimination   1 - near-misses flagged / near-misses planted
+↓ noise_ratio      duplicate findings / all findings
+↑ exploit_rate     share of true positives that carried proof
 ```
+
+`noise_ratio` is the only one where **lower is better**; every other number here
+is "more of the answer key, correctly named, with proof". The false-positive
+counts (`near-miss` / `fixed-bug` / `other`, below) are raw counts, not ratios -
+lower is better for all three.
 
 Plus recall broken out by `difficulty`, `severity`, `reachability`, `taint`, CWE and
 CWE family - all four dimensions are already in every answer key - and the
 app-specific splits (`by_injection_channel`, `by_tool`, `by_documented`,
 `by_segment`, `by_transport`) wherever a key carries those fields.
+
+### Recall by discovery tier
+
+`difficulty` is how hard a bug is to recognise once you are looking at it.
+`discovery` is a separate axis: how much crawling capability it takes to reach
+the endpoint at all. An app whose surface is mostly behind JavaScript and user
+interaction will tank a request-fuzzer's recall for reasons that have nothing to
+do with how subtle its bugs are, and `by_discovery` is what makes that legible
+instead of just a bad number.
+
+```
+static-html   URL appears in the served HTML of a public page
+js-static     URL is a literal string in a bundle - greppable, no execution
+js-runtime    URL only exists once JS evaluates (fragments, manifest, lazy chunk)
+interaction   request only fires on a click/submit/scroll
+flow          only reachable from one state of a multi-step flow
+```
+
+The tier is a property of *discovery only*: every planted bug stays exploitable
+over plain HTTP once its URL is known, so a tool that learns the route some other
+way is never penalised. Tiering is all-or-nothing per app - `check` errors on a
+key that labels only some of its entries, because a partial breakdown reports
+recall over the labelled subset while looking like it covers everything.
 
 Two extra tracks run alongside the main matcher:
 

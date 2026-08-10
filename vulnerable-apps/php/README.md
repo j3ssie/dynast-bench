@@ -8,6 +8,19 @@ from [`../../benchmark-plans/php.md`](../../benchmark-plans/php.md). It keeps th
 shared Acme/Globex seed and plants PHP/LAMP-specific bugs next to safe-shaped
 near-misses.
 
+**Agent-only surface (deep hardening).** On top of the LAMP catalog it plants an
+8-bug surface a request fuzzer cannot reach - only an agent that behaves like a
+user: a **four-step signup wizard** at `/signup.php` (client-driven fetch to
+`/api/signup/*.php`) with four `flow`-tier bugs (clock-derived verification code,
+`role`/`org_slug` mass-assignment, complete-without-verify, draft-IDOR leaking
+another signup's email + code), two browser-only bugs on the wizard page (**DOM
+XSS** via `location.hash`, a **postMessage** sink), and a hidden `eval()` report
+builder (`CODEINJ`, CWE-94) referenced only from the panel the wizard fetches
+after an **Advanced** click. Those 8 are tiered `flow`/`interaction`/`js-runtime`;
+the pre-existing catalog stays `static-html`, so `recall by discovery tier` shows
+how far past the fuzzable surface a tool gets. The browser PoCs drive the shared
+`dynast-bench/tools/browser/` image.
+
 ## Layout
 
 ```text

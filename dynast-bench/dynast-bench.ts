@@ -3,6 +3,7 @@
  * dynast-bench — one CLI to drive the DynAST-Bench vulnerable-app suite.
  *
  *   dynast-bench start nextjs           # build + boot, wait until healthy, print target
+ *   dynast-bench start --count 5 --parallel   # five apps at once, one port each
  *   dynast-bench verify nextjs          # run the ground-truth PoCs against it
  *   dynast-bench stop --all             # stop everything this repo started
  *   dynast-bench clean --all --images   # remove containers, volumes, networks, images
@@ -38,15 +39,25 @@ const HEALTH_TIMEOUT_S = 300; // cold builds (aspnet/springboot/jsp) are slow
  * range so it never collides with the usual suspects (3000/8000/8080/5432/...)
  * that other scanners and test targets grab.
  *
- *   13311          the app itself — every compose stack's default
- *   13312 .. 13319 that stack's sidecars (mailpit, phpmyadmin, jenkins, ...)
- *   13320 .. 13399 auto-assigned solo ports (`start --all --solo`)
- *   13400 .. 13499 relocation pool — where a port goes when its default is busy
+ * Every app owns a FIXED port, so a URL means the same app on every machine and
+ * on every run - `nextjs` is always :13322 whether it booted alone, in a batch
+ * of five, or in solo mode. The port is the app's index in the catalog (`list`
+ * order), and it only moves when something else is genuinely holding it.
+ *
+ *   13311 .. 13339  the app under test — 13311 + its index in the catalog
+ *   13340 .. 13484  that app's sidecars — 5 apiece, 13340 + 5 * index
+ *   13500 .. 13599  relocation pool — where a publish goes when its port is busy
+ *
+ * Compose files still *default* to 13311/13312/…, which is what `make up` gets
+ * when it runs one app on its own; the CLI passes the app's own ports in as
+ * DYNAST_PORT* overrides.
  */
 const APP_PORT = 13311;
-const SOLO_PORT_BASE = 13320;
-const SOLO_PORT_SPAN = 80;
-const PORT_FALLBACK_BASE = 13400;
+const SIDECAR_BASE = 13340;
+/** 13311 .. 13339 - one slot per app, up to where the sidecar blocks start. */
+const APP_SLOT_SPAN = SIDECAR_BASE - APP_PORT;
+const SIDECAR_STRIDE = 5;
+const PORT_FALLBACK_BASE = 13500;
 const PORT_FALLBACK_SPAN = 100;
 
 type Variant = "vuln" | "safe";
@@ -79,6 +90,10 @@ interface App {
   dir: string;
   /** default host port for the app itself (before any relocation) */
   composePort: number;
+  /** the app's own fixed port: APP_PORT + its index in the catalog */
+  slotPort: number;
+  /** first port of this app's sidecar block */
+  sidecarBase: number;
   /** compose service that serves the app under test */
   appService: string;
   /** port that service listens on inside its container */
@@ -382,10 +397,17 @@ function loadApp(name: string): App {
 
   const plan = join(ROOT, "benchmark-plans", `${name}.md`);
 
+  // The catalog is sorted, so an app's slot is stable for a given app list.
+  // (Adding an app shifts the ones after it — `dynast-bench list` is the map.)
+  const slot = ALL_APPS.indexOf(name);
+  const idx = slot >= 0 && slot < APP_SLOT_SPAN ? slot : 0;
+
   return {
     name,
     dir,
     composePort: appPort?.preferred ?? APP_PORT,
+    slotPort: APP_PORT + idx,
+    sidecarBase: SIDECAR_BASE + idx * SIDECAR_STRIDE,
     appService: appPort?.service ?? "app",
     appContainerPort: appPort?.container ?? 3000,
     ports,
@@ -547,6 +569,68 @@ const isBenchContainer = (ct: Container) =>
     VARIANTS.some((v) => ALL_APPS.some((a) => ct.project === `${v}-${a}`))) ||
   VARIANTS.some((v) => ALL_APPS.some((a) => ct.name === soloName(a, v)));
 
+/**
+ * A stack found by looking at docker rather than at the apps directory.
+ *
+ * `known: false` means nothing named this app exists in vulnerable-apps/ any
+ * more — it was renamed or deleted while its containers were still up. The
+ * registry-driven walk can never see those, so they leak forever; this is the
+ * only way to reclaim them.
+ */
+interface DiscoveredStack {
+  app: string;
+  variant: Variant;
+  mode: Mode;
+  known: boolean;
+  containers: Container[];
+  running: number;
+}
+
+/** `<variant>-<app>` for compose projects, `<variant>-<app>-solo` for solo. */
+const BENCH_NAME_RE = new RegExp(`^(${VARIANTS.join("|")})-(.+)$`);
+
+/**
+ * Every stack this repo's naming convention claims, whether or not the app is
+ * still on disk. Scoped to the `vuln-`/`safe-` prefixes, so unrelated stacks a
+ * user happens to be running are never candidates.
+ */
+function discoverStacks(containers: Container[]): DiscoveredStack[] {
+  const byKey = new Map<string, DiscoveredStack>();
+  const add = (app: string, variant: Variant, mode: Mode, ct: Container) => {
+    const key = `${variant}/${app}/${mode}`;
+    let s = byKey.get(key);
+    if (!s) {
+      s = {
+        app,
+        variant,
+        mode,
+        known: ALL_APPS.includes(app),
+        containers: [],
+        running: 0,
+      };
+      byKey.set(key, s);
+    }
+    s.containers.push(ct);
+    if (ct.state === "running") s.running++;
+  };
+
+  for (const ct of containers) {
+    // Solo first: it is a bare container with no compose project at all, and
+    // its name would otherwise read as a project called "<variant>-<app>-solo".
+    const solo = ct.name.match(BENCH_NAME_RE);
+    if (solo && !ct.project && solo[2]!.endsWith("-solo")) {
+      add(solo[2]!.slice(0, -"-solo".length), solo[1] as Variant, "solo", ct);
+      continue;
+    }
+    const proj = ct.project?.match(BENCH_NAME_RE);
+    if (proj) add(proj[2]!, proj[1] as Variant, "compose", ct);
+  }
+
+  return [...byKey.values()].sort(
+    (a, b) => a.app.localeCompare(b.app) || a.variant.localeCompare(b.variant),
+  );
+}
+
 // ------------------------------------------------------------- net probes ---
 
 /** True when 127.0.0.1:<port> can be bound right now. */
@@ -652,6 +736,7 @@ function parseArgs(argv: string[]): Args {
     "format",
     "safe",
     "limit",
+    "count",
   ]);
 
   for (let i = 0; i < argv.length; i++) {
@@ -680,6 +765,7 @@ function parseArgs(argv: string[]): Args {
         y: "yes",
         j: "json",
         n: "tail",
+        c: "count",
       };
       const key = short[a.slice(1)] ?? a.slice(1);
       if (wantsValue.has(key)) flags[key] = argv[++i] ?? "";
@@ -718,6 +804,81 @@ function resolveApps(args: Args, opts: { allowAll: boolean; min?: number }): App
     die("which app? (see: dynast-bench list)", 2);
   }
   return args.positional.map(loadApp);
+}
+
+/** How many apps `--count N` takes when the flag is absent but apps are named. */
+const PARALLEL_DEFAULT = 3;
+
+/**
+ * Which apps to start: the named ones, or the first N of the catalog.
+ *
+ * `--count N` is the "just give me a few targets" path. It picks in catalog
+ * order so the same N apps come up on every machine, and skips apps that cannot
+ * run in the requested mode — `--count 5 --solo` should still hand back five.
+ * Naming apps stays the way to choose exactly which; combining the two caps a
+ * named list.
+ */
+function startApps(args: Args, mode: Mode): App[] {
+  const raw = flagStr(args, "count");
+  if (raw === undefined) return resolveApps(args, { allowAll: true });
+
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n < 1) {
+    die(`--count wants a positive integer (got: ${raw || "nothing"})`, 2);
+  }
+  const named = args.positional.length > 0;
+  let pool = (named ? args.positional : ALL_APPS).map(loadApp);
+  if (mode === "solo") {
+    const skipped = pool.filter((a) => !a.hasSolo);
+    pool = pool.filter((a) => a.hasSolo);
+    if (skipped.length && named) {
+      warn(`no Dockerfile.standalone: ${skipped.map((a) => a.name).join(" ")} — skipped`);
+    }
+  }
+  if (!pool.length) die(`no app can run in ${mode} mode`, 2);
+  if (n > pool.length) {
+    warn(`--count ${n} but only ${pool.length} app${pool.length === 1 ? "" : "s"} to pick from`);
+  }
+  return pool.slice(0, n);
+}
+
+/** `--parallel` / `--parallel=N` → how many apps to bring up at once. */
+function wantJobs(args: Args, apps: number): number {
+  const v = args.flags["parallel"];
+  if (v === undefined) return 1;
+  if (v === true) return Math.min(PARALLEL_DEFAULT, apps);
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 1) {
+    die(`--parallel wants a positive integer (got: ${v || "nothing"})`, 2);
+  }
+  return Math.min(n, apps);
+}
+
+/** The knobs every start-ish command forwards to `startApp`, parsed once. */
+const startFlags = (args: Args) => ({
+  port: flagStr(args, "port"),
+  build: !flagBool(args, "no-build"),
+  timeout: Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S),
+  takeover: !flagBool(args, "no-takeover"),
+});
+
+/** Run `fn` over every item, at most `limit` in flight. Results keep input order. */
+async function pooled<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]!, i);
+    }
+  };
+  const width = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: width }, worker));
+  return out;
 }
 
 // ------------------------------------------------------- lifecycle: start ---
@@ -785,6 +946,12 @@ async function containerVolumes(name: string): Promise<string[]> {
   return insp.code === 0 ? volumeNamesFrom(insp.stdout) : [];
 }
 
+/** What a stack is holding, found the way its mode stores it. */
+const heldVolumes = (app: string, variant: Variant, mode: Mode): Promise<string[]> =>
+  mode === "compose"
+    ? stackVolumes(composeProject(app, variant))
+    : containerVolumes(soloName(app, variant));
+
 /**
  * Stop a stack. With `volumes`, its seeded data goes too: `compose down -v`
  * removes what it can see, then anything still standing is deleted by name.
@@ -796,11 +963,7 @@ async function stopStack(
   mode: Mode,
   opts: { volumes?: boolean; images?: boolean } = {},
 ): Promise<{ volumes: string[] }> {
-  const held = !opts.volumes
-    ? []
-    : mode === "compose"
-      ? await stackVolumes(composeProject(app.name, variant))
-      : await containerVolumes(soloName(app.name, variant));
+  const held = opts.volumes ? await heldVolumes(app.name, variant, mode) : [];
 
   if (mode === "compose") {
     const rest = ["down", "--remove-orphans"];
@@ -813,12 +976,60 @@ async function stopStack(
     if (opts.images) await docker(["rmi", "-f", soloName(app.name, variant)]);
   }
 
-  if (!held.length) return { volumes: [] };
+  return { volumes: await reapVolumes(held) };
+}
+
+/** Drop volumes that outlived the containers holding them. Shared tail. */
+async function reapVolumes(held: string[]): Promise<string[]> {
+  if (!held.length) return [];
   const alive = await existingVolumes();
   const survivors = held.filter((v) => alive.has(v));
   if (survivors.length) await docker(["volume", "rm", "-f", ...survivors]);
   const after = survivors.length ? await existingVolumes() : alive;
-  return { volumes: held.filter((v) => !after.has(v)) };
+  return held.filter((v) => !after.has(v));
+}
+
+/**
+ * Tear a stack down without `docker compose`.
+ *
+ * Two callers need this: `--force` (one `docker rm -f` for every container beats
+ * a `compose down` per stack) and orphaned stacks, where the compose file that
+ * created them is no longer on disk so there is nothing to hand `-f`.
+ */
+async function forceStopStack(
+  s: DiscoveredStack,
+  opts: { volumes?: boolean } = {},
+): Promise<{ volumes: string[] }> {
+  const project = composeProject(s.app, s.variant);
+  const held = opts.volumes ? await heldVolumes(s.app, s.variant, s.mode) : [];
+
+  const ids = s.containers.map((ct) => ct.id);
+  if (ids.length) {
+    await docker(["rm", "-f", ...(opts.volumes ? ["-v"] : []), ...ids]);
+  }
+  if (s.mode === "compose") {
+    const nets = await docker([
+      "network",
+      "ls",
+      "-q",
+      "--filter",
+      `label=com.docker.compose.project=${project}`,
+    ]);
+    const list = volumeNamesFrom(nets.stdout);
+    if (list.length) await docker(["network", "rm", ...list]);
+  }
+  return { volumes: await reapVolumes(held) };
+}
+
+/** Stop a discovered stack the best way available for it. */
+async function stopDiscovered(
+  s: DiscoveredStack,
+  opts: { volumes?: boolean; force?: boolean } = {},
+): Promise<{ volumes: string[] }> {
+  if (s.known && !opts.force) {
+    return stopStack(loadApp(s.app), s.variant, s.mode, { volumes: opts.volumes });
+  }
+  return forceStopStack(s, { volumes: opts.volumes });
 }
 
 interface PortPlan {
@@ -830,27 +1041,58 @@ interface PortPlan {
   moved: { service: string; from: number; to: number }[];
   /** bench stacks stopped to reclaim a port */
   stopped: string[];
+  /** every host port this plan took — released once docker has bound them */
+  claimed: number[];
+}
+
+/**
+ * Ports promised to a stack that has not bound them yet.
+ *
+ * `portStatus()` asks docker and the kernel, so it only knows about ports that
+ * are already published. Under `--parallel` two starts plan before either binds,
+ * and both would happily pick 13311. A planned port therefore counts as taken
+ * until `docker up` returns, at which point the real bind takes over the job.
+ */
+const RESERVED_PORTS = new Set<number>();
+
+let portQueue: Promise<unknown> = Promise.resolve();
+
+/** Serialize port planning — concurrent planners must not hand out one port twice. */
+function withPortLock<T>(fn: () => Promise<T>): Promise<T> {
+  const run = portQueue.then(fn, fn);
+  portQueue = run.then(
+    () => {},
+    () => {},
+  );
+  return run;
 }
 
 /**
  * Decide which host ports this stack will publish on.
  *
- * A default that is free is kept, so runs stay reproducible. A default that is
- * taken by anything else — another benchmark app, an unrelated container, a
- * stray process — is relocated into the fallback pool rather than failing or
- * evicting the squatter. The one exception is this app's *other* stack (the
- * vuln/safe twin, or the same app in the other mode): those are the same app
- * and are swapped in place, which is what the twin loop expects.
+ * Every app has ports of its own (`slotPort` + its sidecar block), so the same
+ * app lands on the same URL every run, whatever else is up. A port that is free
+ * is taken as-is; one held by anything else — another benchmark app, an
+ * unrelated container, a stray process — is relocated into the fallback pool
+ * rather than failing or evicting the squatter. The one exception is this app's
+ * *other* stack (the vuln/safe twin, or the same app in the other mode): those
+ * are the same app and are swapped in place, which is what the twin loop wants.
  */
 async function planPorts(
   app: App,
   decls: PortDecl[],
   self: { variant: Variant; mode: Mode },
-  opts: { takeover: boolean; requestedAppPort?: number },
+  opts: { takeover: boolean; requestedAppPort?: number; containers?: Container[] },
 ): Promise<PortPlan> {
-  const plan: PortPlan = { env: {}, appPort: app.composePort, moved: [], stopped: [] };
-  let containers = await listContainers();
-  const claimed = new Set<number>();
+  const plan: PortPlan = {
+    env: {},
+    appPort: app.slotPort,
+    moved: [],
+    stopped: [],
+    claimed: [],
+  };
+  let containers = opts.containers ?? (await listContainers());
+  const claimed = new Set<number>(RESERVED_PORTS);
 
   const isOwn = (ct: Container) =>
     self.mode === "compose"
@@ -865,9 +1107,18 @@ async function planPorts(
     return null;
   };
 
+  // Sidecars fill this app's own block in compose-file order, so mailpit is the
+  // same port on every run too.
+  let sidecar = 0;
   for (const decl of decls) {
-    const wanted =
-      decl.isApp && opts.requestedAppPort ? opts.requestedAppPort : decl.preferred;
+    const nth = decl.isApp ? -1 : sidecar++;
+    const wanted = decl.isApp
+      ? (opts.requestedAppPort ?? app.slotPort)
+      : // A block holds SIDECAR_STRIDE of them; anything past that (no app is
+        // close today) starts from the pool rather than into the next app.
+        nth < SIDECAR_STRIDE
+        ? app.sidecarBase + nth
+        : PORT_FALLBACK_BASE + nth - SIDECAR_STRIDE;
 
     let chosen: number | null = null;
     if (!claimed.has(wanted)) {
@@ -905,7 +1156,17 @@ async function planPorts(
       for (let i = 0; i < PORT_FALLBACK_SPAN; i++) {
         const p = PORT_FALLBACK_BASE + i;
         if (claimed.has(p)) continue;
-        if ((await portStatus(p, containers)).free) {
+        const st = await portStatus(p, containers);
+        // Where this very service already sits. `wanted` is always the compose
+        // default, so without this a stack that relocated once would drift one
+        // slot further up the pool on every re-up — and a batch would hand back
+        // different URLs each run.
+        const ours =
+          st.dockerHolders.length > 0 &&
+          st.dockerHolders.every(
+            (ct) => isOwn(ct) && (self.mode === "solo" || ct.service === decl.service),
+          );
+        if (st.free || ours) {
           chosen = p;
           break;
         }
@@ -926,14 +1187,18 @@ async function planPorts(
     }
 
     claimed.add(chosen);
+    RESERVED_PORTS.add(chosen);
+    plan.claimed.push(chosen);
     if (decl.isApp) plan.appPort = chosen;
   }
   return plan;
 }
 
+/** Solo has no sidecars, so it just wants the app's own port — same URL as compose. */
 async function pickSoloPort(
   app: App,
   variant: Variant,
+  containers: Container[],
   requested?: string,
 ): Promise<number> {
   if (requested) {
@@ -941,13 +1206,12 @@ async function pickSoloPort(
     if (!Number.isInteger(p) || p < 1 || p > 65535) die(`bad --port: ${requested}`, 2);
     return p;
   }
-  const containers = await listContainers();
   const candidates = [
-    app.composePort,
-    ...Array.from({ length: SOLO_PORT_SPAN }, (_, i) => SOLO_PORT_BASE + i),
+    app.slotPort,
     ...Array.from({ length: PORT_FALLBACK_SPAN }, (_, i) => PORT_FALLBACK_BASE + i),
   ];
   for (const p of candidates) {
+    if (RESERVED_PORTS.has(p)) continue; // promised to a stack still coming up
     const st = await portStatus(p, containers);
     // A restart should land back where it was, so our own container doesn't
     // count as an obstacle.
@@ -963,6 +1227,9 @@ async function waitHealthy(
   app: App,
   target: string,
   timeoutS: number,
+  // The spinner rewrites its own line, so several of them at once would fight
+  // over it — parallel starts wait silently instead.
+  spinner = true,
 ): Promise<boolean> {
   const deadline = Date.now() + timeoutS * 1000;
   const spin = ["|", "/", "-", "\\"];
@@ -971,10 +1238,10 @@ async function waitHealthy(
   while (Date.now() < deadline) {
     const { ok } = await probeHealth(target, app.healthPath, 3000);
     if (ok) {
-      if (useColor()) process.stdout.write("\r\x1b[K");
+      if (useColor() && spinner) process.stdout.write("\r\x1b[K");
       return true;
     }
-    if (useColor()) {
+    if (useColor() && spinner) {
       const secs = Math.round((Date.now() - started) / 1000);
       process.stdout.write(
         `\r\x1b[K${c.dim(`   ${spin[i++ % 4]} waiting for ${target}${app.healthPath} (${secs}s)`)}`,
@@ -982,7 +1249,7 @@ async function waitHealthy(
     }
     await Bun.sleep(1500);
   }
-  if (useColor()) process.stdout.write("\r\x1b[K");
+  if (useColor() && spinner) process.stdout.write("\r\x1b[K");
   return false;
 }
 
@@ -1022,87 +1289,101 @@ async function startApp(
     build: boolean;
     timeout: number;
     takeover: boolean;
+    /** several apps coming up at once: no live build output, no spinner */
+    quiet?: boolean;
+    /** name the app on the success line — one URL among several needs its owner */
+    label?: boolean;
   },
 ): Promise<StartResult> {
-  const { variant, mode } = opts;
+  const { variant, mode, quiet = false } = opts;
 
   if (mode === "solo" && !app.hasSolo) {
     die(`${app.name} has no ${variant}/Dockerfile.standalone — drop --solo`);
   }
 
-  let port: number;
-  let plan: PortPlan;
-  if (mode === "compose") {
-    if (opts.port && !/^\d+$/.test(opts.port)) die(`bad --port: ${opts.port}`, 2);
-    plan = await planPorts(app, app.ports[variant], { variant, mode }, {
-      takeover: opts.takeover,
-      requestedAppPort: opts.port ? Number(opts.port) : undefined,
-    });
-    port = plan.appPort;
-  } else {
-    port = await pickSoloPort(app, variant, opts.port);
-    plan = await planPorts(
+  // Planning is serialized even under --parallel: it reads the live port map,
+  // so two planners running at once would both see the same port free.
+  const plan: PortPlan = await withPortLock(async () => {
+    if (mode === "compose") {
+      if (opts.port && !/^\d+$/.test(opts.port)) die(`bad --port: ${opts.port}`, 2);
+      return planPorts(app, app.ports[variant], { variant, mode }, {
+        takeover: opts.takeover,
+        requestedAppPort: opts.port ? Number(opts.port) : undefined,
+      });
+    }
+    // One port map serves both the pick and the claim - nothing binds in between.
+    const containers = await listContainers();
+    const solo = await pickSoloPort(app, variant, containers, opts.port);
+    return planPorts(
       app,
       [
         {
           service: app.appService,
           envVar: null,
-          preferred: port,
+          preferred: solo,
           container: app.soloInternalPort,
           isApp: true,
         },
       ],
       { variant, mode },
-      { takeover: opts.takeover },
+      // pickSoloPort has already arbitrated (and honoured --port) — planPorts is
+      // only here to record the claim and stop a twin if it holds the port.
+      { takeover: opts.takeover, requestedAppPort: solo, containers },
     );
-    port = plan.appPort;
-  }
+  });
+  const port = plan.appPort;
 
   step(
     `starting ${c.bold(app.name)} ${c.dim(`(${variant}, ${mode})`)} on 127.0.0.1:${port}`,
   );
 
-  if (mode === "compose") {
-    const rest = ["up", "-d", "--remove-orphans"];
-    if (opts.build) rest.push("--build");
-    const res = await docker(composeArgs(app, variant, rest), {
-      cwd: app.dir,
-      env: plan.env,
-      stream: true,
-    });
-    if (res.code !== 0) die(`docker compose up failed for ${app.name}/${variant}`);
-  } else {
-    const img = soloName(app.name, variant);
-    if (opts.build) {
-      const build = await docker(
-        ["build", "-f", `${variant}/Dockerfile.standalone`, "-t", img, variant],
-        { cwd: app.dir, stream: true },
-      );
-      if (build.code !== 0) die(`docker build failed for ${app.name}/${variant}`);
+  try {
+    if (mode === "compose") {
+      const rest = ["up", "-d", "--remove-orphans"];
+      if (opts.build) rest.push("--build");
+      const res = await docker(composeArgs(app, variant, rest), {
+        cwd: app.dir,
+        env: plan.env,
+        stream: !quiet,
+      });
+      if (res.code !== 0) die(`docker compose up failed for ${app.name}/${variant}`);
+    } else {
+      const img = soloName(app.name, variant);
+      if (opts.build) {
+        const build = await docker(
+          ["build", "-f", `${variant}/Dockerfile.standalone`, "-t", img, variant],
+          { cwd: app.dir, stream: !quiet },
+        );
+        if (build.code !== 0) die(`docker build failed for ${app.name}/${variant}`);
+      }
+      await docker(["rm", "-f", "-v", img]);
+      const run = await docker([
+        "run",
+        "-d",
+        "--rm",
+        "-p",
+        `127.0.0.1:${port}:${app.soloInternalPort}`,
+        "--name",
+        img,
+        img,
+      ]);
+      if (run.code !== 0) die(`docker run failed for ${img}: ${run.stderr.trim()}`);
     }
-    await docker(["rm", "-f", "-v", img]);
-    const run = await docker([
-      "run",
-      "-d",
-      "--rm",
-      "-p",
-      `127.0.0.1:${port}:${app.soloInternalPort}`,
-      "--name",
-      img,
-      img,
-    ]);
-    if (run.code !== 0) die(`docker run failed for ${img}: ${run.stderr.trim()}`);
+  } finally {
+    // Bound (or dead) — either way the reservation has done its job, and holding
+    // it would make a later start in this same process relocate for no reason.
+    for (const p of plan.claimed) RESERVED_PORTS.delete(p);
   }
 
   const target = `http://127.0.0.1:${port}`;
-  const healthy = await waitHealthy(app, target, opts.timeout);
+  const healthy = await waitHealthy(app, target, opts.timeout, !quiet);
   if (!healthy) {
     await dumpDiagnostics(app, variant, mode);
     die(`${app.name}/${variant} did not answer ${app.healthPath} within ${opts.timeout}s`);
   }
 
   log(
-    `${c.green("ok")}   ${c.bold(target)}  ${c.dim(`health ${app.healthPath} · ${app.pocCount} PoCs · verify: dynast-bench verify ${app.name}`)}`,
+    `${c.green("ok")}   ${opts.label ? c.bold(app.name) + "  " : ""}${c.bold(target)}  ${c.dim(`health ${app.healthPath} · ${app.pocCount} PoCs · verify: dynast-bench verify ${app.name}`)}`,
   );
   return {
     app: app.name,
@@ -1142,6 +1423,7 @@ function gtSummary(app: App) {
     by_severity: tally("severity"),
     by_difficulty: tally("difficulty"),
     by_reachability: tally("reachability"),
+    by_discovery: tally("discovery"),
     cwes: [...new Set(vulns.map((v) => String(v.cwe ?? "")).filter(Boolean))].sort(),
     vulnerabilities: vulns,
     near_misses: gt.near_misses ?? [],
@@ -1185,7 +1467,7 @@ async function cmdList(args: Args) {
       String((gt.near_misses ?? []).length),
       app.hasSolo ? "yes" : "-",
       live.length ? c.green(state) : c.dim(state),
-      live[0]?.target ?? c.dim(`(:${app.composePort})`),
+      live[0]?.target ?? c.dim(`(:${app.slotPort})`),
     ]);
     payload.push({
       app: app.name,
@@ -1193,6 +1475,8 @@ async function cmdList(args: Args) {
       pocs: app.pocCount,
       near_misses: (gt.near_misses ?? []).length,
       solo: app.hasSolo,
+      port: app.slotPort,
+      sidecar_ports: `${app.sidecarBase}-${app.sidecarBase + SIDECAR_STRIDE - 1}`,
       compose_port: app.composePort,
       health_path: app.healthPath,
       plan: app.planDoc ? app.planDoc.replace(ROOT + "/", "") : null,
@@ -1207,7 +1491,12 @@ async function cmdList(args: Args) {
   emit({ apps: payload });
   table(rows, ["APP", "VULNS", "POCS", "NEAR", "SOLO", "RUNNING", "TARGET"]);
   log();
-  log(c.dim(`${ALL_APPS.length} apps · start one:  dynast-bench start <app>`));
+  log(
+    c.dim(
+      `${ALL_APPS.length} apps · start one:  dynast-bench start <app>` +
+        `  ·  each app owns its port, taken only if free`,
+    ),
+  );
 }
 
 async function cmdInfo(args: Args) {
@@ -1216,7 +1505,10 @@ async function cmdInfo(args: Args) {
   emit(s);
   if (JSON_MODE.on) return;
 
-  log(c.bold(`${s.app}  ${c.dim(s.entry)}`));
+  log(
+    c.bold(`${s.app}  ${c.dim(`http://127.0.0.1:${app!.slotPort}`)}`) +
+      c.dim(`  (its fixed port; ${s.entry} is the compose default a bare \`make up\` uses)`),
+  );
   log();
   log(
     `  ${s.counts.vulnerabilities} planted vulns · ${s.counts.pocs} PoCs · ${s.counts.near_misses} near-misses`,
@@ -1229,6 +1521,7 @@ async function cmdInfo(args: Args) {
   log(`  severity      ${fmt(s.by_severity)}`);
   log(`  difficulty    ${fmt(s.by_difficulty)}`);
   log(`  reachability  ${fmt(s.by_reachability)}`);
+  if (Object.keys(s.by_discovery).length) log(`  discovery     ${fmt(s.by_discovery)}`);
   log(`  cwes          ${s.cwes.join(" ")}`);
   if (s.seed_notes) {
     log();
@@ -1243,62 +1536,281 @@ async function cmdInfo(args: Args) {
         String(v.severity ?? ""),
         String(v.difficulty ?? ""),
         String(v.reachability ?? ""),
+        String(v.discovery ?? ""),
         String(v.route ?? "").slice(0, 60),
       ]),
-      ["ID", "CWE", "SEV", "DIFF", "REACH", "ROUTE"],
+      ["ID", "CWE", "SEV", "DIFF", "REACH", "DISCOVERY", "ROUTE"],
     );
   } else {
     log();
-    log(c.dim(`  answer key: ${app!.groundTruth.replace(ROOT + "/", "")}  (--full to list entries)`));
+    log(
+      c.dim(
+        `  answer key: ${app!.groundTruth.replace(ROOT + "/", "")}` +
+          `  (--full to list entries · dynast-bench vulns ${app!.name} for titles)`,
+      ),
+    );
+  }
+}
+
+/** notes: is folded YAML — one line, and short enough to sit in a table cell. */
+const oneLine = (s: unknown) => String(s ?? "").replace(/\s+/g, " ").trim();
+
+/** The first sentence of `notes:`, which is written as the summary of the bug. */
+function titleOf(v: Record<string, any>): string {
+  const n = oneLine(v.notes);
+  const stop = n.search(/\.\s/);
+  return stop > 0 ? n.slice(0, stop + 1) : n;
+}
+
+const fit = (s: string, width: number) =>
+  s.length <= width ? s : s.slice(0, Math.max(1, width - 1)) + "…";
+
+/**
+ * The planted bugs of an app as a checklist — what a scanner run gets compared
+ * against. Titles by default (`--full` for route + PoC + the whole note), and
+ * `--ids` for the bare list a coverage diff wants.
+ */
+async function cmdVulns(args: Args) {
+  const apps = resolveApps(args, { allowAll: true });
+  const withNear = flagBool(args, "near");
+  const full = flagBool(args, "full");
+
+  const payload = apps.map((app) => {
+    const gt = groundTruth(app);
+    return {
+      app: app.name,
+      counts: {
+        vulnerabilities: (gt.vulnerabilities ?? []).length,
+        near_misses: (gt.near_misses ?? []).length,
+        pocs: app.pocCount,
+      },
+      vulnerabilities: (gt.vulnerabilities ?? []).map((v) => ({
+        id: v.id ?? "",
+        title: titleOf(v),
+        cwe: v.cwe ?? "",
+        owasp: v.owasp ?? "",
+        severity: v.severity ?? "",
+        difficulty: v.difficulty ?? "",
+        reachability: v.reachability ?? "",
+        discovery: v.discovery ?? "",
+        route: v.route ?? "",
+        symbol: v.symbol ?? "",
+        near_miss: v.near_miss ?? null,
+        poc: v.poc ?? "",
+        notes: oneLine(v.notes),
+      })),
+      near_misses: (gt.near_misses ?? []).map((n) => ({
+        id: n.id ?? "",
+        of: n.of ?? "",
+        title: titleOf(n),
+        route: n.route ?? "",
+        symbol: n.symbol ?? "",
+        path: n.path ?? "",
+        notes: oneLine(n.notes),
+      })),
+    };
+  });
+
+  emit(payload.length === 1 ? payload[0] : { apps: payload });
+  if (JSON_MODE.on) return;
+
+  // Bare ids, one per line: `comm -13` this against what a scanner reported.
+  if (flagBool(args, "ids")) {
+    for (const a of payload) {
+      for (const v of a.vulnerabilities) console.log(v.id);
+      if (withNear) for (const n of a.near_misses) console.log(n.id);
+    }
+    return;
+  }
+
+  const width = process.stdout.columns && process.stdout.columns > 60
+    ? process.stdout.columns
+    : 120;
+
+  for (const [i, a] of payload.entries()) {
+    if (i) log();
+    log(
+      `${c.bold(a.app)}  ${c.dim(`${a.counts.vulnerabilities} vulns · ${a.counts.pocs} PoCs · ${a.counts.near_misses} near-misses`)}`,
+    );
+    log();
+
+    if (full) {
+      for (const v of a.vulnerabilities) {
+        log(
+          `${c.bold(v.id)}  ${c.dim(`${v.cwe} · ${v.severity} · difficulty ${v.difficulty} · ${v.reachability} · ${v.discovery}`)}`,
+        );
+        if (v.route) log(`  ${c.cyan(v.route)}`);
+        else if (v.symbol) log(`  ${c.dim("source-only:")} ${v.symbol}`);
+        log(`  ${v.notes}`);
+        if (v.poc) log(`  ${c.dim(v.poc)}`);
+        log();
+      }
+    } else {
+      // ID + CWE + SEV are fixed-ish; the title takes whatever is left.
+      const idW = Math.max(2, ...a.vulnerabilities.map((v) => v.id.length));
+      const cweW = Math.max(3, ...a.vulnerabilities.map((v) => String(v.cwe).length));
+      const sevW = Math.max(3, ...a.vulnerabilities.map((v) => String(v.severity).length));
+      const titleW = Math.max(24, width - (idW + cweW + sevW + 8));
+      table(
+        a.vulnerabilities.map((v) => [
+          v.id,
+          String(v.cwe),
+          String(v.severity),
+          fit(v.title, titleW),
+        ]),
+        ["ID", "CWE", "SEV", "TITLE"],
+      );
+    }
+
+    if (withNear && a.near_misses.length) {
+      log();
+      log(c.dim(`  near-misses — safe code of the same shape; flagging one is a false positive`));
+      table(
+        a.near_misses.map((n) => [
+          n.id,
+          `of ${n.of}`,
+          fit(n.title, Math.max(24, width - 40)),
+        ]),
+        ["ID", "OF", "WHY IT IS SAFE"],
+      );
+    }
+  }
+
+  if (!full) {
+    log();
+    log(
+      c.dim(
+        `  --full for route + PoC · --near for the near-misses · --ids for a bare list`,
+      ),
+    );
   }
 }
 
 async function cmdStart(args: Args) {
   const mode = wantMode(args);
-  const apps = resolveApps(args, { allowAll: true });
-  if (flagBool(args, "all") && mode === "compose") {
+  const apps = startApps(args, mode);
+  if (flagBool(args, "all") && !flagStr(args, "count") && mode === "compose") {
     die(
       `booting all ${ALL_APPS.length} compose stacks at once means every datastore they ship, ` +
         "which is more than a laptop wants.\n" +
         "   use: dynast-bench start --all --solo   (one image per app, auto-assigned ports)\n" +
+        "   or take a few: dynast-bench start --count 5 --parallel\n" +
         "   or name the apps you want: dynast-bench start nextjs golang",
     );
   }
+  if (apps.length > 1 && flagStr(args, "port")) {
+    die("--port names one host port, so it only makes sense for a single app", 2);
+  }
 
-  const results: StartResult[] = [];
-  for (const app of apps) {
-    results.push(
-      await startApp(app, {
-        variant: wantVariant(args),
-        mode,
-        port: flagStr(args, "port"),
-        build: !flagBool(args, "no-build"),
-        timeout: Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S),
-        takeover: !flagBool(args, "no-takeover"),
-      }),
+  const jobs = wantJobs(args, apps.length);
+  const opts = { variant: wantVariant(args), mode, ...startFlags(args) };
+
+  // One app keeps the old contract exactly: live build output, and a failure is
+  // the command's failure.
+  if (apps.length === 1) {
+    emit(await startApp(apps[0]!, opts));
+    return;
+  }
+
+  if (jobs > 1) {
+    step(
+      `starting ${apps.length} apps ${c.dim(`(${jobs} at a time)`)}: ${apps.map((a) => a.name).join(" ")}`,
     );
   }
-  emit(results.length === 1 ? results[0] : { started: results });
+
+  // A batch reports on the whole batch: one app that will not boot must not cost
+  // the caller the ports of the ones that did.
+  const failed: { app: string; error: string }[] = [];
+  const settled = await pooled(apps, jobs, async (app) => {
+    try {
+      return await startApp(app, { ...opts, quiet: jobs > 1, label: true });
+    } catch (err) {
+      if (!(err instanceof CliError)) throw err;
+      failed.push({ app: app.name, error: err.message });
+      warn(`${app.name} failed to start: ${err.message.split("\n")[0]}`);
+      return null;
+    }
+  });
+  const started = settled.filter((r): r is StartResult => r !== null);
+
+  emit({ started, failed });
+  log();
+  table(
+    started.map((r) => [
+      r.app,
+      r.variant,
+      r.mode,
+      String(r.port),
+      r.target,
+      r.healthy ? c.green("ok") : c.red("down"),
+    ]),
+    ["APP", "VARIANT", "MODE", "PORT", "TARGET", "HEALTH"],
+  );
+  if (failed.length) {
+    log();
+    warn(`${failed.length} of ${apps.length} did not start: ${failed.map((f) => f.app).join(" ")}`);
+    process.exitCode = 1;
+  }
 }
 
+/**
+ * Stop stacks.
+ *
+ *   stop <app...>   just those apps
+ *   stop            everything running (confirms when more than one is up)
+ *   stop --all      everything, including stacks whose app is gone from disk
+ *
+ * Targets come from docker, not from the apps directory: "everything" has to
+ * mean every stack that is actually there, including one whose app was renamed
+ * or deleted out from under it. Naming apps just filters that same set.
+ */
 async function cmdStop(args: Args) {
-  const apps = resolveApps(args, { allowAll: true });
   const containers = await listContainers();
   const dropVolumes = flagBool(args, "volumes");
+  const force = flagBool(args, "force");
   const only = flagStr(args, "variant") as Variant | undefined;
-  const stopped: any[] = [];
-  let volumes = 0;
+  const sweep = flagBool(args, "all") || args.positional.length === 0;
 
-  for (const app of apps) {
-    for (const stack of stacksOf(app, containers)) {
-      if (only && stack.variant !== only) continue;
-      step(`stopping ${app.name} ${c.dim(`(${stack.variant}, ${stack.mode})`)}`);
-      const res = await stopStack(app, stack.variant, stack.mode, { volumes: dropVolumes });
-      volumes += res.volumes.length;
-      stopped.push({ app: app.name, variant: stack.variant, mode: stack.mode });
+  let targets: DiscoveredStack[];
+  if (sweep) {
+    targets = discoverStacks(containers);
+  } else {
+    const wanted = new Set(resolveApps(args, { allowAll: false }).map((a) => a.name));
+    targets = discoverStacks(containers).filter((s) => wanted.has(s.app));
+  }
+  if (only) targets = targets.filter((s) => s.variant === only);
+
+  if (!targets.length) {
+    log(c.dim("nothing to stop"));
+    emit({ stopped: [], volumes_removed: dropVolumes, volumes_deleted: 0 });
+    return;
+  }
+
+  // An explicit `--all` or a named app is already a statement of intent. A bare
+  // `stop` is not, so anything beyond a single obvious stack gets a prompt.
+  if (!flagBool(args, "all") && !flagBool(args, "yes") && targets.length > 1) {
+    const list = targets.map((s) => `${s.app} (${s.variant}, ${s.mode})`).join(", ");
+    if (!(await confirm(`stop ${targets.length} stacks — ${list}?`))) {
+      die("aborted", 130);
     }
   }
-  if (!stopped.length) log(c.dim("nothing to stop"));
+
+  // Stacks are independent projects, so tearing them down one at a time just
+  // adds up N `compose down`s of latency. Held volumes are collected per stack
+  // before anything is removed, so a concurrent reap can't cross-attribute.
+  const results = await pooled(targets, 4, async (s) => {
+    const tags = [s.variant, s.mode, ...(s.known ? [] : ["orphan"])].join(", ");
+    step(`stopping ${s.app} ${c.dim(`(${tags})`)}`);
+    return stopDiscovered(s, { volumes: dropVolumes, force });
+  });
+
+  const stopped = targets.map((s) => ({
+    app: s.app,
+    variant: s.variant,
+    mode: s.mode,
+    orphan: !s.known,
+  }));
+  const volumes = results.reduce((n, r) => n + r.volumes.length, 0);
   emit({ stopped, volumes_removed: dropVolumes, volumes_deleted: volumes });
 }
 
@@ -1316,14 +1828,7 @@ async function cmdReset(args: Args) {
   step(`resetting ${app!.name} ${c.dim(`(${variant}, ${mode})`)} — dropping volumes`);
   await stopStack(app!, variant, mode, { volumes: true });
 
-  const res = await startApp(app!, {
-    variant,
-    mode,
-    port: flagStr(args, "port"),
-    build: !flagBool(args, "no-build"),
-    timeout: Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S),
-    takeover: !flagBool(args, "no-takeover"),
-  });
+  const res = await startApp(app!, { variant, mode, ...startFlags(args) });
   emit({ ...res, reset: true });
 }
 
@@ -1335,14 +1840,7 @@ async function cmdRestart(args: Args) {
   const mode: Mode = flagBool(args, "solo") ? "solo" : (live[0]?.mode ?? "compose");
 
   await stopStack(app!, variant, mode);
-  const res = await startApp(app!, {
-    variant,
-    mode,
-    port: flagStr(args, "port"),
-    build: !flagBool(args, "no-build"),
-    timeout: Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S),
-    takeover: !flagBool(args, "no-takeover"),
-  });
+  const res = await startApp(app!, { variant, mode, ...startFlags(args) });
   emit(res);
 }
 
@@ -1822,12 +2320,7 @@ async function cmdClean(args: Args) {
   const held = new Map<string, string[]>();
   for (const t of targets) {
     const key = `${t.app.name}/${t.variant}/${t.mode}`;
-    held.set(
-      key,
-      t.mode === "compose"
-        ? await stackVolumes(composeProject(t.app.name, t.variant))
-        : await containerVolumes(soloName(t.app.name, t.variant)),
-    );
+    held.set(key, await heldVolumes(t.app.name, t.variant, t.mode));
   }
 
   // Volumes from earlier runs whose containers are long gone: nothing links them
@@ -1890,9 +2383,7 @@ async function cmdClean(args: Args) {
   }
   if (orphans.length) {
     step(`removing ${orphans.length} orphaned anonymous volume(s)`);
-    await docker(["volume", "rm", "-f", ...orphans]);
-    const after = await existingVolumes();
-    const gone = orphans.filter((v) => !after.has(v));
+    const gone = await reapVolumes(orphans);
     volumesDeleted += gone.length;
     reclaimed += bytesOf(gone);
   }
@@ -1933,14 +2424,7 @@ async function cmdRun(args: Args) {
   const variant = wantVariant(args);
   const mode = wantMode(args);
 
-  const started = await startApp(app!, {
-    variant,
-    mode,
-    port: flagStr(args, "port"),
-    build: !flagBool(args, "no-build"),
-    timeout: Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S),
-    takeover: !flagBool(args, "no-takeover"),
-  });
+  const started = await startApp(app!, { variant, mode, ...startFlags(args) });
 
   step(`running: ${c.dim(args.passthrough.join(" "))}`);
   const env = {
@@ -1981,42 +2465,43 @@ async function cmdDoctor(_args: Args) {
   add("apps", ALL_APPS.length > 0, `${ALL_APPS.length} found`);
 
   const containers = info.code === 0 ? await listContainers() : [];
-  // Every default a compose stack would like to publish on, and who wants it.
-  const wanted = new Map<number, string[]>();
-  for (const name of ALL_APPS) {
-    const app = loadApp(name);
-    for (const decl of app.ports.vuln) {
-      const label = decl.isApp ? name : `${name}/${decl.service}`;
-      wanted.set(decl.preferred, [...(wanted.get(decl.preferred) ?? []), label]);
-    }
-  }
+  // One row per app: the port it owns, and whether anything is sitting on it.
+  const apps = ALL_APPS.map(loadApp);
+  const states = await Promise.all(
+    apps.map((app) => portStatus(app.slotPort, containers)),
+  );
   const portRows: string[][] = [];
   const portPayload: any[] = [];
-  for (const p of [...wanted.keys()].sort((x, y) => x - y)) {
-    const st = await portStatus(p, containers);
+  for (const [i, app] of apps.entries()) {
+    const st = states[i]!;
     const holder = st.dockerHolders[0];
     const who = st.free
       ? "-"
       : holder
         ? `${holder.name}${isBenchContainer(holder) ? " (bench)" : c.yellow(" (foreign)")}`
         : (st.otherHolder ?? "unknown listener");
-    const users = wanted.get(p)!;
     portRows.push([
-      String(p),
+      String(app.slotPort),
+      app.name,
       st.free ? c.green("free") : c.yellow("in use"),
       who,
-      users.length > 3 ? `${users.length} apps` : users.join(" "),
+      `${app.sidecarBase}-${app.sidecarBase + SIDECAR_STRIDE - 1}`,
     ]);
-    portPayload.push({ port: p, free: st.free, holder: st.free ? null : who, wanted_by: users });
+    portPayload.push({
+      port: app.slotPort,
+      app: app.name,
+      free: st.free,
+      holder: st.free ? null : who,
+      sidecars: `${app.sidecarBase}-${app.sidecarBase + SIDECAR_STRIDE - 1}`,
+    });
   }
 
   emit({
     checks,
     ports: portPayload,
     port_plan: {
-      app: APP_PORT,
-      sidecars: `${APP_PORT + 1}-${APP_PORT + 8}`,
-      solo: `${SOLO_PORT_BASE}-${SOLO_PORT_BASE + SOLO_PORT_SPAN - 1}`,
+      apps: `${APP_PORT}-${APP_PORT + APP_SLOT_SPAN - 1}`,
+      sidecars: `${SIDECAR_BASE}-${SIDECAR_BASE + APP_SLOT_SPAN * SIDECAR_STRIDE - 1}`,
       relocation: `${PORT_FALLBACK_BASE}-${PORT_FALLBACK_BASE + PORT_FALLBACK_SPAN - 1}`,
     },
     root: ROOT,
@@ -2026,13 +2511,16 @@ async function cmdDoctor(_args: Args) {
     log(`${ch.ok ? c.green(" ok ") : c.red("FAIL")}  ${ch.name.padEnd(16)} ${c.dim(ch.detail)}`);
   }
   log();
-  log(c.bold("host ports the suite prefers") + c.dim("  (a busy one is relocated at start)"));
-  table(portRows, ["PORT", "STATE", "HOLDER", "WANTED BY"]);
+  log(
+    c.bold("the port each app owns") +
+      c.dim("  (kept when free, relocated only when something else holds it)"),
+  );
+  table(portRows, ["PORT", "APP", "STATE", "HOLDER", "SIDECARS"]);
   log();
   log(
     c.dim(
-      `  app ${APP_PORT} · sidecars ${APP_PORT + 1}-${APP_PORT + 8} · ` +
-        `solo ${SOLO_PORT_BASE}-${SOLO_PORT_BASE + SOLO_PORT_SPAN - 1} · ` +
+      `  apps ${APP_PORT}-${APP_PORT + APP_SLOT_SPAN - 1} · ` +
+        `sidecars ${SIDECAR_BASE}-${SIDECAR_BASE + APP_SLOT_SPAN * SIDECAR_STRIDE - 1} · ` +
         `relocation pool ${PORT_FALLBACK_BASE}-${PORT_FALLBACK_BASE + PORT_FALLBACK_SPAN - 1}`,
     ),
   );
@@ -2130,14 +2618,26 @@ const HELP = `${c.bold("dynast-bench")} — run the intentionally-vulnerable ben
 ${c.bold("USAGE")}
   dynast-bench <command> [app...] [flags]
 
+  dynast-bench list                              ${c.dim("# every app in the suite")}
+  dynast-bench list --json | jq -r '.apps[].app' ${c.dim("# just the names, for a loop")}
+  dynast-bench start nextjs                      ${c.dim("# boot one app, print its URL")}
+  dynast-bench start --count 5 --parallel        ${c.dim("# boot 5 at once, one port each")}
+  dynast-bench vulns nextjs                      ${c.dim("# planted bugs, one title each")}
+  dynast-bench score nextjs findings.json        ${c.dim("# grade a scan vs the answer key")}
+
 ${c.bold("CATALOG")}
   list                     apps with vuln/PoC counts and what's running
   info <app>               ground-truth summary (severity, CWE, difficulty)  [--full]
+  vulns <app...>           every planted bug, one title per line — the checklist
+                           a scan gets compared against  [--full] [--near] [--ids]
   doctor                   docker/bun checks + which ports are taken
 
 ${c.bold("LIFECYCLE")}
   start <app...>           build + boot, wait for health, print the target URL
-  stop [app...|--all]      stop stacks (volumes kept unless --volumes)
+  start --count N          the same for N apps at once, one port each
+                           [--parallel[=N]]
+  stop [app...]            stop stacks; with no app, everything that is running
+  stop-all                 stop every stack, orphans included (= stop --all)
   restart <app>            stop, then start the same variant/mode
   reset <app>              drop volumes and boot fresh (re-seeded state)
   clean [app...|--all]     remove containers + volumes + networks, reclaiming the
@@ -2162,8 +2662,13 @@ ${c.bold("SCORE")}
 ${c.bold("FLAGS")}
   --variant vuln|safe      which twin to use (default: vuln)
   --solo                   one self-contained image instead of compose
-  --port N                 host port for the app (default ${APP_PORT}, or the next free one)
+  --port N                 pin the app's host port (default: the port it owns)
+  --count N, -c N          start N apps: the ones named, else the first N of the
+                           catalog — each gets its own port (start)
+  --parallel[=N]           bring them up ${PARALLEL_DEFAULT} at a time, or N (start)
   --all                    every app (stop/clean; start needs --solo too)
+  --force                  stop by removing containers outright, skipping the
+                           per-stack \`compose down\` (much faster; stop)
   --no-build               skip the docker build
   --timeout S              health-wait budget in seconds (default ${HEALTH_TIMEOUT_S})
   --no-takeover            never stop this app's other twin to reclaim its port
@@ -2175,15 +2680,20 @@ ${c.bold("FLAGS")}
   --yes                    skip the confirmation prompt (clean)
   --safe FILE              findings from the patched twin (score) - all false alarms
   --format F               force an input format (score): ${FORMATS.join(" ")}
+  --near                   also list the near-misses (vulns)
+  --ids                    bare ids, one per line, for a coverage diff (vulns)
   --full                   every match/miss/false-positive row (score/diff/check)
+                           · route + PoC + full notes (vulns)
   --limit N                detail rows per section (score, default 10)
   --lenient-cwe            accept a match whose CWE is unrelated (score)
 
 ${c.bold("PORTS")}
-  The app answers on ${c.bold(`127.0.0.1:${APP_PORT}`)}; its sidecars take ${APP_PORT + 1}+. Anything
-  already listening on a port is left alone — that publish moves into the
-  ${PORT_FALLBACK_BASE}-${PORT_FALLBACK_BASE + PORT_FALLBACK_SPAN - 1} pool instead, and the real URL is printed (and in --json).
-  Nothing binds anything but 127.0.0.1. ${c.dim(`See: dynast-bench doctor`)}
+  ${c.bold("Every app owns a fixed port")} — ${APP_PORT} upward in catalog order, so the same
+  app is the same URL on every run and a batch never shuffles. Sidecars sit in
+  that app's own block (${SIDECAR_BASE}+). Anything already listening is left alone: that
+  one publish moves into the ${PORT_FALLBACK_BASE}-${PORT_FALLBACK_BASE + PORT_FALLBACK_SPAN - 1} pool and the real URL is printed
+  (and in --json). Nothing binds anything but 127.0.0.1.
+  ${c.dim(`dynast-bench list shows the map · dynast-bench doctor shows what is free`)}
 
 ${c.bold("SCANNER INTEGRATION")}
   ${c.dim("# one app, one scan")}
@@ -2200,8 +2710,12 @@ ${c.bold("SCANNER INTEGRATION")}
   dynast-bench start nextjs --variant safe
   dynast-bench score nextjs vuln.json --safe safe.json --full
 
-  ${c.dim("# whole fleet in parallel, one image + port each")}
-  dynast-bench start --all --solo --json
+  ${c.dim("# a handful of targets at once — the summary table lists every port")}
+  dynast-bench start --count 5 --parallel
+  dynast-bench start --count 3 --parallel --json | jq -r '.started[] | "\\(.app) \\(.target)"'
+
+  ${c.dim("# whole fleet, one image + port each")}
+  dynast-bench start --all --solo --parallel --json
 
 ${c.dim("apps are DELIBERATELY INSECURE and bind 127.0.0.1 only — never expose them")}
 `;
@@ -2213,11 +2727,14 @@ const COMMANDS: Record<string, (a: Args) => Promise<void>> = {
   ls: cmdList,
   apps: cmdList,
   info: cmdInfo,
+  vulns: cmdVulns,
+  bugs: cmdVulns,
   doctor: cmdDoctor,
   start: cmdStart,
   up: cmdStart,
   stop: cmdStop,
   down: cmdStop,
+  "stop-all": (a: Args) => cmdStop({ ...a, flags: { ...a.flags, all: true } }),
   restart: cmdRestart,
   reset: cmdReset,
   clean: cmdClean,

@@ -16,6 +16,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: critical
     difficulty: H
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: NM-SPEL-001
@@ -34,6 +35,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -52,6 +54,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: high
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -70,6 +73,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -88,6 +92,7 @@ vulnerabilities:
     owasp: "A08:2021-Software and Data Integrity Failures"
     severity: critical
     difficulty: H
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-DESER-001
@@ -106,6 +111,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -125,12 +131,13 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
     match:
       http: { method: GET, path: "/api/admin/users" }
-      file: { path: vuln/src/main/java/com/bench/springboot/SecurityConfig.java, symbol: securityFilterChain, lines: [16, 27] }
+      file: { path: vuln/src/main/java/com/bench/springboot/SecurityConfig.java, symbol: securityFilterChain, lines: [18, 29] }
     poc: ground-truth/verify/auth_misorder_001.sh
     notes: >
       Broad /api/** permitAll matcher appears before /api/admin/** admin rule.
@@ -143,6 +150,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -161,6 +169,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -179,6 +188,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -197,6 +207,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: low
     difficulty: E-M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -215,6 +226,7 @@ vulnerabilities:
     owasp: "A07:2021-Identification and Authentication Failures"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -233,6 +245,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -252,6 +265,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -270,6 +284,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: high
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: user
     near_miss: null
@@ -288,6 +303,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: NM-SQL-001
@@ -307,6 +323,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: H
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -326,6 +343,7 @@ vulnerabilities:
     owasp: "A10:2021-SSRF"
     severity: high
     difficulty: M-H
+    discovery: static-html
     taint: cross-service
     reachability: pre-auth
     near_miss: null
@@ -345,6 +363,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: critical
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -363,6 +382,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: medium
     difficulty: E-M
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: NM-XSS-001
@@ -381,6 +401,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -399,6 +420,7 @@ vulnerabilities:
     owasp: "A03:2021-Injection"
     severity: high
     difficulty: H
+    discovery: static-html
     taint: cross-file
     reachability: pre-auth
     near_miss: null
@@ -417,6 +439,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -435,6 +458,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -446,6 +470,103 @@ vulnerabilities:
     notes: >
       Download resolves user path without containment check.
 
+  - id: TRAVERSAL-BYPASS-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/FilesController.java, safe: safe/src/main/java/com/bench/springboot/FilesController.java }
+    symbol: FilesController.read
+    route: "GET /api/docs/read?path="
+    cwe: CWE-22
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M-H
+    discovery: static-html
+    discovery: static-html
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-TRAVERSAL-BYPASS-001
+    match:
+      http: { method: GET, path: "/api/docs/read", params: [path] }
+      file: { path: vuln/src/main/java/com/bench/springboot/FilesController.java, symbol: FilesController.read, lines: [23, 83] }
+    poc: ground-truth/verify/traversal_bypass_001.sh
+    notes: >
+      Blacklist blocks the literal "../" and "#" but is checked BEFORE the path is
+      normalised, and cleanup() then strips ;matrix params and URL-decodes a second
+      time - so Spring/Tomcat bypasses defeat it: matrix parameter "..;/",
+      double-encoded "%252e%252e%252f", and the double-encoded hash "%2523" (which
+      a bare %23 would trip). No startsWith(DOCS_BASE) containment. Reads /etc/passwd.
+      The read-safe sibling (NM) resolves identically then enforces containment.
+
+  - id: DIRLIST-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/FilesController.java, safe: safe/src/main/java/com/bench/springboot/FilesController.java }
+    symbol: FilesController.list
+    route: "GET /api/docs/list?path="
+    cwe: CWE-548
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: medium
+    difficulty: M
+    discovery: static-html
+    discovery: static-html
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/docs/list", params: [path] }
+      file: { path: vuln/src/main/java/com/bench/springboot/FilesController.java, symbol: FilesController.list }
+    poc: ground-truth/verify/dirlist_001.sh
+    notes: >
+      The folder-browse endpoint enumerates any directory through the same "..;/"
+      bypass (e.g. lists /etc). Directory listing was never meant to leave DOCS_BASE.
+
+  - id: PREAUTH-BYPASS-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/NovelController.java, safe: safe/src/main/java/com/bench/springboot/NovelController.java }
+    symbol: ReportAdminService.wrappedExport
+    route: "GET /api/reports/admin-export"
+    cwe: CWE-863
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: H
+    discovery: static-html
+    discovery: static-html
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/reports/admin-export" }
+      file: { path: vuln/src/main/java/com/bench/springboot/NovelController.java, symbol: ReportAdminService.wrappedExport, lines: [18, 35] }
+      markers: [SPRINGBOOT-PREAUTH-SECRET-7f3a]
+    poc: ground-truth/verify/preauth_bypass_001.sh
+    notes: >
+      Spring method-security @PreAuthorize is enforced by an AOP proxy, which does
+      NOT intercept self-invocation. A public wrapper in the same bean calls the
+      admin-guarded adminOnlyExport() on `this`, so the guard is skipped and any
+      pre-auth caller of /api/reports/admin-export gets the admin secret. The
+      annotation looks present, so scanners assume it protects the path. Safe twin
+      moves @PreAuthorize onto the wrapper (the true entry point).
+
+  - id: JACKSON-DESER-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/NovelController.java, safe: safe/src/main/java/com/bench/springboot/NovelController.java }
+    symbol: NovelController.importTyped
+    route: "POST /api/import/typed"
+    cwe: CWE-502
+    owasp: "A08:2021-Software and Data Integrity Failures"
+    severity: critical
+    difficulty: H
+    discovery: static-html
+    discovery: static-html
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-JACKSON-DESER-001
+    match:
+      http: { method: POST, path: "/api/import/typed" }
+      file: { path: vuln/src/main/java/com/bench/springboot/NovelController.java, symbol: NovelController.importTyped, lines: [36, 73] }
+    poc: ground-truth/verify/jackson_deser_001.sh
+    notes: >
+      Jackson polymorphic deserialization: default typing (activateDefaultTyping /
+      LaissezFaireSubTypeValidator) lets the JSON name the concrete class in the
+      WRAPPER_ARRAY form ["<class>",{...}], so a shipped GadgetProbe is instantiated
+      and its setCommand setter runs an arbitrary command (RCE). Distinct from the
+      native ObjectInputStream deser (DESER-001) - a scanner that only greps for
+      readObject/ObjectMapper misses it. Safe twin binds a plain Map, no default typing.
+
   - id: SECRETS-001
     variant_paths: { vuln: vuln/src/main/resources/application.yml, safe: safe/src/main/resources/application.yml }
     symbol: app.service-credential
@@ -454,6 +575,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: medium
     difficulty: E
+    discovery: static-html
     taint: config
     reachability: pre-auth
     near_miss: null
@@ -473,6 +595,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: low
     difficulty: E
+    discovery: static-html
     taint: config
     reachability: pre-auth
     near_miss: null
@@ -491,6 +614,7 @@ vulnerabilities:
     owasp: "A04:2021-Insecure Design"
     severity: medium
     difficulty: M
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -509,6 +633,7 @@ vulnerabilities:
     owasp: "A04:2021-Insecure Design"
     severity: high
     difficulty: H
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -527,6 +652,7 @@ vulnerabilities:
     owasp: "A01:2021-Broken Access Control"
     severity: low
     difficulty: E
+    discovery: static-html
     taint: in-file
     reachability: pre-auth
     near_miss: null
@@ -545,6 +671,7 @@ vulnerabilities:
     owasp: "A05:2021-Security Misconfiguration"
     severity: high
     difficulty: E-M
+    discovery: static-html
     taint: config
     reachability: pre-auth
     near_miss: null
@@ -555,7 +682,211 @@ vulnerabilities:
     notes: >
       Compose side-surface documents weak Jenkins admin/admin credential.
 
+  - id: CONFIGDUMP-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/SignupController.java, safe: safe/src/main/java/com/bench/springboot/SignupController.java }
+    symbol: SignupController.report
+    route: "POST /api/tools/report"
+    cwe: CWE-200
+    owasp: "A05:2021-Security Misconfiguration"
+    severity: high
+    difficulty: M
+    discovery: js-runtime
+    discovery: js-runtime
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/tools/report" }
+      file: { path: vuln/src/main/java/com/bench/springboot/SignupController.java, symbol: SignupController.report, lines: [18, 78] }
+      markers: [actuator-secret-from-env-42]
+    poc: ground-truth/verify/configdump_001.sh
+    notes: >
+      Hidden "report builder" referenced ONLY from the wizard's Advanced panel.
+      For any non-public section it dumps System.getenv() + system properties -
+      leaking SPRINGBOOT_ACTUATOR_SECRET and DB credentials. Safe twin returns an
+      allow-listed public subset only.
+
+  - id: DOMXSS-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/SignupController.java, safe: safe/src/main/java/com/bench/springboot/SignupController.java }
+    symbol: WIZARD_HTML applyRef
+    route: "GET /signup (#<payload>)"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: M
+    discovery: interaction
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/signup" }
+      file: { path: vuln/src/main/java/com/bench/springboot/SignupController.java, symbol: "WIZARD_HTML applyRef", lines: [160, 164] }
+    poc: ground-truth/verify/domxss_001.sh
+    notes: >
+      location.hash is read into innerHTML on the signup wizard; the payload lives
+      in the fragment, never sent to the server, so only a real browser sees it.
+
+  - id: POSTMSG-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/SignupController.java, safe: safe/src/main/java/com/bench/springboot/SignupController.java }
+    symbol: WIZARD_HTML message
+    route: "GET /signup (window.postMessage)"
+    cwe: CWE-346
+    owasp: "A03:2021-Injection"
+    severity: medium
+    difficulty: H
+    discovery: interaction
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/signup" }
+      file: { path: vuln/src/main/java/com/bench/springboot/SignupController.java, symbol: "WIZARD_HTML message", lines: [165, 206] }
+    poc: ground-truth/verify/postmsg_001.sh
+    notes: >
+      The wizard's widget bridge accepts a message from any origin and renders it
+      as HTML. Provable only in a browser; the safe twin checks origin, renders text.
+
+  - id: SIGNUP-ENUM-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/SignupController.java, safe: safe/src/main/java/com/bench/springboot/SignupController.java }
+    symbol: SignupController.start
+    route: "POST /api/signup/start"
+    cwe: CWE-204
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: low
+    difficulty: E-M
+    discovery: interaction
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SIGNUP-RESEND-001
+    match:
+      http: { method: POST, path: "/api/signup/start" }
+      file: { path: vuln/src/main/java/com/bench/springboot/SignupController.java, symbol: SignupController.start }
+    poc: ground-truth/verify/signup_enum_001.sh
+    notes: >
+      Step 1 returns 409 for a registered address and 200 for an unknown one - a
+      pre-auth enumeration oracle. The constant, rate-limited resend is the near-miss.
+
+  - id: SIGNUP-TOKEN-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/SignupController.java, safe: safe/src/main/java/com/bench/springboot/SignupController.java }
+    symbol: SignupController.signupCode
+    route: "POST /api/signup/verify"
+    cwe: CWE-330
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: H
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-SIGNUP-TOKEN-001
+    match:
+      http: { method: POST, path: "/api/signup/verify" }
+      file: { path: vuln/src/main/java/com/bench/springboot/SignupController.java, symbol: SignupController.signupCode }
+    poc: ground-truth/verify/signup_token_001.sh
+    notes: >
+      The emailed code is the clock in seconds mod 1e6, so it can be recomputed.
+      inviteToken (SecureRandom) is the near-miss.
+
+  - id: SIGNUP-MASSASSIGN-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/SignupController.java, safe: safe/src/main/java/com/bench/springboot/SignupController.java }
+    symbol: SignupController.profile
+    route: "POST /api/signup/profile"
+    cwe: CWE-915
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/signup/profile" }
+      file: { path: vuln/src/main/java/com/bench/springboot/SignupController.java, symbol: SignupController.profile }
+    poc: ground-truth/verify/signup_massassign_001.sh
+    notes: >
+      The profile step copies role and org_slug from the body, so registration can
+      self-assign admin or join another tenant.
+
+  - id: SIGNUP-STEPSKIP-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/SignupController.java, safe: safe/src/main/java/com/bench/springboot/SignupController.java }
+    symbol: SignupController.complete
+    route: "POST /api/signup/complete"
+    cwe: CWE-841
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: M-H
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/signup/complete" }
+      file: { path: vuln/src/main/java/com/bench/springboot/SignupController.java, symbol: SignupController.complete }
+    poc: ground-truth/verify/signup_stepskip_001.sh
+    notes: >
+      The final step never checks the draft reached the verified state, so posting
+      straight to it registers an unverified, unowned mailbox.
+
+  - id: SIGNUP-IDOR-001
+    variant_paths: { vuln: vuln/src/main/java/com/bench/springboot/SignupController.java, safe: safe/src/main/java/com/bench/springboot/SignupController.java }
+    symbol: SignupController.draft
+    route: "GET /api/signup/draft/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    discovery: flow
+    discovery: flow
+    taint: in-file
+    reachability: pre-auth
+    near_miss: null
+    match:
+      http: { method: GET, path: "/api/signup/draft/{id}" }
+      file: { path: vuln/src/main/java/com/bench/springboot/SignupController.java, symbol: SignupController.draft }
+    poc: ground-truth/verify/signup_idor_001.sh
+    notes: >
+      Any draft is readable by its serial id, unauthenticated, and the row carries
+      the email AND the verification code emailed to it.
+
 near_misses:
+  - id: NM-JACKSON-DESER-001
+    path: vuln/src/main/java/com/bench/springboot/NovelController.java
+    symbol: NovelController.importTypedSafe
+    of: JACKSON-DESER-001
+    match:
+      file: { path: vuln/src/main/java/com/bench/springboot/NovelController.java, symbol: NovelController.importTypedSafe }
+    notes: >
+      Same import feature bound to a plain Map with a default ObjectMapper (no
+      default typing), so type hints in the body are inert and no class is instantiated.
+  - id: NM-TRAVERSAL-BYPASS-001
+    path: vuln/src/main/java/com/bench/springboot/FilesController.java
+    symbol: FilesController.readSafe
+    of: TRAVERSAL-BYPASS-001
+    match:
+      file: { path: vuln/src/main/java/com/bench/springboot/FilesController.java, symbol: FilesController.readSafe }
+    notes: >
+      Same "read a doc" feature and same cleanup() (strips ;params, double-decodes),
+      but it normalises then enforces startsWith(DOCS_BASE) containment, so every
+      bypass payload lands back inside the base or is rejected.
+  - id: NM-SIGNUP-RESEND-001
+    path: vuln/src/main/java/com/bench/springboot/SignupController.java
+    symbol: SignupController.resend
+    of: SIGNUP-ENUM-001
+    match:
+      file: { path: vuln/src/main/java/com/bench/springboot/SignupController.java, symbol: SignupController.resend }
+    notes: "Constant, rate-limited sibling of start(); not an enumeration oracle."
+  - id: NM-SIGNUP-TOKEN-001
+    path: vuln/src/main/java/com/bench/springboot/SignupController.java
+    symbol: SignupController.inviteToken
+    of: SIGNUP-TOKEN-001
+    match:
+      file: { path: vuln/src/main/java/com/bench/springboot/SignupController.java, symbol: SignupController.inviteToken }
+    notes: "SecureRandom token generator beside the clock-derived signup code."
   - id: NM-SPEL-001
     path: vuln/src/main/java/com/bench/springboot/Controllers.java
     symbol: ApiController.evalField
