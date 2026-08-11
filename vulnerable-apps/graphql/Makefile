@@ -13,6 +13,7 @@ PORT         ?= $(DYNAST_PORT)
 # the suite CLI: the installed binary if it is on PATH, else straight from source
 DYNAST       ?= $(shell command -v dynast-bench 2>/dev/null || echo "bun ../../dynast-bench/dynast-bench.ts")
 SOLO_IMG     := $(VARIANT)-$(APP)-solo
+SOLO_HEALTH  ?= /api/_verify/health
 
 .PHONY: up reset down safe safe-down verify verify-safe validate solo solo-down diff score check help
 
@@ -52,7 +53,7 @@ solo:      ## build + run the standalone single-image (no compose) [VARIANT= POR
 	docker build -f $(VARIANT)/Dockerfile.standalone -t $(SOLO_IMG) $(VARIANT)
 	-docker rm -f $(SOLO_IMG) 2>/dev/null
 	docker run -d --rm -p 127.0.0.1:$(PORT):3000 --name $(SOLO_IMG) $(SOLO_IMG)
-	@echo ">> $(SOLO_IMG) starting on http://127.0.0.1:$(PORT) (give it ~30s)"
+	@bash ../../dynast-bench/tools/wait-healthy.sh $(SOLO_IMG) "http://127.0.0.1:$(PORT)$(SOLO_HEALTH)"
 
 solo-down: ## stop the standalone single-image container
 	-docker rm -f $(SOLO_IMG)

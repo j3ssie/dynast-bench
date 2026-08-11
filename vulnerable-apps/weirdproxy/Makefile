@@ -18,6 +18,7 @@ DYNAST       ?= $(shell command -v dynast-bench 2>/dev/null || echo "bun ../../d
 SOLO_APACHE_PORT  ?= 13312
 SOLO_TRAEFIK_PORT ?= 13313
 SOLO_IMG     := $(VARIANT)-$(APP)-solo
+SOLO_HEALTH  ?= /api/_verify/health
 
 .PHONY: up reset down safe safe-down verify verify-safe validate solo solo-down diff score check help
 
@@ -61,7 +62,8 @@ solo:      ## build + run the standalone single-image (no compose) [VARIANT= POR
 	  -p 127.0.0.1:$(SOLO_APACHE_PORT):8081 \
 	  -p 127.0.0.1:$(SOLO_TRAEFIK_PORT):8082 \
 	  --name $(SOLO_IMG) $(SOLO_IMG)
-	@echo ">> $(SOLO_IMG) starting: nginx $(PORT) · apache $(SOLO_APACHE_PORT) · traefik $(SOLO_TRAEFIK_PORT) (give it ~30s)"
+	@echo ">> $(SOLO_IMG): nginx $(PORT) · apache $(SOLO_APACHE_PORT) · traefik $(SOLO_TRAEFIK_PORT)"
+	@bash ../../dynast-bench/tools/wait-healthy.sh $(SOLO_IMG) "http://127.0.0.1:$(PORT)$(SOLO_HEALTH)"
 
 solo-down: ## stop the standalone single-image container
 	-docker rm -f $(SOLO_IMG)

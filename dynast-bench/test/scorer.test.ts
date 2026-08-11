@@ -208,6 +208,111 @@ describe("ground-truth validation", () => {
   });
 });
 
+describe("alternate http anchors", () => {
+  const key = {
+    app: "t",
+    entry: "http://127.0.0.1:13311",
+    vulnerabilities: [
+      {
+        id: "DOCS-001",
+        cwe: "CWE-200",
+        severity: "medium",
+        difficulty: "E",
+        route: "GET /api/schema/ and /api/docs/",
+        match: { http: { method: "GET", path: "/api/schema/" }, http_alt: ["/api/docs/"] },
+      },
+    ],
+    near_misses: [],
+  };
+  const at = (path: string) =>
+    scoreApp({
+      app: "t",
+      groundTruth: validateGroundTruth(key).value!,
+      runs: [
+        envelope("t", [
+          { id: "f", cwe: "CWE-200", severity: "medium", location: { http: { method: "GET", path } } } as any,
+        ]),
+      ],
+    });
+
+  test("either path a route names is the correct answer", () => {
+    // /api/docs/ is the Swagger UI - the URL a crawler actually finds. Scoring
+    // it as a miss AND a false positive charged the tool twice for being right.
+    expect(at("/api/schema/").counts.tp).toBe(1);
+    expect(at("/api/docs/").counts.tp).toBe(1);
+  });
+
+  test("a path the key never named is still a false positive", () => {
+    expect(at("/api/elsewhere/").counts.tp).toBe(0);
+    expect(at("/api/elsewhere/").counts.fp).toBe(1);
+  });
+
+  test("an alternate with no primary anchor is a key error", () => {
+    const res = validateGroundTruth({
+      app: "t",
+      vulnerabilities: [
+        { id: "X-001", cwe: "CWE-200", severity: "medium", difficulty: "E", route: "GET /x",
+          match: { http_alt: ["/y"] } },
+      ],
+    });
+    expect(res.errors.some((e) => e.at.endsWith("http_alt"))).toBe(true);
+  });
+
+  test("an alternate that is not a path is a key error", () => {
+    const res = validateGroundTruth({
+      app: "t",
+      vulnerabilities: [
+        { id: "X-001", cwe: "CWE-200", severity: "medium", difficulty: "E", route: "GET /x",
+          match: { http: { path: "/x" }, http_alt: ["docs"] } },
+      ],
+    });
+    expect(res.errors.some((e) => e.at.endsWith("http_alt"))).toBe(true);
+  });
+});
+
+describe("websocket channel discrimination", () => {
+  const gt = validateGroundTruth({
+    app: "t",
+    entry: "http://127.0.0.1:13311",
+    vulnerabilities: ["org:globex:posts", "internal:billing"].map((channel, i) => ({
+      id: `CHAN-00${i + 1}`,
+      cwe: "CWE-639",
+      severity: "high",
+      difficulty: "M",
+      route: "WS /ws",
+      match: { ws: { transport: "ws", event: "subscribe", channel } },
+    })),
+    near_misses: [],
+  }).value!;
+  const report = (ws: any) =>
+    scoreApp({
+      app: "t",
+      groundTruth: gt,
+      runs: [envelope("t", [{ id: "f", cwe: "CWE-639", severity: "high", location: { ws } } as any])],
+    });
+
+  test("the channel survives validation", () => {
+    const res = validateFindings({
+      findings: [{ id: "x", cwe: "CWE-639", location: { ws: { transport: "ws", channel: "org:*" } } }],
+    });
+    expect(res.value!.findings[0]!.location.ws?.channel).toBe("org:*");
+  });
+
+  test("naming the channel picks out the one bug on that frame", () => {
+    const r = report({ transport: "ws", event: "subscribe", channel: "internal:billing" });
+    expect(r.matches.map((m) => m.gt_id)).toEqual(["CHAN-002"]);
+  });
+
+  test("a channel the key never names is a false positive", () => {
+    // dropping `channel` in coercion made this score as a true positive
+    expect(report({ transport: "ws", event: "subscribe", channel: "totally:bogus" }).counts.tp).toBe(0);
+  });
+
+  test("'subscribe frames are unauthenticated' identifies neither bug", () => {
+    expect(report({ transport: "ws", event: "subscribe" }).counts.tp).toBe(0);
+  });
+});
+
 describe("recall by discovery tier", () => {
   const key = (tiers: (string | undefined)[]) => ({
     app: "t",

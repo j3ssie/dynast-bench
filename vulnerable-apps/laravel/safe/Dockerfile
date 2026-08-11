@@ -14,7 +14,7 @@ RUN a2enmod rewrite
 
 WORKDIR /var/www/html
 COPY . /var/www/html
-RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist \
+RUN --mount=type=cache,target=/root/.composer --mount=type=cache,target=/root/.cache/composer composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist \
  && mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache \
              storage/logs storage/app/exports bootstrap/cache public/uploads \
  && printf 'seed export marker\n' > storage/app/exports/report.txt \

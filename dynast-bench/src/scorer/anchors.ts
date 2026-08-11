@@ -88,6 +88,11 @@ function fromMatch(m: GtMatch): Anchors {
       port: m.http.port ?? null,
     });
   }
+  // a route naming two endpoints anchors on both - reporting either is correct
+  for (const alt of m.http_alt ?? []) {
+    const key = httpKeyFromUrl(alt, m.http?.method ?? undefined);
+    if (!a.http.some((h) => h.path === key.path)) a.http.push(key);
+  }
   if (m.file?.path) {
     a.file.push({ path: m.file.path, symbol: m.file.symbol, lines: m.file.lines });
   }

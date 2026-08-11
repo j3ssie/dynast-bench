@@ -1,6 +1,6 @@
 {
   "name": "dynast-bench",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "CLI to run and manage the DynAST-Bench vulnerable-app suite",
   "type": "module",
   "private": true,

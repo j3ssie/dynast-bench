@@ -13,7 +13,7 @@ ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
 
 WORKDIR /app
 COPY package.json ./
-RUN npm install
+RUN --mount=type=cache,target=/root/.npm npm install
 COPY . .
 RUN npx prisma generate
 RUN npm run build

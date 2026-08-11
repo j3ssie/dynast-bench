@@ -16,6 +16,12 @@ export const OBJECT_STORE_KEY_B64 =
 // reads the bundle can replay this header — or decode it and log in outright.
 export const SYNC_BASIC_AUTH = "Basic YWRtaW46YWRtaW4=";
 
+// The key the embedded widget puts in every postMessage so the page knows the
+// message came from "our" widget. It is a constant in a client module, so it is
+// in the public bundle exactly like everything else here — which is the whole
+// problem with authenticating a message by its contents (see POSTMSG-003).
+export const WIDGET_APP_KEY = "wgt_live_7f3a9c21";
+
 // NEAR-MISS NM-B64-001: identical shape to OBJECT_STORE_KEY_B64 — a committed
 // base64 literal — but the plaintext is public UI config, not a credential.
 // Decodes to {"theme":"dark","density":"compact"}. Flagging it is a false positive.

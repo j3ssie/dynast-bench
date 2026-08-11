@@ -15,7 +15,7 @@ patched twin.
 
 ## The apps at a glance
 
-**19 apps · 480 planted vulnerabilities · 119 near-misses · 478 runnable PoCs.**
+**19 apps · 549 planted vulnerabilities · 146 near-misses · 546 runnable PoCs.**
 Every app boots on `127.0.0.1:13311`, ships a `vuln/`+`safe/` twin pair and a
 single-image `--solo` build. `dynast-bench list` prints this table live.
 
@@ -23,7 +23,7 @@ single-image `--solo` build. `dynast-bench list` prints this table live.
 |-----|-------|-----------|------:|----------:|------|
 | [aspnet](vulnerable-apps/aspnet) | C# / ASP.NET Core Razor Pages | SQL Server | 28 | 12 | [plan](benchmark-plans/aspnet.md) |
 | [fastapi](vulnerable-apps/fastapi) | Python / FastAPI + Jinja2 | Postgres | 26 | 5 | [plan](benchmark-plans/fastapi.md) |
-| [gin](vulnerable-apps/gin) | Go / Gin | Postgres | 11 | 6 | [readme](vulnerable-apps/gin/README.md) |
+| [gin](vulnerable-apps/gin) | Go / Gin | Postgres | 12 | 7 | [readme](vulnerable-apps/gin/README.md) |
 | [golang](vulnerable-apps/golang) | Go / chi | Postgres | 26 | 4 | [plan](benchmark-plans/golang.md) |
 | [graphql](vulnerable-apps/graphql) | Node / GraphQL 16 API-only | Postgres | 31 | 6 | [plan](benchmark-plans/graphql.md) |
 | [jsp](vulnerable-apps/jsp) | Java / JSP + Servlets (Tomcat) | Postgres | 28 | 6 | [plan](benchmark-plans/jsp.md) |
@@ -32,7 +32,7 @@ single-image `--solo` build. `dynast-bench list` prints this table live.
 | [llmchat](vulnerable-apps/llmchat) | Python / FastAPI + LangChain RAG | Postgres+pgvector | 30 | 9 | [plan](benchmark-plans/llmchat.md) |
 | [nestjs](vulnerable-apps/nestjs) | Node / NestJS + Handlebars | Postgres | 23 | 6 | [plan](benchmark-plans/nestjs.md) |
 | [network](vulnerable-apps/network) | Simulated multi-host network range | mixed fleet | 32 | 5 | [plan](benchmark-plans/network.md) |
-| [nextjs](vulnerable-apps/nextjs) | Node / Next.js 15 **(reference impl)** | Postgres | 23 | 9 | [plan](benchmark-plans/nextjs.md) |
+| [nextjs](vulnerable-apps/nextjs) | Node / Next.js 15 **(reference impl)** | Postgres | 35 | 15 | [plan](benchmark-plans/nextjs.md) |
 | [php](vulnerable-apps/php) | PHP / procedural LAMP | MySQL | 21 | 5 | [plan](benchmark-plans/php.md) |
 | [rails](vulnerable-apps/rails) | Ruby / Rails 7.2 | Postgres | 26 | 6 | [plan](benchmark-plans/rails.md) |
 | [springboot](vulnerable-apps/springboot) | Java / Spring Boot + Thymeleaf | Postgres | 30 | 4 | [plan](benchmark-plans/springboot.md) |
@@ -51,7 +51,8 @@ operational guide: how the repo is laid out and how to run and score an app.
 ## Vulnerability classes covered
 
 Every planted bug carries a CWE and an OWASP category. Rolled up by class - each
-bug counted once, under its primary CWE - the 480 bugs break down as:
+bug counted once, under its primary CWE - the planted bugs break down roughly
+as (rollup last regenerated at 480 bugs; per-app counts above are current):
 
 | Class | CWEs | Bugs | Apps |
 |-------|------|-----:|-----:|
@@ -106,9 +107,9 @@ and service-level findings for network scanners, and the two **LLM** apps
 (`llmchat`, `llmagent`) plant prompt-injection, tool-abuse and RAG-poisoning bugs
 scored on a separate injection-channel track.
 
-Each bug is also tagged with a **detection difficulty** (118 `E`, 60 `E-M`, 177
-`M`, 52 `M-H`, 73 `H`), a **taint distance** (291 `in-file`, 75 `cross-file`, 86
-`cross-service`, 28 `config`) and a **reachability** (301 `pre-auth`, 179
+Each bug is also tagged with a **detection difficulty** (118 `E`, 68 `E-M`, 202
+`M`, 61 `M-H`, 100 `H`), a **taint distance** (351 `in-file`, 83 `cross-file`, 87
+`cross-service`, 28 `config`) and a **reachability** (368 `pre-auth`, 181
 `user`), so recall can be broken down along each of those axes instead of
 reported as one number. The per-app catalogs live in
 [`benchmark-plans/`](benchmark-plans/).
@@ -273,6 +274,14 @@ app, by construction.
 **non-zero against `safe/`**. That's the executable definition of "the bug is
 real (and actually fixed in the twin)."
 
+The shared runner (`dynast-bench/tools/poc-runner.sh`) adds a third outcome the
+exit code cannot carry on its own: **the harness could not run**. Point the suite
+at a port nothing is listening on and a good half of any app's PoCs exit `1` -
+indistinguishable from a genuine fix. So the runner health-probes the target
+before it believes a rejection, applies a per-PoC deadline, and fails both legs
+on a timeout, a missing tool or a target that stopped answering. "The suite could
+not run" is never recorded as "the vulnerability is fixed".
+
 ## Shared tooling (`dynast-bench/`, Bun/TypeScript)
 
 One toolchain, used by every app, so cross-stack results are comparable:
@@ -373,11 +382,11 @@ make reset   # fresh state
 
 ## Status
 
-- **19 apps carry a complete answer key**: 480 planted vulnerabilities, 119
-  near-misses, 478 PoCs, and a `Dockerfile.standalone` each (`--solo`).
+- **19 apps carry a complete answer key**: 549 planted vulnerabilities, 146
+  near-misses, 546 PoCs, and a `Dockerfile.standalone` each (`--solo`).
   `dynast-bench list` prints the live table.
 - **`nextjs` is the reference implementation** - built and validated end to end
-  (23 vulns + 9 near-misses). `make validate APP=nextjs` proves every PoC
+  (35 vulns + 15 near-misses). `make validate APP=nextjs` proves every PoC
   exploitable on `vuln/` and fixed on `safe/`; `make solo APP=nextjs` runs it from
   one image. Copy its patterns.
 - **`dynast-bench` CLI - built**: runs, verifies, scores and cleans any app, in

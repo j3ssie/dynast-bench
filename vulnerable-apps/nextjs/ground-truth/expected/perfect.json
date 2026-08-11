@@ -692,6 +692,46 @@
         }
       },
       "exploited": true
+    },
+    {
+      "id": "ref-34",
+      "title": "POSTMSG-002",
+      "cwe": "CWE-79",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/profile",
+          "path": "/profile"
+        },
+        "file": {
+          "path": "vuln/src/app/_components/DevTools.tsx",
+          "symbol": "onShellExpr",
+          "line": 30
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-35",
+      "title": "POSTMSG-003",
+      "cwe": "CWE-346",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/integrations",
+          "path": "/integrations"
+        },
+        "file": {
+          "path": "vuln/src/app/integrations/page.tsx",
+          "symbol": "onWidgetMessage",
+          "line": 21
+        }
+      },
+      "exploited": true
     }
   ]
 }

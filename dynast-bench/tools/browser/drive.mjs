@@ -17,7 +17,9 @@
  *                  [--type <selector> --value <text>]  fill an input
  *                  [--wait-for <selector>]   wait for it to appear first
  *                  [--eval <js>]             run in page context, JSON in .result
- *                  [--wait <ms>]             settle time before reading (default 1500)
+ *                  [--wait <ms>]             settle budget before reading (default 1500)
+ *                  [--until dialog:<s>]      stop settling once that oracle fires
+ *                  [--until request:<s>]     (same, for a requested URL)
  *                  [--timeout <ms>]          navigation budget (default 20000)
  *
  * Output:
@@ -65,6 +67,32 @@ if (!url) {
 const out = { url, dialogs: [], console: [], requests: [], result: null, errors: [] };
 const note = (e) => out.errors.push(String(e && e.message ? e.message : e));
 
+// The settle waits below exist because the interesting thing usually happens
+// after navigate/evaluate returns. `--until` names what we are actually waiting
+// for, so the budget becomes a ceiling rather than the normal path: a fired
+// oracle ends the wait immediately. Without it the behaviour is the old fixed
+// sleep, which is still the right answer when a PoC asserts on the absence of
+// something (the safe twin) - you cannot short-circuit proving a negative.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const until = one("until") ?? "";
+const untilAt = until.indexOf(":");
+const untilKind = until.slice(0, untilAt);
+const untilWant = until.slice(untilAt + 1);
+const satisfied =
+  untilKind === "dialog"
+    ? () => out.dialogs.some((d) => String(d.message).includes(untilWant))
+    : untilKind === "request"
+      ? () => out.requests.some((r) => r.includes(untilWant))
+      : null;
+const settle = async (ms) => {
+  if (!satisfied) return sleep(ms); // nothing to watch for: just wait it out
+  const deadline = Date.now() + ms;
+  while (Date.now() < deadline) {
+    if (satisfied()) return;
+    await sleep(25);
+  }
+};
+
 let browser;
 try {
   browser = await puppeteer.launch({
@@ -111,10 +139,10 @@ try {
 
   for (const sel of many("click")) {
     await page.click(sel).catch(() => note(`nothing to click at ${sel}`));
-    await new Promise((r) => setTimeout(r, 250));
+    await settle(250);
   }
 
-  await new Promise((r) => setTimeout(r, Number(one("wait", "1500"))));
+  await settle(Number(one("wait", "1500")));
 
   const js = one("eval");
   if (js) {
@@ -127,7 +155,7 @@ try {
     // Whatever the script kicked off is usually asynchronous - a state update
     // that re-renders, an image that has to fail before onerror runs. Reading
     // the observations straight after evaluate() would miss all of it.
-    await new Promise((r) => setTimeout(r, Number(one("settle", "800"))));
+    await settle(Number(one("settle", "800")));
   }
 } catch (e) {
   note(e);

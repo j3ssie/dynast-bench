@@ -17,7 +17,12 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/drive
-RUN npm install --omit=dev --no-audit --no-fund puppeteer-core@23
+# Pinned exactly: this image is the oracle for every DOM-XSS and postMessage
+# PoC in the suite, so "whatever 23.x resolves to today" is not good enough -
+# a client change that alters dialog or request reporting would read as the
+# app's behaviour changing.
+RUN --mount=type=cache,target=/root/.npm \
+    npm install --omit=dev --no-audit --no-fund puppeteer-core@23.11.1
 
 COPY drive.mjs /opt/drive/drive.mjs
 

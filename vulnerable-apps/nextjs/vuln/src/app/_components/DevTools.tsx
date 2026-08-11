@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { API_BASE } from "@/lib/routes";
 
 /**
@@ -26,6 +26,41 @@ export default function DevTools() {
     });
     setOut(JSON.stringify(await r.json().catch(() => ({})), null, 2));
   }
+
+  // VULN POSTMSG-002 (CWE-79/CWE-95): the desktop shell drives the report
+  // builder over postMessage, and the handler compiles whatever expression it
+  // is handed with Function() so the preview can be computed without a server
+  // round-trip. It never looks at event.origin, so any frame or opener that can
+  // reach this window runs code in it. The panel is code-split, so this handler
+  // does not exist until the Advanced button has been pressed.
+  useEffect(() => {
+    function onShellExpr(ev: MessageEvent) {
+      const data: any = ev.data;
+      if (!data || data.type !== "taskflow:devtools") return;
+      try {
+        const compiled = new Function("row", `return ${String(data.expr ?? "")}`);
+        setOut(String(compiled({ title: "sample row", id: 1 })));
+      } catch (err: any) {
+        setOut(String(err?.message ?? err));
+      }
+    }
+    window.addEventListener("message", onShellExpr);
+    return () => window.removeEventListener("message", onShellExpr);
+  }, []);
+
+  // NEAR-MISS NM-POSTMSG-002: the same shape - a window message handler on the
+  // same panel - but it checks the origin and the payload only ever becomes
+  // text. Flagging this one is a false positive.
+  useEffect(() => {
+    function onShellPing(ev: MessageEvent) {
+      const data: any = ev.data;
+      if (ev.origin !== window.location.origin) return;
+      if (!data || data.type !== "taskflow:devtools-ping") return;
+      setOut(String(data.note ?? "pong"));
+    }
+    window.addEventListener("message", onShellPing);
+    return () => window.removeEventListener("message", onShellPing);
+  }, []);
 
   return (
     <div className="card" data-devtools>

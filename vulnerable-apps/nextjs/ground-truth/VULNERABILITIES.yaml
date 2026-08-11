@@ -317,7 +317,7 @@ vulnerabilities:
     match:
       http: { method: GET, path: "/integrations" }
       http_alt: ["/api/integrations/sync"]
-      file: { path: vuln/src/lib/integrations.ts, symbol: SYNC_BASIC_AUTH, lines: [17, 21] }
+      file: { path: vuln/src/lib/integrations.ts, symbol: SYNC_BASIC_AUTH, lines: [17, 27] }
     poc: ground-truth/verify/creds_bundle_001.sh
     notes: >
       Live service-account credential (seeded admin/admin) pre-encoded as a Basic
@@ -571,6 +571,52 @@ vulnerabilities:
       payload as HTML, so any frame/opener can script the page. Provable only in a
       browser. Safe twin checks origin and renders text.
 
+  - id: POSTMSG-002
+    variant_paths: { vuln: vuln/src/app/_components/DevTools.tsx, safe: safe/src/app/_components/DevTools.tsx }
+    symbol: onShellExpr
+    route: "GET /profile (window.postMessage taskflow:devtools)"
+    cwe: CWE-79
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    discovery: interaction
+    taint: in-file
+    reachability: pre-auth
+    near_miss: NM-POSTMSG-002
+    match:
+      http: { method: GET, path: "/profile" }
+      file: { path: vuln/src/app/_components/DevTools.tsx, symbol: onShellExpr, lines: [30, 54] }
+    poc: ground-truth/verify/postmsg_002.sh
+    notes: >
+      The Advanced panel's shell bridge compiles the expression a message carries
+      with Function(), from any origin. The panel is code-split, so the handler
+      does not exist until the Advanced button is pressed - a crawler that only
+      reads the arrival bundle never sees it. Safe twin checks the origin and
+      sends the expression to the server evaluator instead of compiling it.
+
+  - id: POSTMSG-003
+    variant_paths: { vuln: vuln/src/app/integrations/page.tsx, safe: safe/src/app/integrations/page.tsx }
+    symbol: onWidgetMessage
+    route: "GET /integrations (window.postMessage taskflow:widget)"
+    cwe: CWE-346
+    owasp: "A03:2021-Injection"
+    severity: high
+    difficulty: H
+    discovery: js-static
+    taint: cross-file
+    reachability: pre-auth
+    near_miss: NM-POSTMSG-003
+    match:
+      http: { method: GET, path: "/integrations" }
+      file: { path: vuln/src/app/integrations/page.tsx, symbol: onWidgetMessage, lines: [21, 40] }
+    poc: ground-truth/verify/postmsg_003.sh
+    notes: >
+      The widget bridge authenticates a message by a key inside it
+      (WIDGET_APP_KEY, from @/lib/integrations) rather than by its origin - and
+      that constant is a literal in the public bundle, so anyone who reads the
+      chunk can post a message that passes, and the payload is rendered as HTML.
+      Safe twin checks event.origin and renders text.
+
   - id: SIGNUP-ENUM-001
     variant_paths: { vuln: vuln/src/app/api/signup/start/route.ts, safe: safe/src/app/api/signup/start/route.ts }
     symbol: POST
@@ -678,6 +724,24 @@ vulnerabilities:
 near_misses:
   # Safe code planted next to a vulnerable sibling. Flagging any of these is a
   # FALSE POSITIVE. Present in BOTH variants.
+  - id: NM-POSTMSG-002
+    path: vuln/src/app/_components/DevTools.tsx
+    symbol: onShellPing
+    of: POSTMSG-002
+    match:
+      file: { path: vuln/src/app/_components/DevTools.tsx, symbol: onShellPing, lines: [55, 82] }
+    notes: >
+      A window message handler on the same panel, one effect down: it checks
+      event.origin and the payload only ever becomes text.
+  - id: NM-POSTMSG-003
+    path: vuln/src/app/integrations/page.tsx
+    symbol: onWidgetStatus
+    of: POSTMSG-003
+    match:
+      file: { path: vuln/src/app/integrations/page.tsx, symbol: onWidgetStatus, lines: [41, 92] }
+    notes: >
+      The same widget, the same page, another message handler - gated on the
+      origin rather than on a bundled constant, and it renders text.
   - id: NM-SQL-001
     path: vuln/src/app/api/posts/search/route.ts
     symbol: "GET (empty-q branch)"
@@ -720,7 +784,7 @@ near_misses:
     symbol: WIDGET_THEME_B64
     of: SECRET-002
     match:
-      file: { path: vuln/src/lib/integrations.ts, symbol: WIDGET_THEME_B64, lines: [22, 30] }
+      file: { path: vuln/src/lib/integrations.ts, symbol: WIDGET_THEME_B64, lines: [28, 36] }
     notes: >
       Committed base64 literal in the same file, shipped in the same chunk — but
       the plaintext is {"theme":"dark","density":"compact"}, not a credential.
@@ -729,7 +793,7 @@ near_misses:
     symbol: fetchSyncToken
     of: CREDS-BUNDLE-001
     match:
-      file: { path: vuln/src/lib/integrations.ts, symbol: fetchSyncToken, lines: [31, 36] }
+      file: { path: vuln/src/lib/integrations.ts, symbol: fetchSyncToken, lines: [37, 42] }
     notes: >
       Credential-shaped name and same call site, but the token is minted per
       request by /api/integrations/token (CSPRNG, session-scoped) and never

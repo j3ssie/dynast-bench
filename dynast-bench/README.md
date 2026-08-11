@@ -275,8 +275,18 @@ Environment handed to the `run` command:
 | `DYNAST_BENCH_APP` | app name |
 | `DYNAST_BENCH_VARIANT` | `vuln` or `safe` |
 | `DYNAST_BENCH_HEALTH` | full health-check URL |
+
+The command under `run` is the thing being measured, so that is all it gets. The
+answer key and the harness token are held back unless you pass `--trusted`:
+
+| Variable (`--trusted` only) | Value |
+|----------|-------|
 | `DYNAST_BENCH_GROUND_TRUTH` | absolute path to `VULNERABILITIES.yaml` |
 | `DYNAST_BENCH_VERIFY_TOKEN` | token for the `/api/_verify/*` harness API |
+
+A scan that can read the answer key, or ask `/api/_verify/*` for the seeded ids
+rather than discovering them, is not a scan you can score. Use `--trusted` for
+harness tooling only, and treat any run that needed it as unscoreable.
 
 Everything is derived from the apps themselves - compose files (ports,
 healthcheck path), each app's `Makefile` (standalone port) and

@@ -45,7 +45,7 @@ image.
 
 ## Reference implementation
 
-**`vulnerable-apps/nextjs/` is fully built and validated (33 vulns + 13 near-misses,
+**`vulnerable-apps/nextjs/` is fully built and validated (35 vulns + 15 near-misses,
 tiered by `discovery:` and using the browser PoC harness).**
 Copy its patterns. `vulnerable-apps/_template/` is the empty skeleton to clone. Each app's
 vulnerability catalog and design notes live in
@@ -87,7 +87,8 @@ vulnerable-apps/<app>/
 └── ground-truth/         # NEVER copied into any image (outside both build contexts)
     ├── VULNERABILITIES.yaml
     ├── verify/           # one PoC per bug + _lib.sh helper
-    ├── run.sh            # runs all PoCs: expect-vuln (all exploitable) | expect-safe (all fixed)
+    ├── run.sh            # thin wrapper over dynast-bench/tools/poc-runner.sh:
+    │                     #   expect-vuln (all exploitable) | expect-safe (all fixed)
     └── expected/         # optional golden findings files for the scorer (see nextjs)
 ```
 
@@ -125,6 +126,9 @@ vulnerabilities:
     near_miss: NM-SQL-001              # or null
     match:                             # machine anchors - GENERATED, see below
       http: { method: GET, path: "/api/posts/search", params: [q] }
+      http_alt: ["/api/docs/"]         # other paths reaching the same sink, when
+                                       # `route:` names more than one. Reporting
+                                       # ANY of them is the correct answer.
       file: { path: vuln/..., symbol: <symbol>, lines: [19, 33] }
       markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
     poc: ground-truth/verify/sqli_001.sh
@@ -229,6 +233,37 @@ would be scored as a false positive.
   shared counters must restore them (see nextjs `billing_001`) or be safe to run in
   any order. `make verify` runs on fresh state (`reset` first) - don't rely on that
   for cross-PoC ordering.
+- **Exit `2` if the PoC cannot run at all** (a tool it needs is missing, the
+  browser image failed). Never `exit 1` for that - see below.
+
+### The runner tells "fixed" apart from "the harness broke"
+
+`ground-truth/run.sh` is a thin wrapper; the logic is shared in
+**`dynast-bench/tools/poc-runner.sh`**. Copy the wrapper from `_template`.
+
+Exit status alone cannot carry this: curl exits `1` for "no match" and `7` for
+"could not connect", and a PoC ending in `grep -q` passes either through. Point
+the suite at a dead port and 5 of gin's 11 PoCs exit `1` - exactly what a
+genuinely fixed bug looks like. So the runner keeps an independent oracle:
+
+| result | meaning |
+|---|---|
+| `0` | the exploit worked |
+| `2` | the PoC says it could not run |
+| `124` | the runner's deadline expired |
+| `126`/`127` | not executable / missing command |
+| anything else **and the target still answers health** | cleanly rejected = fixed |
+| anything else **and it does not** | harness failure |
+
+A harness result fails **both** legs. "The suite could not run" must never be
+recorded as "the vulnerability is fixed". The runner health-probes before it
+starts (so a dead app fails once, not as N false "fixed" verdicts), applies a
+portable per-PoC deadline, prints per-PoC timing, and shows captured stderr for
+anything it could not run.
+
+App hooks, set in `run.sh` before sourcing the runner - see `llmagent` (per-PoC
+budgets via a `poc_timeout` function), `llmchat` (`POC_SKIP` for fixtures that
+are not PoCs) and `php` (`POC_HEALTH` for a non-standard health path).
 
 ### Browser PoCs (`dynast-bench/tools/browser/`)
 
@@ -248,9 +283,13 @@ browser "$TARGET/x" --click '#btn' --eval 'return document.title'
 - One shared image (`make browser-image`, or built on first use), Debian chromium
   + `puppeteer-core` so it is native on arm64 as well as amd64. Chrome for Testing
   publishes no linux-arm64 build, which is why this is not the stock puppeteer image.
-- `run.sh` builds it **once up front** when any PoC mentions `browser_`. A missing
-  image must fail as "the harness could not run", never as "NOT exploitable" -
-  the latter is a wrong answer about the app.
+- The runner builds it **once up front** when any PoC mentions `browser_`, for
+  every app. A missing image fails as "the harness could not run", never as
+  "NOT exploitable" - the latter is a wrong answer about the app.
+- The settle waits are a ceiling, not the normal path: `browser_dialog` and
+  `browser_requested` pass `--until` so the probe returns the moment its oracle
+  fires. On the safe twin nothing fires and it waits the full budget, which is
+  the point - you cannot short-circuit proving that nothing executed.
 - The apps bind `127.0.0.1` only, so the container reaches the host by joining its
   namespace on Linux (`--network=host`) and via `host.docker.internal` elsewhere.
   `browser.sh` picks per platform; PoCs still just pass `$TARGET`.
@@ -371,6 +410,16 @@ start services; Postgres runs under its own user via `su postgres`. See
   the apps themselves - compose ports + healthcheck path, the app `Makefile`'s standalone
   port, and `VULNERABILITIES.yaml` - so **a new app appears automatically**; keep those
   conventions intact and there's nothing to register. `--json` on every command.
+- **`run <app> -- <cmd>` hands the command target metadata and nothing else.** The
+  answer key path and the verify token are behind `--trusted`, because a scanner
+  that can read the expected findings - or ask `/api/_verify/*` for the seeded ids
+  instead of discovering them - is not a scanner you can score.
+- **Destructive commands require ownership**, not just a matching name: compose
+  stamps every container with the directory it was launched from, so a user's own
+  `vuln-api` project elsewhere on the machine is never a `stop-all` candidate.
+- **`validate` builds both twins first**, then starts each with no rebuild, and
+  tears down in a `finally` unless `--keep`. Keeps the safe build off the critical
+  path and stops a heavy build running while race/rate-limit PoCs execute.
 - **Starting a batch**: `start --count N` boots N apps (the ones named, else the
   first N of the catalog) and `--parallel[=M]` overlaps them - port planning is
   serialized behind a lock and a planned port stays reserved until docker binds

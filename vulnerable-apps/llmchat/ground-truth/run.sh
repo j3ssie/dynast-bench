@@ -2,24 +2,16 @@
 # Run every llmchat ground-truth PoC against $TARGET and check the outcome.
 #   run.sh expect-vuln   -> every PoC must be exploitable (exit 0)
 #   run.sh expect-safe   -> every PoC must be fixed (non-zero)
-# A PoC exits 0 when the target is vulnerable.
+# A PoC exits 0 when the target is vulnerable. The shared runner also tells a
+# harness failure apart from a fix - see dynast-bench/tools/poc-runner.sh.
 set -u
-MODE="${1:-expect-vuln}"
-DIR="$(cd "$(dirname "$0")/verify" && pwd)"
-export TARGET="${TARGET:-http://127.0.0.1:13311}"
+POC_GT_DIR="$(cd "$(dirname "$0")" && pwd)"
 export LLM_BACKEND="${LLM_BACKEND:-stub}"
 
-pass=0; fail=0; bad=""
-for f in $(find "$DIR" -maxdepth 1 -name '*.sh' ! -name '_lib.sh' ! -name 'ingest.sh' | sort); do
-  name=$(basename "$f")
-  if bash "$f" >/dev/null 2>&1; then exploitable=1; else exploitable=0; fi
-  if [ "$MODE" = "expect-vuln" ]; then
-    if [ "$exploitable" = 1 ]; then echo "  ok  $name (exploitable)"; pass=$((pass+1));
-    else echo "  XX  $name (NOT exploitable — expected vuln)"; fail=$((fail+1)); bad="$bad $name"; fi
-  else
-    if [ "$exploitable" = 0 ]; then echo "  ok  $name (fixed)"; pass=$((pass+1));
-    else echo "  XX  $name (STILL exploitable — expected safe)"; fail=$((fail+1)); bad="$bad $name"; fi
-  fi
-done
-echo "----  mode=$MODE  target=$TARGET  llm_backend=$LLM_BACKEND  ok=$pass  bad=$fail"
-[ "$fail" = 0 ] || { echo "FAILURES:$bad"; exit 1; }
+# ingest.sh seeds the corpus the other PoCs attack; it is a fixture, not a PoC.
+POC_SKIP="ingest.sh"
+
+# shellcheck source=/dev/null
+. "$POC_GT_DIR/../../../dynast-bench/tools/poc-runner.sh"
+echo ">> llm_backend=$LLM_BACKEND"
+poc_run "${1:-expect-vuln}"

@@ -1,0 +1,143 @@
+name: ci
+
+# The acceptance bar from CLAUDE.md, enforced:
+#   check     the answer key is scoreable (schema, anchors, diff scope, binds)
+#   validate  every PoC exploitable on vuln/, every PoC fixed on safe/
+#
+# The app is the parallelisation boundary. One job per app gets its own daemon,
+# ports, volumes and PoC state, so nothing here assumes PoCs are safe to run
+# concurrently with each other - they are still serial inside a job.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Seconds, not minutes: fails a bad answer key before any image is built.
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: typecheck
+        run: cd dynast-bench && bunx tsc --noEmit
+      - name: scorer suite (includes per-app answer-key invariants)
+        run: make test
+      # also the loopback-bind gate: checkApp enforces 127.0.0.1-only publishes
+      - name: answer keys are scoreable
+        run: bun dynast-bench/dynast-bench.ts check --all
+      - name: derived anchors are current
+        run: bun dynast-bench/tools/derive-match.ts --all --check
+
+  # Shards are balanced by PoC count and by how heavy the stack is to build, not
+  # alphabetically: springboot has 42 PoCs and a Maven build, gin has 11.
+  validate:
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        apps:
+          - springboot jsp
+          - aspnet network
+          - nextjs nestjs
+          - laravel wordpress
+          - rails php
+          - fastapi swagger
+          - graphql websocket
+          - llmchat llmagent
+          - golang gin weirdproxy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker-container
+
+      # The PoC harness drives this image; building it inside the first browser
+      # PoC would bill a ~1GB pull to that PoC's deadline.
+      - name: cache the browser image layers
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-browser
+          key: browser-${{ runner.os }}-${{ hashFiles('dynast-bench/tools/browser/Dockerfile') }}
+      - name: build the browser image
+        run: |
+          # the tag lives in browser.sh (DYNAST_BROWSER_IMAGE); read it from
+          # there rather than restating it, or CI warms an image no PoC looks for
+          tag="$(grep -o 'DYNAST_BROWSER_IMAGE:-[^}"]*' dynast-bench/tools/browser/browser.sh | cut -d- -f2-)"
+          docker buildx build \
+            --cache-from type=local,src=/tmp/.buildx-browser \
+            --cache-to type=local,dest=/tmp/.buildx-browser-new,mode=max \
+            --load -t "$tag" dynast-bench/tools/browser
+          rm -rf /tmp/.buildx-browser
+          mv /tmp/.buildx-browser-new /tmp/.buildx-browser 2>/dev/null || true
+
+      - name: validate
+        run: |
+          rc=0
+          for app in ${{ matrix.apps }}; do
+            echo "::group::validate $app"
+            bun dynast-bench/dynast-bench.ts validate "$app" || rc=1
+            echo "::endgroup::"
+          done
+          exit $rc
+
+      # A validate that failed halfway leaves logs worth reading.
+      - name: diagnostics
+        if: failure()
+        run: |
+          docker ps -a
+          for app in ${{ matrix.apps }}; do
+            for v in vuln safe; do
+              docker compose -f "vulnerable-apps/$app/$v/docker-compose.yml" \
+                -p "$v-$app" logs --tail 100 2>/dev/null || true
+            done
+          done
+
+  # Every app as ONE image with no compose. Slower and less likely to break, so
+  # it does not gate a PR.
+  solo:
+    if: github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        apps:
+          - springboot jsp aspnet
+          - nextjs nestjs graphql websocket
+          - laravel wordpress php rails
+          - fastapi swagger llmchat llmagent
+          - golang gin network weirdproxy
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: solo
+        run: |
+          rc=0
+          for app in ${{ matrix.apps }}; do
+            echo "::group::solo $app"
+            bun dynast-bench/dynast-bench.ts start "$app" --solo && \
+              bun dynast-bench/dynast-bench.ts verify "$app" || rc=1
+            bun dynast-bench/dynast-bench.ts stop "$app" || true
+            echo "::endgroup::"
+          done
+          exit $rc

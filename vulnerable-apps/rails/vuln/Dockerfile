@@ -9,7 +9,7 @@ RUN apt-get update \
 ENV RAILS_ENV=production RACK_ENV=production BUNDLE_WITHOUT=development:test
 WORKDIR /app
 COPY Gemfile ./
-RUN bundle install
+RUN --mount=type=cache,target=/usr/local/bundle/cache bundle install
 COPY . .
 RUN chmod +x /app/entrypoint.sh
 EXPOSE 3000

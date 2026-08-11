@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { API_BASE } from "@/lib/routes";
 
 /**
@@ -26,6 +26,35 @@ export default function DevTools() {
     });
     setOut(JSON.stringify(await r.json().catch(() => ({})), null, 2));
   }
+
+  // FIXED POSTMSG-002: the bridge rejects any message that did not come from
+  // this app's own origin, and it no longer compiles the expression in the
+  // page - it hands it to the same server evaluator that governs the input
+  // field, so a message can never introduce code into this window.
+  useEffect(() => {
+    function onShellExpr(ev: MessageEvent) {
+      const data: any = ev.data;
+      if (ev.origin !== window.location.origin) return;
+      if (!data || data.type !== "taskflow:devtools") return;
+      void run({ expr: String(data.expr ?? "") });
+    }
+    window.addEventListener("message", onShellExpr);
+    return () => window.removeEventListener("message", onShellExpr);
+  }, []);
+
+  // NEAR-MISS NM-POSTMSG-002: the same shape - a window message handler on the
+  // same panel - but it checks the origin and the payload only ever becomes
+  // text. Flagging this one is a false positive.
+  useEffect(() => {
+    function onShellPing(ev: MessageEvent) {
+      const data: any = ev.data;
+      if (ev.origin !== window.location.origin) return;
+      if (!data || data.type !== "taskflow:devtools-ping") return;
+      setOut(String(data.note ?? "pong"));
+    }
+    window.addEventListener("message", onShellPing);
+    return () => window.removeEventListener("message", onShellPing);
+  }, []);
 
   return (
     <div className="card" data-devtools>

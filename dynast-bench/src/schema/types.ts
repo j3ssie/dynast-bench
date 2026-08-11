@@ -168,6 +168,14 @@ export interface GtMatch {
     /** set only for sidecar bugs (Jenkins, phpMyAdmin) that are not on the app port */
     port?: number;
   };
+  /**
+   * Other paths that reach the same sink, for a bug whose `route:` names more
+   * than one ("GET /api/schema/ and /api/docs/"). Each anchors as its own HTTP
+   * key, so reporting any one of them is the correct answer - without this a
+   * tool that finds the bug at its most visible URL is charged a false positive
+   * AND the bug still counts as missed.
+   */
+  http_alt?: string[];
   file?: {
     path?: string;
     symbol?: string;

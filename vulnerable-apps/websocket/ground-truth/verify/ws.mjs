@@ -23,9 +23,15 @@ if (token) { const u = new URL(url); u.searchParams.set('token', token); url = u
 let output = '', okFrames = 0;
 const ws = new WebSocket(url, protocol ? [protocol] : undefined);
 const done = (code) => { try { ws.close(); } catch {} setTimeout(() => process.exit(code), 20); };
+// Modes that carry their own success oracle (enough rate-limited frames got
+// through, the seat count reached 6, ...) have NOT met it if we are here: the
+// oracle would have called done(0) already. Treating "the server said anything
+// at all" as success made race/rate/room report every target as exploitable,
+// including the patched twin. The close handler always had this right.
+const oracleMode = () => rateTest || roomFlood || raceTest || sendLarge;
 const timer = setTimeout(() => {
   if (expect && output.includes(expect)) return done(0);
-  if (!expect && output) return done(0);
+  if (!expect && output && !oracleMode()) return done(0);
   done(1);
 }, timeout);
 ws.addEventListener('open', async () => {

@@ -158,11 +158,15 @@ function apiHit(gt: GtAnchors, got: Anchors): string[] {
   for (const g of gt.ws) {
     for (const f of got.ws) {
       if (g.transport && f.transport && !looseEq(g.transport, f.transport)) continue;
-      if (g.event && f.event && !looseEq(g.event, f.event)) continue;
-      // the channel is what separates two bugs on the same subscribe frame
-      if (g.channel && f.channel && !looseEq(g.channel, f.channel)) continue;
-      if (!g.transport && !g.event && !g.channel) continue;
-      if (!f.transport && !f.event && !f.channel) continue;
+      // every discriminator EITHER side names has to be corroborated by the
+      // other. The channel is what separates two bugs on the same subscribe
+      // frame: a key that names one is not answered by "subscribe frames are
+      // unauthenticated", and a finding that names a channel the key never
+      // mentions is describing some other bug on the same socket.
+      const named = (["channel", "event", "endpoint"] as const);
+      if (named.some((k) => (g[k] || f[k]) && !looseEq(g[k], f[k]))) continue;
+      if (!g.transport && !named.some((k) => g[k])) continue;
+      if (!f.transport && !named.some((k) => f[k])) continue;
       why.push(`ws ${g.channel ?? g.event ?? g.transport}`);
     }
   }

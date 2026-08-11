@@ -127,6 +127,8 @@ func main() {
 	r.GET("/api/admin/users", adminUsers)               // [AUTHZ-001] sink
 	r.GET("/goto", gotoNext)                            // [REDIRECT-001] sink
 	r.GET("/search", searchPage)                        // [XSS-REFLECT-001] sink
+	r.GET("/notes/preview", notesPreview)               // [XSS-DOMPURIFY-001] sink
+	r.StaticFile("/static/purify.min.js", "/app/static/purify.min.js")
 
 	log.Printf("Gin benchmark app (vuln) listening on :3000")
 	log.Fatal(http.ListenAndServe(":3000", r))
@@ -147,7 +149,9 @@ func randomBytes(n int) []byte {
 
 func index(c *gin.Context) {
 	c.Header("Content-Type", "text/html; charset=utf-8")
-	c.String(http.StatusOK, `<h1>Snapshot (Gin)</h1><p><strong>DELIBERATELY INSECURE</strong> benchmark app. Local only.</p>`)
+	c.String(http.StatusOK, `<h1>Snapshot (Gin)</h1><p><strong>DELIBERATELY INSECURE</strong> benchmark app. Local only.</p>`+
+		`<ul><li><a href="/search?q=notes">Search</a></li>`+
+		`<li><a href="/notes/preview?q=hello">Note preview</a></li></ul>`)
 }
 
 func seedDB(ctx context.Context) error {
@@ -736,4 +740,42 @@ func searchPage(c *gin.Context) {
 	// VULN XSS-REFLECT-001: q is reflected into HTML without escaping.
 	c.String(http.StatusOK, "<h1>Search</h1><div id='q'>"+q+"</div>")
 	_ = html.EscapeString
+}
+
+// ---------------------------------------------------------------------------
+// XSS-DOMPURIFY-001: reflected XSS that survives sanitisation
+// ---------------------------------------------------------------------------
+
+// The note preview renders user markup, so it sanitises with DOMPurify before
+// putting anything in the document. The server side is not the bug: q is
+// HTML-escaped on the way out and reaches the page as text.
+const notePreviewHTML = `<h1>Note preview</h1>
+<pre id="src" hidden>%s</pre>
+<div id="out"></div>
+<div id="tip" class="tooltip"></div>
+<script src="/static/purify.min.js"></script>
+<script>
+  var raw = document.getElementById('src').textContent;
+  var out = document.getElementById('out');
+
+  // NEAR-MISS NM-DOMPURIFY-001: reflected input straight into innerHTML - the
+  // shape every scanner looks for - but routed through DOMPurify first, so the
+  // markup that lands here cannot script the page. Flagging it is a false alarm.
+  out.innerHTML = DOMPurify.sanitize(raw);
+
+  // VULN XSS-DOMPURIFY-001 (CWE-79): the tooltip pass re-parses an attribute
+  // that sanitisation deliberately left alone. DOMPurify keeps data-* attributes
+  // (they are not URI attributes and ALLOW_DATA_ATTR is on by default), so a
+  // payload parked in one survives as an inert attribute VALUE - and is then
+  // handed back to innerHTML here, where it is parsed as markup for the first
+  // time. The sanitiser did its job; the second parse undid it.
+  out.querySelectorAll('[data-tip]').forEach(function (el) {
+    document.getElementById('tip').innerHTML = el.getAttribute('data-tip');
+  });
+</script>`
+
+func notesPreview(c *gin.Context) {
+	q := c.Query("q")
+	c.Header("Content-Type", "text/html; charset=utf-8")
+	c.String(http.StatusOK, notePreviewHTML, html.EscapeString(q))
 }

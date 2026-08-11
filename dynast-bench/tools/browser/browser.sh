@@ -48,7 +48,9 @@ browser_require() {
       return 2
     }
   fi
-  _DYNAST_BROWSER_OK=1
+  # exported so the per-PoC shells the runner spawns inherit the answer instead
+  # of each paying a `docker image inspect`
+  export _DYNAST_BROWSER_OK=1
 }
 
 _browser_net() {
@@ -88,7 +90,10 @@ browser() {
 browser_dialog() {
   local url="$1" marker="$2" out
   shift 2
-  out="$(browser "$url" "$@")" || return $?
+  # --until lets the probe stop settling the moment the dialog fires. On the safe
+  # twin nothing fires and it waits the full budget, which is the point: proving
+  # the absence of execution is exactly the case you must not short-circuit.
+  out="$(browser "$url" --until "dialog:$marker" "$@")" || return $?
   printf '%s' "$out" | grep '"message":' | grep -qF "$marker"
 }
 
@@ -97,6 +102,6 @@ browser_dialog() {
 browser_requested() {
   local url="$1" want="$2" out
   shift 2
-  out="$(browser "$url" "$@")" || return $?
+  out="$(browser "$url" --until "request:$want" "$@")" || return $?
   printf '%s' "$out" | grep -E '"[A-Z]+ https?://' | grep -qF "$want"
 }

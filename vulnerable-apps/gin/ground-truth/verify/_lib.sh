@@ -5,6 +5,25 @@ VT="x-verify-token: ${VERIFY_TOKEN:-benchsecret}"
 JAR="$(mktemp)"
 trap 'rm -f "$JAR"' EXIT
 
+# Headless-browser helpers, for the one bug whose sink only exists once the
+# page's own JS has run. Walk up to the repo root rather than hardcoding a
+# depth, so this keeps working if the app is moved.
+_dynast_root() {
+  [ -n "${DYNAST_BENCH_ROOT:-}" ] && { printf '%s' "$DYNAST_BENCH_ROOT"; return; }
+  local d
+  d="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  while [ -n "$d" ]; do
+    [ -f "$d/dynast-bench/tools/browser/browser.sh" ] && { printf '%s' "$d"; return; }
+    d="${d%/*}"
+  done
+}
+# shellcheck source=/dev/null
+_DYNAST_BROWSER_LIB="$(_dynast_root)/dynast-bench/tools/browser/browser.sh"
+[ -f "$_DYNAST_BROWSER_LIB" ] && . "$_DYNAST_BROWSER_LIB"
+
+# percent-encode $1 for use in a query string
+urlenc() { python3 -c 'import sys,urllib.parse;print(urllib.parse.quote(sys.argv[1],safe=""))' "$1"; }
+
 login() {
   curl -s -c "$JAR" -X POST "$TARGET/api/auth/login" \
     -H 'content-type: application/json' \

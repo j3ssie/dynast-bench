@@ -13,8 +13,12 @@ PY
 )
 SCHEME="${HOST%% *}"; HOSTNAME="${HOST##* }"
 NGINX="$TARGET"
-APACHE="${WEIRDPROXY_APACHE:-$SCHEME://$HOSTNAME:13312}"
-TRAEFIK="${WEIRDPROXY_TRAEFIK:-$SCHEME://$HOSTNAME:13313}"
+# The runner exports the ports the stack actually published; the compose
+# defaults are only the fallback for a bare `make verify`. Hardcoding them meant
+# every `dynast-bench validate` dialled another app's port and reported all 11
+# Apache/Traefik bugs as not exploitable.
+APACHE="${WEIRDPROXY_APACHE:-$SCHEME://$HOSTNAME:${DYNAST_PORT_APACHE_80:-13312}}"
+TRAEFIK="${WEIRDPROXY_TRAEFIK:-$SCHEME://$HOSTNAME:${DYNAST_PORT_TRAEFIK_80:-13313}}"
 
 # leak <base> <raw-path> [extra-header]
 # --path-as-is keeps curl from collapsing //, /./, .. before the request is sent.

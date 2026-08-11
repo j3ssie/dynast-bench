@@ -1,9 +1,9 @@
 FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /src
 COPY pom.xml .
-RUN mvn -q -DskipTests dependency:go-offline
+RUN --mount=type=cache,target=/root/.m2 mvn -q -DskipTests dependency:go-offline
 COPY src ./src
-RUN mvn -q -DskipTests package
+RUN --mount=type=cache,target=/root/.m2 mvn -q -DskipTests package
 
 FROM tomcat:10.1-jre21-temurin
 RUN apt-get update && apt-get install -y --no-install-recommends postgresql postgresql-contrib nodejs curl && rm -rf /var/lib/apt/lists/*

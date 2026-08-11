@@ -57,6 +57,18 @@ function validateMatch(raw: unknown, at: string, errors: ValidationIssue[]): GtM
       if (!m.http.path) errors.push({ at: `${at}.http`, msg: "path is required" });
     }
   }
+  if (raw.http_alt !== undefined) {
+    const arr = Array.isArray(raw.http_alt) ? raw.http_alt : [raw.http_alt];
+    const alts = arr.map((x) => String(x).trim()).filter(Boolean);
+    for (const p of alts) {
+      if (!p.startsWith("/")) {
+        errors.push({ at: `${at}.http_alt`, msg: `"${p}" must be a path starting with /` });
+      }
+    }
+    // an alternate with no primary would score as an anchor nobody declared
+    if (!m.http?.path) errors.push({ at: `${at}.http_alt`, msg: "needs a http: anchor to vary" });
+    if (alts.length) m.http_alt = alts;
+  }
   if (raw.file !== undefined) {
     if (!isObj(raw.file)) errors.push({ at: `${at}.file`, msg: "must be a mapping" });
     else {

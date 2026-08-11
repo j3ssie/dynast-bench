@@ -15,7 +15,7 @@
  */
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { basename, dirname, join, relative } from "node:path";
+import { basename, dirname, join, relative, sep } from "node:path";
 
 import { checkApp, twinDiff, type Differ } from "./src/check/invariants.ts";
 import { normalizeText, type Format, FORMATS } from "./src/normalize/index.ts";
@@ -25,11 +25,14 @@ import type {
   GroundTruth as ScoredGroundTruth,
   Variant as GtVariant,
 } from "./src/schema/types.ts";
+import pkg from "./package.json";
 import { gtAnchors } from "./src/scorer/anchors.ts";
 import { renderReport } from "./src/scorer/report.ts";
 import { scoreApp } from "./src/scorer/score.ts";
 
-const VERSION = "0.3.0";
+// One version source. `bun build --compile` inlines this, so the binary reports
+// the same string the package does rather than a second constant that drifts.
+const VERSION = pkg.version;
 const DEFAULT_HEALTH_PATH = "/api/_verify/health";
 const VERIFY_TOKEN = "benchsecret";
 const HEALTH_TIMEOUT_S = 300; // cold builds (aspnet/springboot/jsp) are slow
@@ -114,6 +117,8 @@ interface Container {
   name: string;
   project: string | null;
   service: string | null;
+  /** compose records where it was launched from - the ownership evidence */
+  workingDir: string | null;
   state: string;
   status: string;
   ports: PortMap[];
@@ -391,8 +396,20 @@ function loadApp(name: string): App {
   const healthMatch = compose.match(/\/api\/_verify\/health[A-Za-z0-9._-]*/);
 
   const verifyDir = join(dir, "ground-truth", "verify");
+  // POC_SKIP is how an app declares that a verify/*.sh is a fixture rather than
+  // a PoC (llmchat's ingest.sh seeds the corpus the others attack). Read the
+  // same list the runner does, or `list` over-reports what `verify` will run.
+  const runner = join(dir, "ground-truth", "run.sh");
+  const skipped = new Set(
+    (existsSync(runner)
+      ? readFileSync(runner, "utf8").match(/^POC_SKIP="([^"]*)"/m)?.[1] ?? ""
+      : ""
+    ).split(/\s+/).filter(Boolean),
+  );
   const pocs = existsSync(verifyDir)
-    ? readdirSync(verifyDir).filter((f) => f.endsWith(".sh") && f !== "_lib.sh")
+    ? readdirSync(verifyDir).filter(
+        (f) => f.endsWith(".sh") && f !== "_lib.sh" && !skipped.has(f),
+      )
     : [];
 
   const plan = join(ROOT, "benchmark-plans", `${name}.md`);
@@ -489,6 +506,7 @@ async function listContainers(): Promise<Container[]> {
       name: String(row.Names ?? "").split(",")[0]!,
       project: labels["com.docker.compose.project"] ?? null,
       service: labels["com.docker.compose.service"] ?? null,
+      workingDir: labels["com.docker.compose.project.working_dir"] ?? null,
       state: String(row.State ?? ""),
       status: String(row.Status ?? ""),
       ports,
@@ -502,7 +520,7 @@ function stacksOf(app: App, containers: Container[]): Stack[] {
   const stacks: Stack[] = [];
   for (const variant of VARIANTS) {
     const composed = containers.filter(
-      (ct) => ct.project === composeProject(app.name, variant),
+      (ct) => ct.project === composeProject(app.name, variant) && ownedByThisRepo(ct),
     );
     if (composed.length) {
       stacks.push({
@@ -590,6 +608,20 @@ interface DiscoveredStack {
 const BENCH_NAME_RE = new RegExp(`^(${VARIANTS.join("|")})-(.+)$`);
 
 /**
+ * `vuln-`/`safe-` is this repo's naming convention, not a claim of ownership: a
+ * user can perfectly well have their own compose project called `vuln-api`.
+ * Compose stamps every container with the directory it was launched from, so
+ * require that to be inside this checkout before anything destructive runs.
+ *
+ * A solo container is a bare `docker run` with no compose labels at all, so it
+ * is matched on its (much more specific) full name instead.
+ */
+function ownedByThisRepo(ct: Container): boolean {
+  if (ct.workingDir !== null) return ct.workingDir === ROOT || ct.workingDir.startsWith(ROOT + sep);
+  return ct.project === null;
+}
+
+/**
  * Every stack this repo's naming convention claims, whether or not the app is
  * still on disk. Scoped to the `vuln-`/`safe-` prefixes, so unrelated stacks a
  * user happens to be running are never candidates.
@@ -615,6 +647,7 @@ function discoverStacks(containers: Container[]): DiscoveredStack[] {
   };
 
   for (const ct of containers) {
+    if (!ownedByThisRepo(ct)) continue;
     // Solo first: it is a bare container with no compose project at all, and
     // its name would otherwise read as a project called "<variant>-<app>-solo".
     const solo = ct.name.match(BENCH_NAME_RE);
@@ -1913,34 +1946,66 @@ interface VerifyResult {
   expect: Variant;
   ok: number;
   bad: number;
+  /** PoCs the harness could not run at all - never the same as "fixed" */
+  harness: number;
   failures: string[];
+  broken: string[];
   passed: boolean;
+}
+
+/**
+ * The ports the stack actually published, named the way the compose files name
+ * them (`DYNAST_PORT_<SERVICE>_<CONTAINERPORT>`).
+ *
+ * A PoC for a bug that lives on a sidecar - weirdproxy's Apache and Traefik,
+ * laravel's phpMyAdmin - cannot assume the compose default, because the CLI
+ * gives every app its own port block and 13312 is then some other app entirely.
+ * Read from docker rather than from the port plan: the plan only records the
+ * publishes it had to move.
+ */
+async function publishedPortEnv(
+  app: App,
+  variant: Variant,
+  mode: Mode,
+  known?: Container[],
+): Promise<Record<string, string>> {
+  const env: Record<string, string> = {};
+  const containers = known ?? (await listContainers());
+  for (const stack of stacksOf(app, containers)) {
+    if (stack.variant !== variant || stack.mode !== mode) continue;
+    for (const ct of stack.containers) {
+      const service = (ct.service ?? "").toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+      if (!service) continue;
+      for (const p of ct.ports) env[`DYNAST_PORT_${service}_${p.container}`] = String(p.host);
+    }
+  }
+  return env;
 }
 
 async function runVerify(
   app: App,
   target: string,
   expect: Variant,
-  stream: boolean,
+  ports: Record<string, string> = {},
 ): Promise<VerifyResult> {
   const res = await exec(["bash", "ground-truth/run.sh", `expect-${expect}`], {
     cwd: app.dir,
-    env: { TARGET: target },
-    stream,
+    env: { ...ports, TARGET: target },
+    stream: true,
   });
   const out = res.stdout + res.stderr;
-  const summary = out.match(/ok=(\d+)\s+bad=(\d+)/);
-  const failures = (out.match(/FAILURES:(.*)/)?.[1] ?? "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
+  const summary = out.match(/ok=(\d+)\s+bad=(\d+)(?:\s+harness=(\d+))?/);
+  const names = (re: RegExp) =>
+    (out.match(re)?.[1] ?? "").trim().split(/\s+/).filter(Boolean);
   return {
     app: app.name,
     target,
     expect,
     ok: Number(summary?.[1] ?? 0),
     bad: Number(summary?.[2] ?? 0),
-    failures,
+    harness: Number(summary?.[3] ?? 0),
+    failures: names(/FAILURES:(.*)/),
+    broken: names(/HARNESS:(.*)/),
     passed: res.code === 0,
   };
 }
@@ -1965,40 +2030,91 @@ async function cmdVerify(args: Args) {
   step(
     `verifying ${app!.name} against ${target} ${c.dim(`(expect all ${expect === "vuln" ? "exploitable" : "fixed"})`)}`,
   );
-  const result = await runVerify(app!, target!, expect, true);
+  const result = await runVerify(
+    app!, target!, expect,
+    await publishedPortEnv(app!, expect, live[0]?.mode ?? "compose", containers),
+  );
   emit(result);
   if (!result.passed) {
     // In --json the result object above is the machine answer; don't also emit
     // an error document. Just fail the exit code.
     if (JSON_MODE.on) process.exitCode = 1;
-    else die(`verify failed: ${result.bad} PoC(s) off-expectation`);
+    else {
+      const parts = [];
+      if (result.bad) parts.push(`${result.bad} PoC(s) off-expectation`);
+      if (result.harness) parts.push(`${result.harness} the harness could not run`);
+      die(`verify failed: ${parts.join(", ") || "the runner could not start"}`);
+    }
   }
 }
 
 async function cmdValidate(args: Args) {
   const [app] = resolveApps(args, { allowAll: false });
   const timeout = Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S);
-  const build = !flagBool(args, "no-build");
-  const common = { mode: "compose" as Mode, build, timeout, takeover: !flagBool(args, "no-takeover") };
+  const keep = flagBool(args, "keep");
+  const common = {
+    mode: "compose" as Mode,
+    // both images are built up front, so neither start rebuilds
+    build: false,
+    timeout,
+    takeover: !flagBool(args, "no-takeover"),
+  };
 
-  step(`validate ${app!.name}: fresh vuln → all exploitable`);
-  await stopStack(app!, "vuln", "compose", { volumes: true });
-  const vulnUp = await startApp(app!, { ...common, variant: "vuln" });
-  const vulnRes = await runVerify(app!, vulnUp.target, "vuln", true);
+  // Both twins first, and concurrently: they are independent compose projects
+  // building independent images, so nothing but the loop was serialising them.
+  // Doing it up front also means a broken safe/ build is reported before the
+  // vuln leg runs rather than after it. Output is captured rather than streamed
+  // (two interleaved build logs are unreadable) and printed for whichever failed.
+  if (!flagBool(args, "no-build")) {
+    step(`validate ${app!.name}: building both twins ${c.dim("(in parallel; log shown only on failure)")}`);
+    const builds = await Promise.all(
+      (["vuln", "safe"] as const).map((variant) =>
+        docker(composeArgs(app!, variant, ["build"]), { cwd: app!.dir })
+          .then((res) => ({ variant, res })),
+      ),
+    );
+    for (const { variant, res } of builds) {
+      if (res.code !== 0) {
+        log(res.stdout + res.stderr);
+        die(`docker compose build failed for ${app!.name}/${variant}`);
+      }
+    }
+  }
 
-  step(`validate ${app!.name}: safe twin → all fixed`);
-  const safeUp = await startApp(app!, { ...common, variant: "safe" });
-  const safeRes = await runVerify(app!, safeUp.target, "safe", true);
+  let vulnRes: VerifyResult;
+  let safeRes: VerifyResult;
+  try {
+    step(`validate ${app!.name}: fresh vuln → all exploitable`);
+    await stopStack(app!, "vuln", "compose", { volumes: true });
+    const vulnUp = await startApp(app!, { ...common, variant: "vuln" });
+    vulnRes = await runVerify(
+      app!, vulnUp.target, "vuln", await publishedPortEnv(app!, "vuln", "compose"),
+    );
 
-  if (!flagBool(args, "keep")) await stopStack(app!, "safe", "compose", { volumes: true });
+    step(`validate ${app!.name}: safe twin → all fixed`);
+    const safeUp = await startApp(app!, { ...common, variant: "safe" });
+    safeRes = await runVerify(
+      app!, safeUp.target, "safe", await publishedPortEnv(app!, "safe", "compose"),
+    );
+  } finally {
+    // A failed health wait or a PoC run that threw used to leave the stack up.
+    // Teardown belongs here so the original failure is what the user sees.
+    if (!keep) {
+      for (const variant of ["safe", "vuln"] as const) {
+        await stopStack(app!, variant, "compose", { volumes: true }).catch(() => {});
+      }
+    }
+  }
 
   const passed = vulnRes.passed && safeRes.passed;
   emit({ app: app!.name, passed, vuln: vulnRes, safe: safeRes });
   log();
+  const trouble = (r: VerifyResult) =>
+    `bad=${r.bad}` + (r.harness ? `, harness=${r.harness}` : "");
   log(
     passed
       ? c.green(`ok   ${app!.name}: ${vulnRes.ok} exploitable on vuln/, ${safeRes.ok} fixed on safe/`)
-      : c.red(`FAIL ${app!.name}: vuln bad=${vulnRes.bad}, safe bad=${safeRes.bad}`),
+      : c.red(`FAIL ${app!.name}: vuln ${trouble(vulnRes)}, safe ${trouble(safeRes)}`),
   );
   if (!passed) {
     if (JSON_MODE.on) process.exitCode = 1;
@@ -2427,15 +2543,24 @@ async function cmdRun(args: Args) {
   const started = await startApp(app!, { variant, mode, ...startFlags(args) });
 
   step(`running: ${c.dim(args.passthrough.join(" "))}`);
-  const env = {
+  // The command under `run` is the thing being measured, so by default it gets
+  // target metadata and nothing else. Handing it the answer key or the harness
+  // token would let a scanner read the expected findings, or ask /api/_verify/*
+  // for the seeded ids instead of discovering them - either way the score stops
+  // meaning what it claims to mean.
+  const trusted = flagBool(args, "trusted");
+  const env: Record<string, string> = {
     TARGET: started.target,
     DYNAST_BENCH_APP: app!.name,
     DYNAST_BENCH_VARIANT: variant,
     DYNAST_BENCH_TARGET: started.target,
     DYNAST_BENCH_HEALTH: started.health,
-    DYNAST_BENCH_GROUND_TRUTH: app!.groundTruth,
-    DYNAST_BENCH_VERIFY_TOKEN: VERIFY_TOKEN,
   };
+  if (trusted) {
+    env.DYNAST_BENCH_GROUND_TRUTH = app!.groundTruth;
+    env.DYNAST_BENCH_VERIFY_TOKEN = VERIFY_TOKEN;
+    log(c.dim("   --trusted: answer key + verify token exported (not a scoreable run)"));
+  }
   const code = await execInherit(args.passthrough, { env });
 
   if (!flagBool(args, "keep")) {
@@ -2445,7 +2570,7 @@ async function cmdRun(args: Args) {
     log(c.dim(`   left running at ${started.target} (--keep)`));
   }
 
-  emit({ ...started, command: args.passthrough, exit_code: code });
+  emit({ ...started, command: args.passthrough, trusted, exit_code: code });
   process.exitCode = code;
 }
 
@@ -2676,6 +2801,8 @@ ${c.bold("FLAGS")}
   --images                 also drop the images this repo built (clean)
   --orphan-volumes         also drop anonymous volumes left by earlier runs (clean)
   --keep                   leave the app running (run/validate)
+  --trusted                also export the answer key + verify token to the
+                           command (run) - for harness tooling, never a scan
   --json                   machine-readable output on stdout
   --yes                    skip the confirmation prompt (clean)
   --safe FILE              findings from the patched twin (score) - all false alarms

@@ -13,6 +13,12 @@
 // browser. The widget calls the sync endpoint with the caller's own session
 // cookie; the Basic service credential is only ever used server-to-server.
 
+// The key the embedded widget puts in every postMessage so the page knows the
+// message came from "our" widget. It is a constant in a client module, so it is
+// in the public bundle exactly like everything else here — which is the whole
+// problem with authenticating a message by its contents (see POSTMSG-003).
+export const WIDGET_APP_KEY = "wgt_live_7f3a9c21";
+
 // NEAR-MISS NM-B64-001: a committed base64 literal, same shape as a leaked
 // credential — but the plaintext is public UI config, not a secret. Decodes to
 // {"theme":"dark","density":"compact"}. Flagging it is a false positive.

@@ -2,6 +2,10 @@
 set -u
 TARGET="${TARGET:-http://127.0.0.1:13311}"
 VERIFY_TOKEN="${VERIFY_TOKEN:-benchsecret}"
+# A URL the AGENT dials is dialled from inside the container, so it keeps the
+# container port - $TARGET is a host address the container cannot reach, and a
+# PoC that hands the agent one only ever gets "fetch failed" back.
+SELF_INTERNAL="${SELF_INTERNAL:-http://127.0.0.1:3000}"
 
 tmp_json() { mktemp "${TMPDIR:-/tmp}/llmagent.XXXXXX"; }
 json_get() { curl -fsS "$TARGET$1"; }

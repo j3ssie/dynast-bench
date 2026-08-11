@@ -13,6 +13,7 @@ DYNAST       ?= $(shell command -v dynast-bench 2>/dev/null || echo "bun ../../d
 VARIANT      ?= vuln
 PORT         ?= $(DYNAST_PORT)
 SOLO_IMG     := $(VARIANT)-$(APP)-solo
+SOLO_HEALTH  ?= /api/_verify/health
 
 .PHONY: up reset down safe safe-down verify verify-safe validate diff score check solo solo-down config-check help
 
@@ -58,6 +59,7 @@ solo:      ## build + run standalone single-image simulation [VARIANT= PORT=]
 	-docker rm -f $(SOLO_IMG) 2>/dev/null
 	docker run -d --rm -p 127.0.0.1:$(PORT):13000 --name $(SOLO_IMG) $(SOLO_IMG)
 	@echo ">> $(SOLO_IMG) scanner/netmeta starting on http://127.0.0.1:$(PORT) (loopback-alias fleet)"
+	@bash ../../dynast-bench/tools/wait-healthy.sh $(SOLO_IMG) "http://127.0.0.1:$(PORT)$(SOLO_HEALTH)"
 
 solo-down: ## stop the standalone single-image container
 	-docker rm -f $(SOLO_IMG)

@@ -1,9 +1,9 @@
 FROM golang:1.23-bookworm AS build
 WORKDIR /src
 COPY go.mod go.sum* ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/golang-app .
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=linux go build -o /out/golang-app .
 
 FROM debian:bookworm-slim
 RUN apt-get update \

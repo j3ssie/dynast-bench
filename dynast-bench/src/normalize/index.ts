@@ -113,12 +113,20 @@ export function normalizeText(text: string, opts: NormalizeOpts = {}): Normalize
     : detectFormat(text);
   const format = detected.format;
 
+  // A JSON document that will not parse has to be an error, not an empty run.
+  // Scoring a truncated report as "the tool found nothing" produces a perfectly
+  // plausible 0% recall that reads like a result. Collected here so every exit
+  // below carries it by construction rather than by remembering to.
+  const errors: { at: string; msg: string }[] = [];
   const parseFor = (): unknown => {
     if (detected.doc !== undefined) return detected.doc;
     try {
       return JSON.parse(text);
-    } catch {
-      return parseJsonl(text) ?? undefined;
+    } catch (e) {
+      const jsonl = parseJsonl(text);
+      if (jsonl) return jsonl;
+      errors.push({ at: "$", msg: `${format} input is not valid JSON: ${e instanceof Error ? e.message : e}` });
+      return undefined;
     }
   };
 
@@ -134,7 +142,7 @@ export function normalizeText(text: string, opts: NormalizeOpts = {}): Normalize
         findings: [],
       };
       if (opts.target && !file.run.target) file.run.target = opts.target;
-      return { format, file, notes: [], errors: res.errors, warnings: res.warnings };
+      return { format, file, notes: [], errors: [...errors, ...res.errors], warnings: res.warnings };
     }
     case "zap":
       adapted = fromZap(parseFor(), opts);
@@ -179,7 +187,7 @@ export function normalizeText(text: string, opts: NormalizeOpts = {}): Normalize
     format,
     file: res.value ?? (envelope as FindingsFile),
     notes: adapted.notes,
-    errors: res.errors,
+    errors: [...errors, ...res.errors],
     // a converted file's warnings are about the scanner's data, not the user's
     warnings: res.warnings.filter((w) => !w.at.startsWith("run.variant")),
   };

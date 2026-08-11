@@ -7,7 +7,8 @@
  */
 
 import { coerceConfidence, coerceSeverity } from "../schema/findings.ts";
-import type { Finding, FindingLocation } from "../schema/types.ts";
+import { str } from "../schema/coerce.ts";
+import type { Finding, FindingLocation, Severity } from "../schema/types.ts";
 import {
   allCwes,
   clip,
@@ -30,6 +31,22 @@ export interface AdapterResult {
 // their own, and disagreed (a scanner "warning" scored medium here, low there).
 const sev = coerceSeverity;
 const conf = coerceConfidence;
+
+/**
+ * SARIF's `security-severity` is a CVSS-style 0.0-10.0 string (the GitHub code
+ * scanning convention, emitted by CodeQL, Semgrep and Snyk). It cannot go
+ * through the shared alias table, where "3" means ZAP's high rather than CVSS's
+ * low - which is why every real SARIF report used to arrive with no severity.
+ */
+function cvssSeverity(raw: unknown): Severity | undefined {
+  const n = Number(str(raw));
+  if (!Number.isFinite(n) || n < 0 || n > 10) return undefined;
+  if (n >= 9) return "critical";
+  if (n >= 7) return "high";
+  if (n >= 4) return "medium";
+  if (n > 0) return "low";
+  return "info";
+}
 
 /**
  * Per-app proof markers from the answer key, so a marker in a scanner's evidence
@@ -148,8 +165,9 @@ export function fromSarif(doc: any, opts: AdapterOpts = {}): AdapterResult {
         cwe: cwe ?? undefined,
         cwes: cwes.length > 1 ? cwes.slice(1) : undefined,
         severity:
-          sev(result?.properties?.["security-severity"] ?? rule?.properties?.["security-severity"]) ??
-          sev(result.level ?? rule?.defaultConfiguration?.level),
+          cvssSeverity(
+            result?.properties?.["security-severity"] ?? rule?.properties?.["security-severity"],
+          ) ?? sev(result.level ?? rule?.defaultConfiguration?.level),
         confidence: conf(result?.properties?.confidence ?? rule?.properties?.confidence),
         location,
         evidence: { markers: markersIn(vocab, message, region?.snippet?.text), note: message },

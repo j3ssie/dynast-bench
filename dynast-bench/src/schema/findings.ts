@@ -172,10 +172,13 @@ function coerceLocation(
   }
   if (isObj(src.ws)) {
     const w = src.ws;
-    if (str(w.transport) || str(w.event) || str(w.endpoint)) {
+    if (str(w.transport) || str(w.event) || str(w.channel) || str(w.endpoint)) {
       loc.ws = {
         transport: str(w.transport)?.toLowerCase(),
         event: str(w.event),
+        // dropping this silently cost the matcher the one field that tells two
+        // bugs on the same subscribe frame apart
+        channel: str(w.channel),
         endpoint: str(w.endpoint),
       };
     }
