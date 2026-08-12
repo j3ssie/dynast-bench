@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { parseGroundTruthFile } from "../src/schema/ground-truth.ts";
@@ -99,6 +99,43 @@ describe.each(apps)("%s", (app) => {
       const p = nm.match?.http?.path;
       if (!p) continue;
       expect(bugPaths.has(p), `${nm.id} anchors on a bug's own route ${p}`).toBe(false);
+    }
+  });
+
+  // Several apps plant resource-exhaustion bugs on purpose, and more spawn a
+  // process per request. Uncapped, fuzzing any of them exhausts the Docker VM
+  // and every OTHER app on the daemon dies too - which reads as "the benchmark
+  // is flaky" rather than "this app has a DoS". The caps are what keep a
+  // planted bug's blast radius inside its own container, so a new app silently
+  // shipping without them is a regression in the whole suite, not just itself.
+  test.each(["vuln", "safe"])("%s compose caps every service", (variant) => {
+    const file = join(APPS_DIR, app, variant, "docker-compose.yml");
+    if (!existsSync(file)) return; // not every app ships both twins
+    const lines = readFileSync(file, "utf8").split("\n");
+
+    const start = lines.findIndex((l) => /^services:\s*$/.test(l));
+    expect(start, `${variant}/docker-compose.yml has no services: block`).toBeGreaterThan(-1);
+    let end = lines.length;
+    for (let i = start + 1; i < lines.length; i++) {
+      if (/^[A-Za-z]/.test(lines[i]!)) { end = i; break; }
+    }
+
+    // service keys are exactly 2-space indented with nothing after the colon
+    const svcs: { name: string; line: number }[] = [];
+    for (let i = start + 1; i < end; i++) {
+      const m = /^ {2}([A-Za-z0-9_.-]+):\s*$/.exec(lines[i]!);
+      if (m) svcs.push({ name: m[1]!, line: i });
+    }
+    expect(svcs.length, `${variant}/docker-compose.yml declares no services`).toBeGreaterThan(0);
+
+    for (const [i, svc] of svcs.entries()) {
+      const body = lines.slice(svc.line + 1, svcs[i + 1]?.line ?? end).join("\n");
+      for (const key of ["mem_limit", "cpus", "pids_limit"]) {
+        expect(
+          new RegExp(`^\\s*${key}:`, "m").test(body),
+          `${app}/${variant} service "${svc.name}" has no ${key} (see CLAUDE.md "Resource limits")`,
+        ).toBe(true);
+      }
     }
   });
 });

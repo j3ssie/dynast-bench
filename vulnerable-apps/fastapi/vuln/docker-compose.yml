@@ -1,6 +1,9 @@
 name: vuln-fastapi
 services:
   app:
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 1024
     build: .
     ports: ["127.0.0.1:${DYNAST_PORT:-13311}:3000"]
     environment:
@@ -23,6 +26,9 @@ services:
       retries: 30
       start_period: 60s
   postgres:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     image: postgres:16.4
     environment: { POSTGRES_USER: bench, POSTGRES_PASSWORD: bench, POSTGRES_DB: bench }
     healthcheck:
@@ -31,9 +37,15 @@ services:
       timeout: 5s
       retries: 20
   minio:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     image: minio/minio:RELEASE.2024-08-17T01-24-54Z
     command: server /data --console-address ":9001"
     environment: { MINIO_ROOT_USER: bench, MINIO_ROOT_PASSWORD: bench12345 }
   mailpit:
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 512
     image: axllent/mailpit:v1.20
     ports: ["127.0.0.1:${DYNAST_PORT_MAILPIT_8025:-13312}:8025", "127.0.0.1:${DYNAST_PORT_MAILPIT_1025:-13313}:1025"]

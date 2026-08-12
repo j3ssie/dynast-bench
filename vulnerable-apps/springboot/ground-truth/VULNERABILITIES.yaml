@@ -677,7 +677,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { path: "/", port: 13313 }
-      file: { path: vuln/docker-compose.yml, symbol: "jenkins service", lines: [37, 47] }
+      file: { path: vuln/docker-compose.yml, symbol: "jenkins service", lines: [46, 62] }
     poc: ground-truth/verify/jenkins_001.sh
     notes: >
       Compose side-surface documents weak Jenkins admin/admin credential.

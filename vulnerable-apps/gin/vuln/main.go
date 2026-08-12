@@ -46,6 +46,14 @@ var (
 // chromeBin is the headless browser used to render URLs to PDF.
 var chromeBin = getenv("CHROME_BIN", "chromium")
 
+// renderSlots caps how many headless-chrome renders run at once. Each render is
+// a whole browser process, so an uncapped endpoint turns any concurrent crawl
+// into an out-of-memory kill - 20 parallel requests spawned 20 chromes and took
+// the container to its ceiling. Shedding past the cap is what a real render
+// service does. This is deliberately NOT part of SSRF-001: the sink still takes
+// the URL unvalidated, it just cannot fork the box to death first.
+var renderSlots = make(chan struct{}, 2)
+
 type User struct {
 	ID           int
 	Email        string
@@ -600,6 +608,13 @@ func renderPDF(c *gin.Context) {
 	_ = c.ShouldBindJSON(&in)
 	if in.URL == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "url required"})
+		return
+	}
+	select {
+	case renderSlots <- struct{}{}:
+		defer func() { <-renderSlots }()
+	default:
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "renderer busy"})
 		return
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 25*time.Second)

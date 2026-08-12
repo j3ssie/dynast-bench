@@ -341,6 +341,31 @@ services:
 - PoCs still read `$TARGET` and must never hardcode a host port. A URL that the
   *container* dials (an SSRF target, a healthcheck) keeps its container port.
 
+## Resource limits (every service, both twins)
+
+Every compose service carries `mem_limit` / `cpus` / `pids_limit`. **Keep them
+when you add a service or a new app.** They are not tuning - they are what stops
+one app's planted bug from taking the machine down with it:
+
+```yaml
+services:
+  app:
+    mem_limit: 1g      # 2g for JVM/.NET/LLM stacks (aspnet springboot jsp llm*)
+    cpus: 2.0
+    pids_limit: 1024   # a fork bomb out of an RCE sink stays a container problem
+```
+
+Several apps plant resource-exhaustion bugs on purpose (`gin` DOS-001 is an
+uncapped gzip bomb; `graphql` and `websocket` carry `CWE-770`s), and several
+more spawn a process per request (`gin`'s `renderPDF` starts a headless chrome
+with no concurrency cap). Uncapped, a scanner fuzzing any of those exhausts the
+Docker VM and every *other* app on the daemon dies with it - which reads as
+"the benchmark is flaky", not "gin has a DoS". Capped, the same event is one
+container hitting its ceiling, with `OOMKilled=true` naming the culprit.
+
+Caps are ceilings, not reservations, so a generous number costs nothing until
+something runs away. `dynast-bench stress <app>` is what checks they hold.
+
 ## Verification API (harness-only, in every app)
 
 Guarded by header `X-Verify-Token: benchsecret`. Used by the compose healthcheck
@@ -404,7 +429,7 @@ start services; Postgres runs under its own user via `su postgres`. See
 - Apps **self-validate** via `ground-truth/run.sh` (used by `make verify`).
 - **`dynast-bench/dynast-bench.ts`** is the built CLI (single-file Bun/TypeScript, zero
   runtime deps): `list · info · vulns · doctor · start · stop · stop-all · restart ·
-  reset · clean · status · target · logs · verify · validate · run`. `vulns <app>`
+  reset · clean · status · target · logs · verify · validate · stress · run`. `vulns <app>`
   prints the answer key as a checklist (titles; `--full`/`--near`/`--ids`), which
   is how you check what a scan was supposed to find. It derives everything from
   the apps themselves - compose ports + healthcheck path, the app `Makefile`'s standalone
@@ -473,5 +498,7 @@ start services; Postgres runs under its own user via `su postgres`. See
 - Don't bind ports to `0.0.0.0`. 127.0.0.1 only.
 - Don't hardcode a host port in a compose file - publishes are
   `${DYNAST_PORT*:-133xx}` so the CLI can relocate them (see "Host ports").
+- Don't drop a service's `mem_limit`/`cpus`/`pids_limit`, and don't add a service
+  without them (see "Resource limits").
 - Don't invent new domain/seed/verification-API conventions - reuse the shared ones
   so cross-app scanner scores stay comparable.

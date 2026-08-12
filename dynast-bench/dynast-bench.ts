@@ -770,6 +770,9 @@ function parseArgs(argv: string[]): Args {
     "safe",
     "limit",
     "count",
+    "duration",
+    "concurrency",
+    "recover",
   ]);
 
   for (let i = 0; i < argv.length; i++) {
@@ -2122,6 +2125,513 @@ async function cmdValidate(args: Args) {
   }
 }
 
+// ------------------------------------------------------------------- stress --
+
+// WHY THIS EXISTS
+//
+// `verify` answers "is the bug still exploitable". It says nothing about what the
+// app looks like AFTER a scanner has been through it, and that turned out to be
+// the gap: a single crawl of nextjs left the app at ~130% CPU and 4x its idle RSS
+// for twenty minutes with zero traffic, because every signup queued an email and
+// the crawler had made 2081 of them. Every PoC still passed. The app was, by any
+// measure the suite had, fine.
+//
+// So this measures the two things `verify` cannot: does the app keep ANSWERING
+// while it is being hammered, and does it come back to where it started once the
+// hammering stops.
+//
+// The trap is that "the app fell over" is sometimes the correct answer. gin
+// plants a decompression bomb on purpose; an app that shrugs it off would mean
+// the bug is gone. So the declared resource-exhaustion bugs are read out of the
+// answer key and fired in their own phase, where degradation is recorded rather
+// than failed - only a container that DIES or never recovers counts against it.
+
+/** Bug classes whose whole point is resource exhaustion. An app that declares one
+ *  is expected to degrade when it is fired, so phase B grades containment and
+ *  recovery instead of survival. */
+const DOS_CWES = new Set(["CWE-400", "CWE-770", "CWE-1333", "CWE-405", "CWE-834"]);
+
+interface Sample {
+  cpu: number; // percent of one core; 200 = two cores saturated
+  rssMb: number;
+}
+
+/** MiB from a docker stats size ("451.1MiB", "1.454GiB", "3.91MiB"). */
+function parseSizeMb(s: string): number {
+  const m = /^([\d.]+)\s*([KMGT]?i?B)$/i.exec(s.trim());
+  if (!m) return 0;
+  const scale: Record<string, number> = {
+    b: 1 / 1048576, kib: 1 / 1024, kb: 1 / 1024,
+    mib: 1, mb: 1, gib: 1024, gb: 1024, tib: 1048576, tb: 1048576,
+  };
+  return Number(m[1]) * (scale[m[2].toLowerCase()] ?? 1);
+}
+
+async function statsOnce(container: string): Promise<Sample | null> {
+  const res = await docker([
+    "stats", "--no-stream", "--format", "{{.CPUPerc}}\t{{.MemUsage}}", container,
+  ]);
+  if (res.code !== 0) return null;
+  const line = res.stdout.trim().split("\n")[0] ?? "";
+  const [cpuStr, memStr] = line.split("\t");
+  if (!cpuStr || !memStr) return null;
+  return {
+    cpu: Number(cpuStr.replace("%", "")) || 0,
+    rssMb: parseSizeMb(memStr.split("/")[0] ?? ""),
+  };
+}
+
+/** The container running the app under test (not its datastores). */
+async function appContainerName(app: App, variant: Variant): Promise<string | null> {
+  const res = await docker([
+    "ps", "--filter", `label=com.docker.compose.project=${composeProject(app.name, variant)}`,
+    "--filter", `label=com.docker.compose.service=${app.appService}`,
+    "--format", "{{.Names}}",
+  ]);
+  return res.stdout.trim().split("\n").filter(Boolean)[0] ?? null;
+}
+
+interface ContainerState {
+  running: boolean;
+  oomKilled: boolean;
+  exitCode: number;
+  restarts: number;
+  /** the compose mem_limit, so a peak can be read against its ceiling */
+  memLimitMb: number;
+}
+
+async function containerState(name: string): Promise<ContainerState | null> {
+  const res = await docker([
+    "inspect", "-f",
+    "{{.State.Running}}\t{{.State.OOMKilled}}\t{{.State.ExitCode}}\t{{.RestartCount}}\t{{.HostConfig.Memory}}",
+    name,
+  ]);
+  if (res.code !== 0) return null;
+  const [run, oom, code, rs, mem] = res.stdout.trim().split("\t");
+  return {
+    running: run === "true",
+    oomKilled: oom === "true",
+    exitCode: Number(code) || 0,
+    restarts: Number(rs) || 0,
+    memLimitMb: Math.round((Number(mem) || 0) / 1048576),
+  };
+}
+
+/**
+ * Rows the app is holding, best effort, for the state-growth reading.
+ *
+ * CPU and RSS both come back to baseline after a crawl, which is what makes
+ * unbounded state the easiest failure to miss: nextjs recovers in 2s having
+ * quietly persisted 847 signup drafts and 806 queued emails from 20 seconds of
+ * anonymous traffic. Nothing in `verify` or in the CPU/RSS recovery check can
+ * see that. It is REPORTED, not graded - across 19 heterogeneous apps any fixed
+ * rows-per-request threshold would be arbitrary, and a flaky gate is worse than
+ * an honest number.
+ */
+async function stateRows(app: App, variant: Variant): Promise<number | null> {
+  const project = composeProject(app.name, variant);
+  const res = await docker([
+    "ps", "--filter", `label=com.docker.compose.project=${project}`,
+    "--format", "{{.Names}}\t{{.Image}}",
+  ]);
+  if (res.code !== 0) return null;
+
+  for (const line of res.stdout.trim().split("\n").filter(Boolean)) {
+    const [name, image = ""] = line.split("\t");
+    if (!name) continue;
+    if (/postgres/i.test(image)) {
+      const q = await docker([
+        "exec", name, "psql", "-U", "bench", "-d", "bench", "-tAc",
+        "select coalesce(sum(n_live_tup),0)::bigint from pg_stat_user_tables",
+      ]);
+      if (q.code === 0) return Number(q.stdout.trim()) || 0;
+    } else if (/mysql|mariadb/i.test(image)) {
+      const q = await docker([
+        "exec", name, "mysql", "-ubench", "-pbench", "-N", "-B", "-e",
+        "select coalesce(sum(table_rows),0) from information_schema.tables where table_schema='bench'",
+      ]);
+      if (q.code === 0) return Number(q.stdout.trim()) || 0;
+    }
+  }
+  return null; // no datastore we know how to count - not an error
+}
+
+interface LoadRoute {
+  method: string;
+  path: string;
+}
+
+/**
+ * The surface to hammer, derived from the answer key so a new app is covered
+ * without registering anything. Resource-exhaustion entries are held back for
+ * phase B, and the verification API is skipped - it is the harness, not the app.
+ */
+function loadRoutes(app: App): LoadRoute[] {
+  const seen = new Set<string>();
+  const out: LoadRoute[] = [{ method: "GET", path: "/" }];
+  seen.add("GET /");
+
+  for (const v of groundTruth(app).vulnerabilities ?? []) {
+    if (DOS_CWES.has(String(v.cwe ?? ""))) continue;
+    const http = v.match?.http;
+    if (!http?.path) continue;
+    const method = String(http.method ?? "GET").toUpperCase();
+    // :id / {id} placeholders would 404 as-is; a seeded row is id 1 everywhere.
+    let path = String(http.path).replace(/[:{][A-Za-z_]+\}?/g, "1");
+    if (path.includes("_verify")) continue;
+    const params: string[] = Array.isArray(http.params) ? http.params : [];
+    if (params.length) {
+      path += (path.includes("?") ? "&" : "?") + params.map((p) => `${p}=stress`).join("&");
+    }
+    const key = `${method} ${path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ method, path });
+  }
+  return out;
+}
+
+/**
+ * Benign body, but a DIFFERENT one every request. The point is to exercise the
+ * handler under load, not to exploit it - a real payload would confound "did
+ * load break it" with "did RCE break it".
+ *
+ * The uniqueness is not cosmetic. Sending one fixed identity is what a load
+ * generator does; a crawler sends a fresh one every time, and that is the
+ * difference between an upsert that no-ops and 2081 signup drafts each queuing
+ * an email. The first version of this held one constant body and nextjs sailed
+ * through the very amplification that motivated the command.
+ */
+const stressBody = (n: number) =>
+  JSON.stringify({
+    email: `stress+${n}@bench.local`, password: "stress-not-the-password",
+    q: `stress${n}`, name: `stress${n}`, title: `stress${n}`,
+    content: `stress${n}`, url: "http://127.0.0.1/",
+  });
+
+interface PhaseResult {
+  name: string;
+  seconds: number;
+  requests: number;
+  healthProbes: number;
+  healthOk: number;
+  okRate: number;
+  p50Ms: number | null;
+  p95Ms: number | null;
+  peakCpu: number;
+  peakRssMb: number;
+}
+
+const pct = (xs: number[], p: number): number | null => {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  return Math.round(s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))]!);
+};
+
+/**
+ * Drive `work` for `seconds` while independently probing health and sampling the
+ * container. The health probe uses the same 5s budget poc-runner.sh does, so a
+ * failure here means the same thing a failure there would: the suite would have
+ * called this app down.
+ */
+async function stressPhase(
+  name: string,
+  seconds: number,
+  target: string,
+  healthPath: string,
+  container: string | null,
+  work: (deadline: number) => Promise<number>,
+): Promise<PhaseResult> {
+  const deadline = Date.now() + seconds * 1000;
+  const lat: number[] = [];
+  let probes = 0, ok = 0, peakCpu = 0, peakRssMb = 0;
+
+  const monitor = (async () => {
+    while (Date.now() < deadline) {
+      const t0 = Date.now();
+      const res = await probeHealth(target, healthPath, 5000);
+      const dt = Date.now() - t0;
+      probes++;
+      if (res.ok) { ok++; lat.push(dt); }
+      await Bun.sleep(Math.max(0, 500 - (Date.now() - t0)));
+    }
+  })();
+
+  const sampler = (async () => {
+    if (!container) return;
+    while (Date.now() < deadline) {
+      const s = await statsOnce(container);
+      if (s) { peakCpu = Math.max(peakCpu, s.cpu); peakRssMb = Math.max(peakRssMb, s.rssMb); }
+      await Bun.sleep(500);
+    }
+  })();
+
+  const [requests] = await Promise.all([work(deadline), monitor, sampler]);
+
+  return {
+    name, seconds, requests,
+    healthProbes: probes, healthOk: ok,
+    okRate: probes ? ok / probes : 0,
+    p50Ms: pct(lat, 50), p95Ms: pct(lat, 95),
+    peakCpu: Math.round(peakCpu), peakRssMb: Math.round(peakRssMb),
+  };
+}
+
+async function cmdStress(args: Args) {
+  const [app] = resolveApps(args, { allowAll: false });
+  const variant = wantVariant(args);
+  const duration = Number(flagStr(args, "duration") ?? 20);
+  const concurrency = Number(flagStr(args, "concurrency") ?? 20);
+  const recoverBudget = Number(flagStr(args, "recover") ?? 90);
+  const keep = flagBool(args, "keep");
+
+  let containers = await listContainers();
+  let live = liveStacks(app!, containers).filter((s) => s.variant === variant);
+  let startedByUs = false;
+  let target = flagStr(args, "target") ?? live[0]?.target ?? null;
+
+  if (!target) {
+    const up = await startApp(app!, {
+      variant, mode: "compose",
+      build: !flagBool(args, "no-build"),
+      timeout: Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S),
+      takeover: !flagBool(args, "no-takeover"),
+    });
+    target = up.target;
+    startedByUs = true;
+    containers = await listContainers();
+  }
+
+  const container = await appContainerName(app!, variant);
+  if (!container) warn(`could not find the app container - CPU/RSS will not be sampled`);
+
+  try {
+    // ---- baseline: what idle looks like, so "recovered" has a definition ----
+    step(`stress ${c.bold(app!.name)}: baseline ${c.dim("(8s idle)")}`);
+    const baseSamples: Sample[] = [];
+    for (let i = 0; i < 5 && container; i++) {
+      const s = await statsOnce(container);
+      if (s) baseSamples.push(s);
+      await Bun.sleep(400);
+    }
+    const baseCpu = baseSamples.length
+      ? baseSamples.reduce((a, s) => a + s.cpu, 0) / baseSamples.length : 0;
+    const baseRssMb = baseSamples.length
+      ? baseSamples.reduce((a, s) => a + s.rssMb, 0) / baseSamples.length : 0;
+    const rowsBefore = await stateRows(app!, variant);
+    log(
+      `     idle cpu ${baseCpu.toFixed(1)}%  rss ${Math.round(baseRssMb)}MiB` +
+      (rowsBefore !== null ? `  rows ${rowsBefore}` : ""),
+    );
+
+    // ---- phase A: ordinary crawl traffic. EVERY app must survive this. ----
+    const routes = loadRoutes(app!);
+    step(
+      `stress ${c.bold(app!.name)}: crawl flood ` +
+      c.dim(`(${concurrency} workers x ${duration}s over ${routes.length} routes)`),
+    );
+    const crawl = await stressPhase(
+      "crawl", duration, target!, app!.healthPath, container,
+      async (deadline) => {
+        let n = 0;
+        const worker = async (id: number) => {
+          let i = id;
+          while (Date.now() < deadline) {
+            const r = routes[i % routes.length]!;
+            // unique per (worker, iteration) so no two requests share an identity
+            const uniq = id * 1_000_000 + i++;
+            try {
+              await fetch(target + r.path, {
+                method: r.method,
+                headers: { "content-type": "application/json" },
+                body: r.method === "GET" || r.method === "HEAD" ? undefined : stressBody(uniq),
+                signal: AbortSignal.timeout(10_000),
+              }).then((res) => res.arrayBuffer()).catch(() => {});
+            } catch { /* a refused/timed-out request is a data point, not a crash */ }
+            n++;
+          }
+        };
+        await Promise.all(Array.from({ length: concurrency }, (_, i) => worker(i)));
+        return n;
+      },
+    );
+    log(
+      `     ${crawl.requests} reqs · health ${crawl.healthOk}/${crawl.healthProbes} ` +
+      `· p95 ${crawl.p95Ms ?? "-"}ms · peak cpu ${crawl.peakCpu}% rss ${crawl.peakRssMb}MiB`,
+    );
+
+    // ---- phase B: the app's OWN declared resource-exhaustion bugs ----
+    const dosVulns = (groundTruth(app!).vulnerabilities ?? []).filter(
+      (v) => DOS_CWES.has(String(v.cwe ?? "")) && v.poc,
+    );
+    let dos: PhaseResult | null = null;
+    if (dosVulns.length) {
+      const env = await publishedPortEnv(app!, variant, "compose", containers);
+      step(
+        `stress ${c.bold(app!.name)}: declared DoS ` +
+        c.dim(`(${dosVulns.map((v) => v.id).join(", ")} - degradation is expected here)`),
+      );
+      dos = await stressPhase(
+        "declared-dos", Math.min(duration, 20), target!, app!.healthPath, container,
+        async (deadline) => {
+          let n = 0;
+          const fire = async () => {
+            while (Date.now() < deadline) {
+              for (const v of dosVulns) {
+                if (Date.now() >= deadline) break;
+                await exec(["bash", join(app!.dir, String(v.poc))], {
+                  cwd: app!.dir,
+                  env: { ...env, TARGET: target!, VERIFY_TOKEN },
+                }).catch(() => {});
+                n++;
+              }
+            }
+          };
+          // a handful in parallel: one bomb is a PoC, several at once is the DoS
+          await Promise.all(Array.from({ length: 4 }, fire));
+          return n;
+        },
+      );
+      log(
+        `     ${dos.requests} PoC firings · health ${dos.healthOk}/${dos.healthProbes} ` +
+        `· peak cpu ${dos.peakCpu}% rss ${dos.peakRssMb}MiB`,
+      );
+    }
+
+    // ---- recovery: the check `verify` has no way to make ----
+    //
+    // "Recovered" means the app STOPPED WORKING, not that it handed the memory
+    // back. A managed runtime legitimately keeps a warm heap: .NET settled at
+    // 291MiB, puma at 202MiB and php-fpm at 105MiB, every one of them with the
+    // CPU flat at 0%. Failing those is reporting normal allocator behaviour as
+    // a fault. What is worth failing is what nextjs did - 130% CPU for twenty
+    // minutes with no traffic - and that shows up in CPU. So the oracle is idle
+    // CPU plus an RSS that has stopped CLIMBING, and the retention is reported
+    // rather than graded.
+    step(`stress ${c.bold(app!.name)}: recovery ${c.dim(`(budget ${recoverBudget}s)`)}`);
+    const cpuCeil = Math.max(baseCpu + 15, 25);
+    let recoveredInS: number | null = null;
+    let lastSample: Sample | null = null;
+    let prevRss: number | null = null;
+    let stableFor = 0; // consecutive samples in which RSS did not climb
+    const recStart = Date.now();
+    while (container && (Date.now() - recStart) / 1000 < recoverBudget) {
+      const s = await statsOnce(container);
+      if (s) {
+        // 3%, or 5MiB for a small heap, absorbs sampling jitter without hiding
+        // a heap that is genuinely still growing. Shrinking is always settled.
+        const settled =
+          prevRss !== null && s.rssMb - prevRss <= Math.max(5, prevRss * 0.03);
+        stableFor = settled ? stableFor + 1 : 0;
+        prevRss = s.rssMb;
+        lastSample = s;
+        if (s.cpu <= cpuCeil && stableFor >= 2) {
+          recoveredInS = Math.round((Date.now() - recStart) / 1000);
+          break;
+        }
+      }
+      await Bun.sleep(2000);
+    }
+    if (!container) recoveredInS = 0; // nothing sampled, nothing to claim
+    const retainedMb = lastSample ? Math.round(lastSample.rssMb - baseRssMb) : 0;
+    log(
+      recoveredInS !== null
+        ? `     idle again in ${recoveredInS}s ${c.dim(`(cpu ${lastSample?.cpu.toFixed(0) ?? "?"}%, heap retained +${retainedMb}MiB)`)}`
+        : c.red(`     still busy after ${recoverBudget}s: cpu ${lastSample?.cpu.toFixed(0) ?? "?"}% and rss ${Math.round(lastSample?.rssMb ?? 0)}MiB still climbing`),
+    );
+
+    const state = container ? await containerState(container) : null;
+    const healthAfter = await probeHealth(target!, app!.healthPath, 5000);
+    const phases = dos ? [crawl, dos] : [crawl];
+    const peakRssMb = Math.max(...phases.map((p) => p.peakRssMb));
+    const peakCpu = Math.max(...phases.map((p) => p.peakCpu));
+    // Which phase drove the peak matters: hitting the ceiling on the declared
+    // DoS is the bug behaving as documented, hitting it on ordinary crawl
+    // traffic is an app that a scanner will knock over.
+    const hottest = phases.reduce((a, b) => (b.peakRssMb > a.peakRssMb ? b : a));
+
+    // After recovery, so anything the app was still flushing has landed.
+    const rowsAfter = await stateRows(app!, variant);
+    const totalReqs = phases.reduce((a, p) => a + p.requests, 0);
+    const stateGrowth =
+      rowsBefore !== null && rowsAfter !== null
+        ? {
+            rowsBefore, rowsAfter,
+            added: rowsAfter - rowsBefore,
+            perKiloRequest: totalReqs
+              ? Math.round(((rowsAfter - rowsBefore) / totalReqs) * 1000)
+              : 0,
+          }
+        : null;
+
+    const survived = crawl.okRate >= 0.95;
+    const contained = !state || (state.running && !state.oomKilled);
+    const recovered = recoveredInS !== null && healthAfter.ok;
+    const passed = survived && contained && recovered;
+
+    const result = {
+      app: app!.name, variant, target, container,
+      passed,
+      baseline: { cpu: Number(baseCpu.toFixed(1)), rssMb: Math.round(baseRssMb) },
+      peak: { cpu: peakCpu, rssMb: peakRssMb, memLimitMb: state?.memLimitMb ?? 0, phase: hottest.name },
+      phases,
+      recovery: {
+        recoveredInS, budgetS: recoverBudget, cpuCeil: Math.round(cpuCeil),
+        // reported, not graded: a warm heap is not a leak
+        heapRetainedMb: retainedMb,
+      },
+      containerState: state,
+      stateGrowth, // reported, deliberately not part of `passed`
+      healthAfter: healthAfter.ok,
+      verdict: {
+        survival: survived,   // ordinary crawl load must not take the app down
+        containment: contained, // limits held; nothing got OOM-killed
+        recovery: recovered,  // came back to idle, still answering
+      },
+    };
+    emit(result);
+
+    log();
+    table(
+      [
+        ["survival", survived ? c.green("pass") : c.red("FAIL"),
+          `crawl health ${(crawl.okRate * 100).toFixed(0)}% ok (need 95%)`],
+        ["containment", contained ? c.green("pass") : c.red("FAIL"),
+          state
+            ? (state.oomKilled
+                ? `OOM-killed in "${hottest.name}" - rss ${peakRssMb}/${state.memLimitMb}MiB (cap hit)`
+                : `peak rss ${peakRssMb}/${state.memLimitMb || "∞"}MiB · cpu ${peakCpu}% · running=${state.running}`)
+            : "not sampled"],
+        ["recovery", recovered ? c.green("pass") : c.red("FAIL"),
+          recoveredInS !== null
+            ? `idle again in ${recoveredInS}s (heap retained +${retainedMb}MiB)`
+            : `still working ${recoverBudget}s after the load stopped`],
+        ["state growth", stateGrowth ? c.dim("report") : c.dim("n/a"),
+          stateGrowth
+            ? `+${stateGrowth.added} rows from ${totalReqs} anonymous reqs ` +
+              `(${stateGrowth.perKiloRequest}/1k) - never released`
+            : "no countable datastore"],
+      ],
+      ["CHECK", "RESULT", "DETAIL"],
+    );
+    log(
+      passed
+        ? c.green(`ok   ${app!.name}: survives a crawl and returns to idle`)
+        : c.red(`FAIL ${app!.name}: see the failing check above`),
+    );
+    if (!passed) {
+      if (JSON_MODE.on) process.exitCode = 1;
+      else die("stress failed");
+    }
+  } finally {
+    // Only tear down what this command brought up - an app the user already had
+    // running is theirs, not ours.
+    if (startedByUs && !keep) {
+      await stopStack(app!, variant, "compose", { volumes: true }).catch(() => {});
+    }
+  }
+}
+
 // ------------------------------------------------------------------ scoring --
 
 /** Read one findings file, converting from a native scanner format if needed. */
@@ -2776,6 +3286,8 @@ ${c.bold("INSPECT")}
 ${c.bold("BENCHMARK")}
   verify <app>             run the ground-truth PoCs against the running app
   validate <app>           twin loop: vuln all-exploitable → safe all-fixed
+  stress <app>             hold up under a crawl, then return to idle
+                           [--duration S] [--concurrency N] [--recover S]
   run <app> -- <cmd...>    start, run <cmd> with $TARGET set, stop afterwards
 
 ${c.bold("SCORE")}
@@ -2872,6 +3384,7 @@ const COMMANDS: Record<string, (a: Args) => Promise<void>> = {
   logs: cmdLogs,
   verify: cmdVerify,
   validate: cmdValidate,
+  stress: cmdStress,
   run: cmdRun,
   score: cmdScore,
   schema: cmdSchema,

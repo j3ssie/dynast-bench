@@ -478,7 +478,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { method: GET, path: "/api/org" }
-      file: { path: vuln/docker-compose.yml, symbol: docker-compose.yml, lines: [1, 39] }
+      file: { path: vuln/docker-compose.yml, symbol: docker-compose.yml, lines: [1, 51] }
     poc: ground-truth/verify/grafana_001.sh
     notes: "Grafana side surface uses default admin/Admin123! credentials and anonymous viewer is enabled."
 

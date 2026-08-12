@@ -275,7 +275,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { method: GET, path: "/api/secrets" }
-      file: { path: vuln/docker-compose.yml, symbol: SECRET_KEY_BASE, lines: [10, 40] }
+      file: { path: vuln/docker-compose.yml, symbol: SECRET_KEY_BASE, lines: [13, 49] }
       markers: [rails-hardcoded-secret-key-base]
     poc: ground-truth/verify/secret_001.sh
     notes: >

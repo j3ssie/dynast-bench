@@ -1,6 +1,9 @@
 name: vuln-springboot
 services:
   app:
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 1024
     build: .
     ports: ["127.0.0.1:${DYNAST_PORT:-13311}:3000"]
     environment:
@@ -21,6 +24,9 @@ services:
       timeout: 3s
       retries: 40
   postgres:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     image: postgres:16.4
     environment: { POSTGRES_USER: bench, POSTGRES_PASSWORD: bench, POSTGRES_DB: bench }
     ports: ["127.0.0.1:${DYNAST_PORT_POSTGRES_5432:-13312}:5432"]
@@ -30,15 +36,24 @@ services:
       timeout: 3s
       retries: 30
   internal-sink:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     image: node:22-alpine
     working_dir: /srv
     command: ["node", "/srv/internal-sink.mjs"]
     volumes: ["./internal-sink.mjs:/srv/internal-sink.mjs:ro"]
   jenkins:
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 512
     image: jenkins/jenkins:2.462.3-lts
     ports: ["127.0.0.1:${DYNAST_PORT_JENKINS_8080:-13313}:8080"]
     environment: { JENKINS_ADMIN_ID: admin, JENKINS_ADMIN_PASSWORD: admin }
   prometheus:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     image: prom/prometheus:v2.54.1
     ports: ["127.0.0.1:${DYNAST_PORT_PROMETHEUS_9090:-13314}:9090"]
     volumes: ["./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]

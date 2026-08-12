@@ -1,11 +1,17 @@
 name: vuln-weirdproxy
 services:
   origin:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     build: ./origin
     # internal only — the proxies are the security boundary; never published.
     expose: ["9000"]
 
   nginx:
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 1024
     build: ./nginx
     ports: ["127.0.0.1:${DYNAST_PORT:-13311}:80"]
     depends_on:
@@ -18,12 +24,18 @@ services:
       start_period: 15s
 
   apache:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     build: ./apache
     ports: ["127.0.0.1:${DYNAST_PORT_APACHE_80:-13312}:80"]
     depends_on:
       origin: { condition: service_started }
 
   traefik:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     build: ./traefik
     ports: ["127.0.0.1:${DYNAST_PORT_TRAEFIK_80:-13313}:80"]
     depends_on:

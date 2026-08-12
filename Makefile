@@ -115,6 +115,9 @@ verify: guard-app   ## run APP's ground-truth PoCs (expect all exploitable)
 validate: guard-app ## full twin loop for APP (vuln all-pass -> safe all-fixed)
 	$(MAKE) -C vulnerable-apps/$(APP) validate
 
+stress: guard-app   ## APP under crawl load: does it keep answering, and recover?
+	@bun "$(CLI)" stress $(APP) $(STRESS_FLAGS)
+
 score: guard-app    ## grade findings against APP's answer key [FINDINGS= SAFE_FINDINGS=]
 	$(MAKE) -C vulnerable-apps/$(APP) score FINDINGS=$(abspath $(FINDINGS)) \
 	  $(if $(SAFE_FINDINGS),SAFE_FINDINGS=$(abspath $(SAFE_FINDINGS)),) SCORE_FLAGS="$(SCORE_FLAGS)"

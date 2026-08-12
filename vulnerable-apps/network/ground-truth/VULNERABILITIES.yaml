@@ -281,7 +281,7 @@ vulnerabilities:
     near_miss: null
     match:
       net: { host: app-legacy, port: 23, proto: tcp }
-      file: { path: vuln/docker-compose.yml, symbol: telnet_open, lines: [53, 53] }
+      file: { path: vuln/docker-compose.yml, symbol: telnet_open, lines: [74, 74] }
     poc: ground-truth/verify/telnet_open.sh
     host: app-legacy
     segment: app

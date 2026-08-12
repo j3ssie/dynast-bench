@@ -1,6 +1,9 @@
 name: vuln-php
 services:
   app:
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 1024
     build: .
     ports: ["127.0.0.1:${DYNAST_PORT:-13311}:80"]
     environment:
@@ -23,6 +26,9 @@ services:
       retries: 30
       start_period: 60s
   mysql:
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 512
     image: mysql:8.4
     environment:
       MYSQL_DATABASE: bench
@@ -35,6 +41,9 @@ services:
       timeout: 5s
       retries: 30
   phpmyadmin:
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 512
     image: phpmyadmin:5.2.1
     environment:
       PMA_HOST: mysql
@@ -42,5 +51,8 @@ services:
       PMA_PASSWORD: bench
     ports: ["127.0.0.1:${DYNAST_PORT_PHPMYADMIN_80:-13312}:80"]
   mailpit:
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 512
     image: axllent/mailpit:v1.20
     ports: ["127.0.0.1:${DYNAST_PORT_MAILPIT_8025:-13313}:8025", "127.0.0.1:${DYNAST_PORT_MAILPIT_1025:-13314}:1025"]

@@ -1,6 +1,9 @@
 name: vuln-aspnet
 services:
   app:
+    mem_limit: 2g
+    cpus: 2.0
+    pids_limit: 1024
     build: .
     platform: linux/amd64
     ports: ["127.0.0.1:${DYNAST_PORT:-13311}:8080"]
@@ -22,6 +25,9 @@ services:
       retries: 30
       start_period: 120s
   sqlserver:
+    mem_limit: 3g
+    cpus: 2.0
+    pids_limit: 512
     image: mcr.microsoft.com/mssql/server:2022-latest
     platform: linux/amd64
     environment:
@@ -36,6 +42,9 @@ services:
       retries: 30
       start_period: 60s
   mailpit:
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 512
     image: axllent/mailpit:v1.20
     ports: ["127.0.0.1:${DYNAST_PORT_MAILPIT_8025:-13313}:8025", "127.0.0.1:${DYNAST_PORT_MAILPIT_1025:-13314}:1025"]
 volumes:

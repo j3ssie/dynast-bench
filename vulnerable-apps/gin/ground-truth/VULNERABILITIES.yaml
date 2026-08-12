@@ -27,7 +27,7 @@ vulnerabilities:
     near_miss: NM-INFO-001
     match:
       http: { method: GET, path: "/api/debug/info" }
-      file: { path: vuln/main.go, symbol: debugInfo, lines: [397, 407] }
+      file: { path: vuln/main.go, symbol: debugInfo, lines: [405, 415] }
       markers: [GIN-DEBUG-SECRET-9c2e]
     poc: ground-truth/verify/info_001.sh
     notes: >
@@ -48,7 +48,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { method: POST, path: "/api/auth/login" }
-      file: { path: vuln/main.go, symbol: seedDB, lines: [198, 258] }
+      file: { path: vuln/main.go, symbol: seedDB, lines: [206, 266] }
     poc: ground-truth/verify/default_creds_001.sh
     notes: "Seeded service account uses the weak default credential admin/admin."
 
@@ -67,7 +67,7 @@ vulnerabilities:
     match:
       http: { method: GET, path: "/api/grants/" }
       http_alt: ["/api/grants/{token}"]
-      file: { path: vuln/main.go, symbol: readGrant, lines: [445, 455] }
+      file: { path: vuln/main.go, symbol: readGrant, lines: [453, 463] }
       markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
     poc: ground-truth/verify/idor_001.sh
     notes: >
@@ -89,7 +89,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { method: PATCH, path: "/api/users/me" }
-      file: { path: vuln/main.go, symbol: updateMe, lines: [495, 517] }
+      file: { path: vuln/main.go, symbol: updateMe, lines: [503, 525] }
     poc: ground-truth/verify/massassign_001.sh
     notes: "Profile update binds role/isAdmin from the request body (ShouldBindJSON)."
 
@@ -107,7 +107,7 @@ vulnerabilities:
     near_miss: NM-SQL-001
     match:
       http: { method: GET, path: "/api/reports/timeline" }
-      file: { path: vuln/main.go, symbol: reportTimeline, lines: [518, 537] }
+      file: { path: vuln/main.go, symbol: reportTimeline, lines: [526, 545] }
       markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
     poc: ground-truth/verify/second_sqli_001.sh
     notes: >
@@ -128,7 +128,7 @@ vulnerabilities:
     near_miss: NM-RCE-001
     match:
       http: { method: POST, path: "/api/images/thumbnail" }
-      file: { path: vuln/main.go, symbol: thumbnail, lines: [569, 577] }
+      file: { path: vuln/main.go, symbol: thumbnail, lines: [577, 585] }
     poc: ground-truth/verify/imagemagick_rce_001.sh
     notes: >
       The thumbnail geometry is concatenated into sh -c "convert ...", so it is
@@ -148,7 +148,7 @@ vulnerabilities:
     near_miss: NM-SSRF-001
     match:
       http: { method: POST, path: "/api/render/pdf" }
-      file: { path: vuln/main.go, symbol: renderPDF, lines: [608, 628] }
+      file: { path: vuln/main.go, symbol: renderPDF, lines: [623, 643] }
     poc: ground-truth/verify/ssrf_pdf_001.sh
     notes: >
       A user-supplied URL is rendered to PDF by server-side headless chromium with
@@ -168,7 +168,7 @@ vulnerabilities:
     near_miss: NM-DOS-001
     match:
       http: { method: POST, path: "/api/import/preview" }
-      file: { path: vuln/main.go, symbol: importPreview, lines: [678, 684] }
+      file: { path: vuln/main.go, symbol: importPreview, lines: [693, 699] }
     poc: ground-truth/verify/dos_001.sh
     notes: >
       A gzip body is decompressed with no size cap (decompression bomb -> DoS).
@@ -188,7 +188,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { method: GET, path: "/api/admin/users" }
-      file: { path: vuln/main.go, symbol: adminUsers, lines: [705, 727] }
+      file: { path: vuln/main.go, symbol: adminUsers, lines: [720, 742] }
     poc: ground-truth/verify/authz_001.sh
     notes: "Admin user listing only requires authentication, not the admin role."
 
@@ -206,7 +206,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { method: GET, path: "/goto", params: [next] }
-      file: { path: vuln/main.go, symbol: gotoNext, lines: [728, 739] }
+      file: { path: vuln/main.go, symbol: gotoNext, lines: [743, 754] }
     poc: ground-truth/verify/redirect_001.sh
     notes: "The /goto redirect trusts an absolute external next URL."
 
@@ -224,7 +224,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { method: GET, path: "/search", params: [q] }
-      file: { path: vuln/main.go, symbol: searchPage, lines: [740, 751] }
+      file: { path: vuln/main.go, symbol: searchPage, lines: [755, 766] }
     poc: ground-truth/verify/xss_reflect_001.sh
     notes: "The search page reflects q into HTML without escaping."
 
@@ -242,7 +242,7 @@ vulnerabilities:
     near_miss: NM-DOMPURIFY-001
     match:
       http: { method: GET, path: "/notes/preview", params: [q] }
-      file: { path: vuln/main.go, symbol: notesPreview, lines: [766, 782] }
+      file: { path: vuln/main.go, symbol: notesPreview, lines: [781, 797] }
     poc: ground-truth/verify/xss_dompurify_001.sh
     notes: >
       The note preview sanitises the reflected query with real DOMPurify and
@@ -264,7 +264,7 @@ near_misses:
     # anchoring it on /notes/preview would make reporting the BUG read as a
     # false positive.
     match:
-      file: { path: vuln/main.go, symbol: notePreviewHTML, lines: [752, 765] }
+      file: { path: vuln/main.go, symbol: notePreviewHTML, lines: [767, 780] }
     notes: >
       Reflected input straight into innerHTML - the shape every scanner looks
       for - but routed through DOMPurify.sanitize first, on the line above the
@@ -274,40 +274,40 @@ near_misses:
     symbol: versionInfo
     of: INFO-001
     match:
-      file: { path: vuln/main.go, symbol: versionInfo, lines: [408, 444] }
+      file: { path: vuln/main.go, symbol: versionInfo, lines: [416, 452] }
     notes: "Version endpoint returns only non-sensitive build info."
   - id: NM-IDOR-001
     path: vuln/main.go
     symbol: getPost
     of: IDOR-001
     match:
-      file: { path: vuln/main.go, symbol: getPost, lines: [456, 494] }
+      file: { path: vuln/main.go, symbol: getPost, lines: [464, 502] }
     notes: "Direct post fetch enforces org ownership for non-published posts."
   - id: NM-SQL-001
     path: vuln/main.go
     symbol: searchPosts
     of: SQLI-001
     match:
-      file: { path: vuln/main.go, symbol: searchPosts, lines: [538, 568] }
+      file: { path: vuln/main.go, symbol: searchPosts, lines: [546, 576] }
     notes: "Published-post search of the same shape uses a pgx placeholder."
   - id: NM-RCE-001
     path: vuln/main.go
     symbol: thumbnailSafe
     of: RCE-001
     match:
-      file: { path: vuln/main.go, symbol: thumbnailSafe, lines: [578, 607] }
+      file: { path: vuln/main.go, symbol: thumbnailSafe, lines: [586, 622] }
     notes: "Thumbnail conversion invokes convert with an argument slice (no shell)."
   - id: NM-SSRF-001
     path: vuln/main.go
     symbol: linkPreview
     of: SSRF-001
     match:
-      file: { path: vuln/main.go, symbol: linkPreview, lines: [629, 677] }
+      file: { path: vuln/main.go, symbol: linkPreview, lines: [644, 692] }
     notes: "Link preview blocks internal/loopback/link-local destinations before fetching."
   - id: NM-DOS-001
     path: vuln/main.go
     symbol: importText
     of: DOS-001
     match:
-      file: { path: vuln/main.go, symbol: importText, lines: [685, 704] }
+      file: { path: vuln/main.go, symbol: importText, lines: [700, 719] }
     notes: "Text import is bounded by io.LimitReader."

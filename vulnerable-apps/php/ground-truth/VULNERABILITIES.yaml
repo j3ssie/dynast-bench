@@ -367,7 +367,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { path: "/", port: 13312 }
-      file: { path: vuln/docker-compose.yml, symbol: "phpmyadmin service", lines: [17, 47] }
+      file: { path: vuln/docker-compose.yml, symbol: "phpmyadmin service", lines: [20, 59] }
     poc: ground-truth/verify/phpmyadmin_001.sh
     notes: "phpMyAdmin is exposed on localhost with bench/bench database credentials in vuln compose."
 

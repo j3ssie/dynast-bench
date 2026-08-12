@@ -1,6 +1,9 @@
 name: vuln-rails
 services:
   app:
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 1024
     build: .
     ports: ["127.0.0.1:${DYNAST_PORT:-13311}:3000"]
     environment:
@@ -21,6 +24,9 @@ services:
       retries: 30
       start_period: 120s
   postgres:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     image: postgres:16.4
     environment: { POSTGRES_USER: bench, POSTGRES_PASSWORD: bench, POSTGRES_DB: bench }
     healthcheck:
@@ -29,6 +35,9 @@ services:
       timeout: 5s
       retries: 20
   internal-sink:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     image: ruby:3.3-slim
     volumes: ["./internal-sink.rb:/internal-sink.rb:ro"]
     command: ["ruby", "/internal-sink.rb"]

@@ -179,7 +179,7 @@ async def login(request: Request, db: Session = Depends(get_db)):
     password = data.get("password", "")
     user = db.query(User).filter(User.email == email).first()
     if not user or user.password_hash != md5_password(password):
-        time.sleep(0.05)
+        await asyncio.sleep(0.05)
         return JSONResponse({"error": "invalid credentials"}, status_code=401)
     response = JSONResponse({"ok": True, "id": user.id, "role": user.role})
     response.set_cookie("uid", str(user.id), httponly=True, samesite="lax")

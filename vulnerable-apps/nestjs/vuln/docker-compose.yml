@@ -1,6 +1,9 @@
 name: vuln-nestjs
 services:
   nginx:
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 1024
     image: nginx:1.27.1
     ports: ["127.0.0.1:${DYNAST_PORT:-13311}:80"]
     volumes:
@@ -10,6 +13,9 @@ services:
     depends_on:
       app: { condition: service_healthy }
   app:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     build: .
     environment:
       DATABASE_URL: postgresql://bench:bench@postgres:5432/bench
@@ -30,6 +36,9 @@ services:
       retries: 30
       start_period: 60s
   postgres:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     image: postgres:16.4
     environment: { POSTGRES_USER: bench, POSTGRES_PASSWORD: bench, POSTGRES_DB: bench }
     healthcheck:
@@ -38,6 +47,9 @@ services:
       timeout: 5s
       retries: 20
   redis:
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 512
     image: redis:7.4.0
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -45,6 +57,9 @@ services:
       timeout: 5s
       retries: 20
   internal-sink:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     image: node:22-alpine
     command: ["node", "/internal-sink.mjs"]
     volumes:

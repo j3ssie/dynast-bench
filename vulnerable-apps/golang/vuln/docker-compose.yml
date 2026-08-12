@@ -1,6 +1,9 @@
 name: vuln-golang
 services:
   app:
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 1024
     build: .
     ports: ["127.0.0.1:${DYNAST_PORT:-13311}:3000"]
     environment:
@@ -18,6 +21,9 @@ services:
       retries: 30
       start_period: 60s
   postgres:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     image: postgres:16.4
     ports: ["127.0.0.1:${DYNAST_PORT_POSTGRES_5432:-13312}:5432"]
     environment: { POSTGRES_USER: bench, POSTGRES_PASSWORD: bench, POSTGRES_DB: bench }
@@ -27,11 +33,17 @@ services:
       timeout: 5s
       retries: 20
   prometheus:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     image: prom/prometheus:v2.54.1
     volumes: ["./infra/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
     ports: ["127.0.0.1:${DYNAST_PORT_PROMETHEUS_9090:-13313}:9090"]
     depends_on: { app: { condition: service_healthy } }
   grafana:
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 512
     image: grafana/grafana:11.2.0
     environment:
       GF_SECURITY_ADMIN_USER: admin

@@ -70,6 +70,8 @@ INSPECT
 BENCHMARK
   verify <app>             run the ground-truth PoCs against the running app
   validate <app>           twin loop: vuln all-exploitable → safe all-fixed
+  stress <app>             hold up under a crawl, then return to idle
+                           [--duration S] [--concurrency N] [--recover S]
   run <app> -- <cmd...>    start, run <cmd> with $TARGET set, stop afterwards
 
 SCORE
@@ -295,6 +297,55 @@ a new app under `vulnerable-apps/` shows up in `list` automatically.
 
 `DYNAST_BENCH_ROOT` overrides repo-root detection if you need to point the CLI at
 a copy of the suite.
+
+## Surviving a scan
+
+```
+dynast-bench stress <app>            # crawl it, then watch it come back
+make stress APP=<app>
+```
+
+`verify` answers "is the bug still exploitable". It cannot answer "is the app
+still standing after a scanner has been through it", and that turned out to be
+the gap that made runs flaky: one crawl of `nextjs` left the app at ~130% CPU
+and 4x its idle memory for twenty minutes with no traffic at all, because every
+signup queued an email and the crawler had made 2081 of them. Every PoC still
+passed.
+
+Three phases, on the app the command starts (an app you already have running is
+used as-is and left alone):
+
+| phase | what it does |
+|---|---|
+| baseline | 8s idle - defines what "recovered" means for this app |
+| crawl | N workers over every non-DoS route in the answer key, each request with a **fresh identity** |
+| declared DoS | the app's own `CWE-400`/`770`/`1333` PoCs, fired concurrently |
+
+The fresh identity per request is the load-bearing detail. One fixed body is a
+load generator; a new one every time is a crawler, and that is the difference
+between an upsert that no-ops and 847 signup drafts that never go away.
+
+Health is probed throughout on the same 5s budget `poc-runner.sh` uses, so a
+failure here means what a failure there would mean.
+
+### The verdict
+
+| check | passes when |
+|---|---|
+| `survival` | health answered >=95% of probes during the crawl |
+| `containment` | the container is still running and was never OOM-killed |
+| `recovery` | CPU and RSS returned to idle, and it still answers |
+
+Degradation during the **declared DoS** phase is recorded, not failed. `gin`
+plants a decompression bomb on purpose - an app that shrugged it off would mean
+the bug was gone. Only a container that dies or never comes back counts against
+it.
+
+`state growth` is reported rather than graded: rows added by anonymous traffic,
+per 1000 requests. Across 19 heterogeneous apps any fixed threshold would be
+arbitrary, and a flaky gate is worse than an honest number. It is usually the
+most interesting line in the output, because it is the one thing that does not
+recover.
 
 ## Relationship to `make`
 
