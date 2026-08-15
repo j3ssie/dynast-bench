@@ -60,6 +60,9 @@ dynast-bench/
 ├── README.md             # human overview
 ├── CLAUDE.md / AGENTS.md # this guide
 ├── benchmark-plans/      # per-stack design docs = the vulnerability catalogs
+├── examples/             # ready-to-score findings/v1 + endpoints/v1 files, and
+│                         # blank templates; every number in its README is asserted
+│                         # by dynast-bench/test/examples.test.ts
 ├── dynast-bench/           # `dynast-bench` CLI + scorer (Bun/TS, both built)
 └── vulnerable-apps/
     ├── _template/        # skeleton to copy
@@ -86,6 +89,7 @@ vulnerable-apps/<app>/
 ├── safe/                 # patched twin - byte-identical to vuln/ except fixed bug lines
 └── ground-truth/         # NEVER copied into any image (outside both build contexts)
     ├── VULNERABILITIES.yaml
+    ├── SURFACE.yaml      # every operation the app exposes = the coverage denominator
     ├── verify/           # one PoC per bug + _lib.sh helper
     ├── run.sh            # thin wrapper over dynast-bench/tools/poc-runner.sh:
     │                     #   expect-vuln (all exploitable) | expect-safe (all fixed)
@@ -221,6 +225,50 @@ black-box tool can never be charged for flagging it, which quietly makes
 plumbing (compose/package files) and a second file in a bug's own fix are warnings;
 a twin that fixes an **unrecorded** bug is an error, because a tool that finds it
 would be scored as a false positive.
+
+## `SURFACE.yaml` - the endpoint-coverage denominator
+
+`VULNERABILITIES.yaml` says what is wrong. `SURFACE.yaml` says what is *there*:
+every deliberate operation the app exposes, **vulnerable and benign**. It exists
+so a run can be scored on how much of the app it reached, which is what tells the
+two kinds of failure apart:
+
+```
+discovery miss   never reached the operation carrying the bug   -> the crawler
+analysis miss    reached the operation, did not report the bug  -> the analysis
+```
+
+```bash
+bun dynast-bench/tools/derive-surface.ts <app> --write   # draft it
+dynast-bench surface <app>                               # read it back
+dynast-bench coverage <app> endpoints.json               # grade a crawl
+```
+
+The tool drafts the vulnerable half from `VULNERABILITIES.yaml` (already tiered,
+already mapped to bug ids) and the benign half from a per-stack pass over the
+source; hand review lives in its `TIER_REVIEW` / `EXTRA_OPS` tables so a
+regenerate cannot lose it. **Never rewrite an existing entry and never delete
+one to fix a score** - a catalog that shrinks makes every tool look better
+without anyone touching a tool.
+
+Rules `check` enforces, and the reasoning behind each:
+
+- **Transport is not operation.** `POST /graphql` is one entry; every GraphQL op
+  behind it is its own. Same for a WS handshake vs its events and an agent-run
+  route vs its tools. Otherwise one request scores as exercising the whole app.
+- **Every reachable bug maps to an operation** (`vulns:`), or it drops out of the
+  miss split silently. Source-only entries are exempt - there is no endpoint.
+- **Nothing unreachable in the denominator.** No `/api/_verify/*`, no static
+  assets, and nothing behind an `expose:`-only service (swagger's `partner-api`,
+  every app's `internal-sink`). A cataloged endpoint no tool can reach caps
+  coverage below 100% forever.
+- **Tiering is all-or-nothing**, same as the answer key.
+- **A fix that removes an operation** declares `variant: vuln`, so the safe twin
+  is not graded against an endpoint that is no longer there.
+
+Not every app has benign surface: `wordpress` and `weirdproxy` plant a bug on
+every route they serve, and `network` is ports. That is a real property, not a
+gap - do not invent benign routes to pad it.
 
 ### PoC contract (`ground-truth/verify/<id>.sh`)
 
@@ -408,7 +456,9 @@ start services; Postgres runs under its own user via `su postgres`. See
    (copy nextjs, adapt).
 7. `make validate APP=<app>` (vuln all-exploitable → safe all-fixed) and
    `make solo APP=<app>` (single image, PoCs still exploitable). Both must be green.
-8. Update `vulnerable-apps/<app>/README.md` and note any deferred catalog items in `VULNERABILITIES.yaml`.
+8. `bun dynast-bench/tools/derive-surface.ts <app> --write`, then review the
+   benign half by hand - it is the part a regex cannot get right.
+9. Update `vulnerable-apps/<app>/README.md` and note any deferred catalog items in `VULNERABILITIES.yaml`.
 
 ## Gotchas learned building nextjs (apply the spirit to any stack)
 
@@ -428,8 +478,9 @@ start services; Postgres runs under its own user via `su postgres`. See
 
 - Apps **self-validate** via `ground-truth/run.sh` (used by `make verify`).
 - **`dynast-bench/dynast-bench.ts`** is the built CLI (single-file Bun/TypeScript, zero
-  runtime deps): `list · info · vulns · doctor · start · stop · stop-all · restart ·
-  reset · clean · status · target · logs · verify · validate · stress · run`. `vulns <app>`
+  runtime deps): `list · info · vulns · surface · doctor · start · stop · stop-all ·
+  restart · reset · clean · status · target · logs · verify · validate · stress ·
+  run · score · coverage`. `vulns <app>`
   prints the answer key as a checklist (titles; `--full`/`--near`/`--ids`), which
   is how you check what a scan was supposed to find. It derives everything from
   the apps themselves - compose ports + healthcheck path, the app `Makefile`'s standalone
@@ -476,7 +527,9 @@ start services; Postgres runs under its own user via `su postgres`. See
   container→host networking.
 - The **`dynast-bench/src/` scorer** is built: `score` (findings →
   precision/recall/F1 + per-difficulty recall + a discrimination score over the
-  near-misses), `diff` (the twin delta vs the answer key) and `check` (the CI gate).
+  near-misses), `coverage` (reported endpoints → how much of the app was reached,
+  plus `detection_given_touch` and the discovery-vs-analysis miss split),
+  `diff` (the twin delta vs the answer key) and `check` (the CI gate).
   It reads `findings/v1` or native ZAP / SARIF / nuclei / Burp / nmap output.
   Full reference: `dynast-bench/README.md#scoring`. Tests: `make test`
   (`dynast-bench/test/` - `apps.test.ts` asserts the invariants for EVERY answer key,

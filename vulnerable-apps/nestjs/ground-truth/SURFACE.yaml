@@ -1,0 +1,273 @@
+# Attack-surface catalog for nestjs - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: nestjs
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.api-auth-login.post
+    kind: http
+    method: POST
+    path: "/api/auth/login"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [AUTH-ENUM-001, DEFAULT-CREDS-001, SESSION-FIX-001]
+  - id: http.api-reports-admin-summary.get
+    kind: http
+    method: GET
+    path: "/api/reports/admin-summary"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [JWT-001]
+  - id: http.api-auth-reset.post
+    kind: http
+    method: POST
+    path: "/api/auth/reset"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RESET-001]
+  - id: http.api-posts-search.get
+    kind: http
+    method: GET
+    path: "/api/posts/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SQLI-001, CORS-001]
+  - id: http.api-posts-id.get
+    kind: http
+    method: GET
+    path: "/api/posts/{id}"
+    discovery: static-html
+    reachability: user
+    vulns: [IDOR-001]
+  - id: http.api-users-me.patch
+    kind: http
+    method: PATCH
+    path: "/api/users/me"
+    discovery: static-html
+    reachability: user
+    vulns: [OVERPOST-001]
+  - id: http.api-admin-users.get
+    kind: http
+    method: GET
+    path: "/api/admin/users"
+    discovery: static-html
+    reachability: user
+    vulns: [AUTHZ-001]
+  - id: http.api-admin-internal-health.get
+    kind: http
+    method: GET
+    path: "/api/admin/internal-health"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XFF-001]
+  - id: http.api-reports-render.post
+    kind: http
+    method: POST
+    path: "/api/reports/render"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [HBS-SSTI-001]
+  - id: http.posts-id-html.get
+    kind: http
+    method: GET
+    path: "/posts/{id}/html"
+    discovery: static-html
+    reachability: user
+    vulns: [XSS-STORED-001]
+  - id: http.search.get
+    kind: http
+    method: GET
+    path: "/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XSS-REFLECT-001]
+  - id: http.api-webhooks-test.post
+    kind: http
+    method: POST
+    path: "/api/webhooks/test"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SSRF-001]
+  - id: http.api-reports-import.post
+    kind: http
+    method: POST
+    path: "/api/reports/import"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DESER-001]
+  - id: http.api-settings-email.post
+    kind: http
+    method: POST
+    path: "/api/settings/email"
+    discovery: static-html
+    reachability: user
+    vulns: [CSRF-001]
+  - id: http.login.get
+    kind: http
+    method: GET
+    path: "/login"
+    params: [next]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [REDIRECT-001]
+  - id: http.api-attachments-download.get
+    kind: http
+    method: GET
+    path: "/api/attachments/download"
+    params: [name]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TRAVERSAL-001]
+  - id: http.uploads-secret-txt.get
+    kind: http
+    method: GET
+    path: "/uploads../secret.txt"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NGINX-ALIAS-001]
+  - id: http.api-avatar.post
+    kind: http
+    method: POST
+    path: "/api/avatar"
+    discovery: static-html
+    reachability: user
+    vulns: [UPLOAD-001]
+  - id: http.api-billing-seats.post
+    kind: http
+    method: POST
+    path: "/api/billing/seats"
+    discovery: static-html
+    reachability: user
+    vulns: [BILLING-001]
+  - id: http.api-invites.post
+    kind: http
+    method: POST
+    path: "/api/invites"
+    discovery: static-html
+    reachability: user
+    vulns: [RACE-001]
+  - id: http.api-tools-report.post
+    kind: http
+    method: POST
+    path: "/api/tools/report"
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [CODEINJ-001]
+  - id: http.signup.get
+    kind: http
+    method: GET
+    path: "/signup"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [DOMXSS-001, POSTMSG-001]
+  - id: http.api-signup-start.post
+    kind: http
+    method: POST
+    path: "/api/signup/start"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [SIGNUP-ENUM-001]
+  - id: http.api-signup-verify.post
+    kind: http
+    method: POST
+    path: "/api/signup/verify"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-TOKEN-001]
+  - id: http.api-signup-profile.post
+    kind: http
+    method: POST
+    path: "/api/signup/profile"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-MASSASSIGN-001]
+  - id: http.api-signup-complete.post
+    kind: http
+    method: POST
+    path: "/api/signup/complete"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-STEPSKIP-001]
+  - id: http.api-signup-draft-id.get
+    kind: http
+    method: GET
+    path: "/api/signup/draft/{id}"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-IDOR-001]
+  - id: http.api-prefs-merge.post
+    kind: http
+    method: POST
+    path: "/api/prefs/merge"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SSPP-001]
+  - id: http.api-tools-link-preview.get
+    kind: http
+    method: GET
+    path: "/api/tools/link-preview"
+    params: ["url[]"]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [QSCONFUSION-001]
+  - id: http.api-auth-token.post
+    kind: http
+    method: POST
+    path: "/api/auth/token"
+    discovery: static-html
+    notes: "benign? derived from src/app.controller.ts - REVIEW"
+  - id: http.api-users-profile.patch
+    kind: http
+    method: PATCH
+    path: "/api/users/profile"
+    discovery: static-html
+    notes: "benign? derived from src/app.controller.ts - REVIEW"
+  - id: http.api-reports-render-safe-preview.post
+    kind: http
+    method: POST
+    path: "/api/reports/render-safe-preview"
+    discovery: static-html
+    notes: "benign? derived from src/app.controller.ts - REVIEW"
+  - id: http.api-posts-id-comments.post
+    kind: http
+    method: POST
+    path: "/api/posts/:id/comments"
+    discovery: static-html
+    notes: "benign? derived from src/app.controller.ts - REVIEW"
+  - id: http.api-reports-import-json.post
+    kind: http
+    method: POST
+    path: "/api/reports/import-json"
+    discovery: static-html
+    notes: "benign? derived from src/app.controller.ts - REVIEW"
+  - id: http.api-attachments-download-safe-preview.get
+    kind: http
+    method: GET
+    path: "/api/attachments/download-safe-preview"
+    discovery: static-html
+    notes: "benign? derived from src/app.controller.ts - REVIEW"
+  - id: http.api-signup-resend.post
+    kind: http
+    method: POST
+    path: "/api/signup/resend"
+    discovery: flow
+    notes: "only reachable mid-signup"
+  - id: http.api-reports-generate.post
+    kind: http
+    method: POST
+    path: "/api/reports/generate"
+    discovery: static-html
+    notes: "benign? derived from src/app.controller.ts - REVIEW"
+  - id: http.api-prefs-set.post
+    kind: http
+    method: POST
+    path: "/api/prefs/set"
+    discovery: static-html
+    notes: "benign? derived from src/app.controller.ts - REVIEW"

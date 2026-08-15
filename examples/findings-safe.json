@@ -1,0 +1,41 @@
+{
+  "schema": "dynast-bench.findings/v1",
+  "tool": { "name": "example-agent", "version": "0.1.0", "mode": "agent" },
+  "run": {
+    "app": "nextjs",
+    "variant": "safe",
+    "target": "http://127.0.0.1:13311",
+    "duration_s": 39
+  },
+  "findings": [
+    {
+      "id": "s-01",
+      "title": "SQL injection in post search",
+      "cwe": "CWE-89",
+      "severity": "high",
+      "confidence": "tentative",
+      "location": {
+        "http": { "method": "GET", "path": "/api/posts/search", "param": "q" }
+      },
+      "evidence": {
+        "note": "the query is parameterized here - reported on pattern, not on proof"
+      },
+      "exploited": false
+    },
+
+    {
+      "id": "s-02",
+      "title": "SSRF in internal preview endpoint",
+      "cwe": "CWE-918",
+      "severity": "high",
+      "confidence": "firm",
+      "location": {
+        "http": { "method": "GET", "path": "/api/preview-internal" }
+      },
+      "evidence": {
+        "note": "a server-side fetch of a FIXED allow-listed URL - no user input reaches it"
+      },
+      "exploited": false
+    }
+  ]
+}

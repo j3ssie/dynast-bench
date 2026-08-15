@@ -1,0 +1,81 @@
+# Attack-surface catalog for weirdproxy - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: weirdproxy
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.admin.get
+    kind: http
+    method: GET
+    path: "/admin/"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NGINX-ADMIN-SLASH, APACHE-ADMIN-SLASH]
+  - id: http.admin-2f.get
+    kind: http
+    method: GET
+    path: "/admin%2f"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NGINX-ADMIN-ENCSLASH]
+  - id: http.metrics.get
+    kind: http
+    method: GET
+    path: "/metrics/"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NGINX-METRICS-SLASH, APACHE-METRICS-SLASH]
+  - id: http.internal.get
+    kind: http
+    method: GET
+    path: "/INTERNAL"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NGINX-INTERNAL-CASE, APACHE-INTERNAL-CASE]
+  - id: http.root.get
+    kind: http
+    method: GET
+    path: "/"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NGINX-HEADER-TRUST, APACHE-HEADER-TRUST, TRAEFIK-HEADER-TRUST]
+  - id: http.admin.get-2
+    kind: http
+    method: GET
+    path: "/ADMIN"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [APACHE-ADMIN-CASE, TRAEFIK-ADMIN-CASE]
+  - id: http.admin.get-3
+    kind: http
+    method: GET
+    path: "//admin"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TRAEFIK-ADMIN-DOUBLESLASH]
+  - id: http.admin.get-4
+    kind: http
+    method: GET
+    path: "/./admin"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TRAEFIK-ADMIN-DOTSEG]
+  - id: http.2e-admin.get
+    kind: http
+    method: GET
+    path: "/%2e/admin"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TRAEFIK-ADMIN-ENCDOT]
+  - id: http.internal.get-2
+    kind: http
+    method: GET
+    path: "//internal"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TRAEFIK-INTERNAL-DOUBLESLASH]

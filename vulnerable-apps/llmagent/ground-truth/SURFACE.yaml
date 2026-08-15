@@ -1,0 +1,198 @@
+# Attack-surface catalog for llmagent - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: llmagent
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: llm.run-shell
+    kind: llm
+    tool: run_shell
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [AGENCY-001]
+  - id: http.api-runs.post
+    kind: http
+    method: POST
+    path: "/api/runs"
+    discovery: interaction
+    reachability: user
+    vulns: [HITL-001, MCP-001, MCP-002, AUTHZ-001, MODEL-001, RACE-001, CORS-001]
+  - id: http.api-approvals-redeem.post
+    kind: http
+    method: POST
+    path: "/api/approvals/redeem"
+    discovery: interaction
+    reachability: user
+    vulns: [APPROVAL-001]
+  - id: llm.refund-order
+    kind: llm
+    tool: refund_order
+    discovery: interaction
+    reachability: user
+    vulns: [REFUND-001]
+  - id: llm.delegate
+    kind: llm
+    tool: delegate
+    discovery: interaction
+    reachability: user
+    vulns: [AGENCY-002]
+  - id: llm.browse
+    kind: llm
+    tool: browse
+    discovery: interaction
+    reachability: user
+    vulns: [IPI-001]
+  - id: llm.sql-query
+    kind: llm
+    tool: sql_query
+    discovery: interaction
+    reachability: user
+    vulns: [IPI-002]
+  - id: http.api-mcp-servers.post
+    kind: http
+    method: POST
+    path: "/api/mcp/servers"
+    discovery: interaction
+    reachability: user
+    vulns: [MCP-003]
+  - id: llm.executemarkers
+    kind: llm
+    tool: executeMarkers
+    discovery: interaction
+    reachability: user
+    vulns: [PROMPT-001]
+  - id: llm.toolsql
+    kind: llm
+    tool: toolSql
+    discovery: interaction
+    reachability: user
+    vulns: [SQL-001]
+  - id: llm.toolfetch
+    kind: llm
+    tool: toolFetch
+    discovery: interaction
+    reachability: user
+    vulns: [SSRF-001, SSRF-002]
+  - id: llm.read-file
+    kind: llm
+    tool: read_file
+    discovery: interaction
+    reachability: user
+    vulns: [FILE-001]
+  - id: llm.write-file
+    kind: llm
+    tool: write_file
+    discovery: interaction
+    reachability: user
+    vulns: [FILE-002]
+  - id: llm.create-ticket
+    kind: llm
+    tool: create_ticket
+    discovery: interaction
+    reachability: user
+    vulns: [CMD-001]
+  - id: llm.resumecheckpoint
+    kind: llm
+    tool: resumeCheckpoint
+    discovery: interaction
+    reachability: user
+    vulns: [CHECKPOINT-001]
+  - id: llm.memory-write
+    kind: llm
+    tool: memory_write
+    discovery: interaction
+    reachability: user
+    vulns: [MEM-001]
+  - id: http.api-runs-id.get
+    kind: http
+    method: GET
+    path: "/api/runs/{id}"
+    discovery: interaction
+    reachability: user
+    vulns: [BOLA-001]
+  - id: http.exports.get
+    kind: http
+    method: GET
+    path: "/exports/"
+    discovery: interaction
+    reachability: user
+    vulns: [EXPORT-001]
+  - id: http.api-agents-id-tools.post
+    kind: http
+    method: POST
+    path: "/api/agents/{id}/tools"
+    discovery: interaction
+    reachability: user
+    vulns: [BFLA-001]
+  - id: llm.mcp-call
+    kind: llm
+    tool: mcp_call
+    discovery: interaction
+    reachability: user
+    vulns: [MCPAUTH-001]
+  - id: llm.mcpservers
+    kind: llm
+    tool: mcpServers
+    discovery: interaction
+    reachability: user
+    vulns: [MCPRCE-001]
+  - id: http.api-config.get
+    kind: http
+    method: GET
+    path: "/api/config"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [SECRET-001]
+  - id: http.api-login
+    kind: http
+    path: "/api/login"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from src/app.mjs - REVIEW"
+  - id: http.api-approvals
+    kind: http
+    path: "/api/approvals"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from src/app.mjs - REVIEW"
+  - id: http.api-checkpoints-resume
+    kind: http
+    path: "/api/checkpoints/resume"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from src/app.mjs - REVIEW"
+  - id: http.evil-page
+    kind: http
+    path: "/evil-page"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from src/app.mjs - REVIEW"
+  - id: http.redirect-internal
+    kind: http
+    path: "/redirect-internal"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from src/app.mjs - REVIEW"
+  - id: http.internal-metadata
+    kind: http
+    path: "/internal/metadata"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from src/app.mjs - REVIEW"
+  - id: http.internal-evil-model
+    kind: http
+    path: "/internal/evil-model"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from src/app.mjs - REVIEW"
+  - id: http.exports
+    kind: http
+    path: "/exports"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from src/app.mjs - REVIEW"

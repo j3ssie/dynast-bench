@@ -19,15 +19,21 @@ import { basename, dirname, join, relative, sep } from "node:path";
 
 import { checkApp, twinDiff, type Differ } from "./src/check/invariants.ts";
 import { normalizeText, type Format, FORMATS } from "./src/normalize/index.ts";
+import { endpointsFromFindings, parseEndpointsFile } from "./src/schema/endpoints.ts";
 import { parseGroundTruthFile } from "./src/schema/ground-truth.ts";
+import { opKey } from "./src/schema/operations.ts";
+import { parseSurfaceFile } from "./src/schema/surface.ts";
 import type {
   FindingsFile,
   GroundTruth as ScoredGroundTruth,
+  ReportedEndpoint,
+  Surface,
   Variant as GtVariant,
 } from "./src/schema/types.ts";
 import pkg from "./package.json";
 import { gtAnchors } from "./src/scorer/anchors.ts";
-import { renderReport } from "./src/scorer/report.ts";
+import { coverageTrack, type EvidenceSource } from "./src/scorer/coverage.ts";
+import { coverageLines, renderReport } from "./src/scorer/report.ts";
 import { scoreApp } from "./src/scorer/score.ts";
 
 // One version source. `bun build --compile` inlines this, so the binary reports
@@ -109,6 +115,8 @@ interface App {
   healthPath: string;
   pocCount: number;
   groundTruth: string;
+  /** the endpoint-coverage denominator; may not exist yet */
+  surface: string;
   planDoc: string | null;
 }
 
@@ -433,6 +441,7 @@ function loadApp(name: string): App {
     healthPath: healthMatch?.[0] ?? DEFAULT_HEALTH_PATH,
     pocCount: pocs.length,
     groundTruth: join(dir, "ground-truth", "VULNERABILITIES.yaml"),
+    surface: join(dir, "ground-truth", "SURFACE.yaml"),
     planDoc: existsSync(plan) ? plan : null,
   };
 }
@@ -768,6 +777,8 @@ function parseArgs(argv: string[]): Args {
     "expect",
     "format",
     "safe",
+    "endpoints",
+    "findings",
     "limit",
     "count",
     "duration",
@@ -1480,6 +1491,65 @@ function loadGroundTruth(app: App): ScoredGroundTruth {
   }
   for (const e of res.errors) warn(`${app.name} ground truth ${e.at}: ${e.msg}`);
   return res.value;
+}
+
+/**
+ * The answer key's proof markers, so a scanner's evidence text can reach the
+ * matcher's `proof` tier for apps whose markers are app-specific.
+ */
+const gtMarkers = (gt: ScoredGroundTruth): string[] => [
+  ...new Set(gt.vulnerabilities.flatMap((v) => v.match?.markers ?? [])),
+];
+
+/**
+ * The endpoint catalog, or null when the app has none.
+ *
+ * Null is a real answer here, not a failure: an app with no SURFACE.yaml is
+ * "not coverage-scoreable yet", and every caller must render that as an absent
+ * track rather than as 0% reached.
+ */
+function loadSurface(app: App, opts: { required?: boolean } = {}): Surface | null {
+  if (!existsSync(app.surface)) {
+    if (opts.required) {
+      die(
+        `${app.name} has no ground-truth/SURFACE.yaml - nothing to measure coverage against.\n` +
+          `   ${c.dim("bun dynast-bench/tools/derive-surface.ts " + app.name + " --write")}`,
+      );
+    }
+    return null;
+  }
+  const res = parseSurfaceFile(app.surface);
+  if (!res.value) {
+    die(
+      `${app.name}: SURFACE.yaml is not scoreable\n` +
+        res.errors.map((e) => `   ${e.at}: ${e.msg}`).join("\n"),
+    );
+  }
+  for (const e of res.errors) warn(`${app.name} surface ${e.at}: ${e.msg}`);
+  return res.value;
+}
+
+/**
+ * Read the tool's discovered-endpoint list. Falls back to the endpoints implied
+ * by a findings file, which is always a floor rather than a measurement - hence
+ * the evidence source travelling with the numbers everywhere they are printed.
+ */
+function readEndpoints(
+  path: string,
+  app: App,
+  variant: GtVariant,
+): { endpoints: ReportedEndpoint[]; source: EvidenceSource } {
+  const res = parseEndpointsFile(path, { app: app.name, variant });
+  if (res.value?.endpoints.length || res.ok) {
+    for (const w of res.warnings.slice(0, 8)) warn(`${basename(path)} ${w.at}: ${w.msg}`);
+    step(`${basename(path)} → ${res.value!.endpoints.length} reported endpoints`);
+    return { endpoints: res.value!.endpoints, source: "reported" };
+  }
+  // not an endpoints file - try it as findings before giving up
+  const asFindings = readFindings(path, app, variant, undefined, []);
+  const endpoints = endpointsFromFindings(asFindings);
+  step(`${basename(path)} → ${endpoints.length} endpoints implied by its findings`);
+  return { endpoints, source: "findings" };
 }
 
 // ---------------------------------------------------------------- commands --
@@ -2682,11 +2752,7 @@ async function cmdScore(args: Args) {
     die("no findings file given — dynast-bench score <app> <findings.json>", 2);
   }
 
-  // the answer key's proof markers, so a scanner's evidence text can reach the
-  // matcher's `proof` tier for apps whose markers are app-specific
-  const markers = [
-    ...new Set(gt.vulnerabilities.flatMap((v) => v.match?.markers ?? [])),
-  ];
+  const markers = gtMarkers(gt);
 
   const runs: FindingsFile[] = [
     ...paths.map((p) => readFindings(p, app, defaultVariant, format, markers)),
@@ -2697,11 +2763,21 @@ async function cmdScore(args: Args) {
     }),
   ];
 
+  // Coverage rides along when the tool supplied an endpoint list AND the app has
+  // a catalog. Either missing means no track, never a zero.
+  const endpointsPath = flagStr(args, "endpoints");
+  const surface = endpointsPath ? loadSurface(app, { required: true }) : null;
+  const reported = endpointsPath ? readEndpoints(endpointsPath, app, "vuln") : null;
+
   const report = scoreApp({
     app: app.name,
     groundTruth: gt,
     runs,
     lenientCwe: flagBool(args, "lenient-cwe"),
+    surface: surface ?? undefined,  // null only when --endpoints was not given
+    endpoints: reported?.endpoints,
+    endpointsSource: reported?.source,
+    endpointsVariant: "vuln",
   });
 
   emit(report);
@@ -2715,6 +2791,118 @@ async function cmdScore(args: Args) {
     );
     log();
   }
+}
+
+/**
+ * Endpoint coverage on its own - "how much of the app did the tool actually
+ * reach", with no vulnerability matching involved.
+ *
+ * Kept as its own command because it answers a question that stands alone: a
+ * crawler with no findings at all still has a coverage score, and you want that
+ * number while iterating on discovery without needing a scan to grade.
+ */
+async function cmdCoverage(args: Args) {
+  const [appName, ...paths] = args.positional;
+  if (!appName) die("usage: dynast-bench coverage <app> <endpoints.json> [--findings f.json]", 2);
+  if (!paths.length) die("no endpoint list given — dynast-bench coverage <app> <endpoints.json>", 2);
+  const app = loadApp(appName);
+  const surface = loadSurface(app, { required: true })!;
+  const variant = wantVariant(args);
+
+  const endpoints: ReportedEndpoint[] = [];
+  let source: EvidenceSource = "reported";
+  for (const p of paths) {
+    const r = readEndpoints(p, app, variant);
+    endpoints.push(...r.endpoints);
+    // one findings-derived input taints the whole number, so say so
+    if (r.source === "findings") source = "findings";
+  }
+
+  // The miss split needs to know which bugs were found. With a scan to cross-
+  // reference, go through scoreApp so the track is composed in exactly one place
+  // (the same path `score --endpoints` takes); without one, coverage still
+  // stands alone, just with no discovery-vs-analysis breakdown.
+  const findingsPath = flagStr(args, "findings");
+  const gt = loadGroundTruth(app);
+  const track = findingsPath
+    ? scoreApp({
+        app: app.name,
+        groundTruth: gt,
+        runs: [readFindings(findingsPath, app, variant, undefined, gtMarkers(gt))],
+        surface,
+        endpoints,
+        endpointsSource: source,
+        endpointsVariant: variant,
+      }).tracks.coverage!
+    : coverageTrack({ surface, reported: endpoints, evidenceSource: source, variant });
+
+  emit({ app: app.name, variant, tracks: { coverage: track } });
+  if (!JSON_MODE.on) {
+    log();
+    log(c.bold(`${app.name}  ·  endpoint coverage  ·  ${variant} twin`));
+    log(
+      coverageLines(track, {
+        full: flagBool(args, "full"),
+        limit: Number(flagStr(args, "limit") ?? 10),
+      })
+        .slice(1) // the shared block opens with a blank line
+        .join("\n"),
+    );
+    log();
+  }
+}
+
+/**
+ * Print the endpoint catalog - the coverage equivalent of `vulns`, so you can
+ * see what a crawl was supposed to find.
+ */
+async function cmdSurface(args: Args) {
+  const apps = resolveApps(args, { allowAll: true });
+  const full = flagBool(args, "full");
+  const idsOnly = flagBool(args, "ids");
+  const out: Record<string, unknown>[] = [];
+
+  for (const app of apps) {
+    const surface = loadSurface(app);
+    if (!surface) {
+      // an app with no catalog is not scoreable for coverage - report it the
+      // same way in both modes, rather than dying in one and exiting 0 in the
+      // other for identical input
+      warn(`${app.name} has no ground-truth/SURFACE.yaml - not coverage-scoreable`);
+      out.push({ app: app.name, operations: null });
+      process.exitCode = 1;
+      continue;
+    }
+    out.push({ app: app.name, count: surface.operations.length, operations: surface.operations });
+    if (JSON_MODE.on) continue;
+
+    if (idsOnly) {
+      for (const op of surface.operations) log(op.id);
+      continue;
+    }
+    if (apps.length > 1) log(c.bold(`\n${app.name}`));
+    const rows = surface.operations.map((op) => [
+      op.id,
+      op.kind,
+      opKey(op).slice(0, 52),
+      op.discovery ?? "",
+      op.reachability ?? "",
+      (op.vulns ?? []).join(",") || c.dim("benign"),
+    ]);
+    table(rows, ["ID", "KIND", "IDENTITY", "DISCOVERY", "REACH", "VULNS"]);
+    const vulnerable = surface.operations.filter((o) => (o.vulns ?? []).length).length;
+    log();
+    log(
+      `  ${surface.operations.length} operation(s) · ${vulnerable} carry a planted bug · ` +
+        `${surface.operations.length - vulnerable} benign`,
+    );
+    if (full) {
+      for (const op of surface.operations) {
+        if (op.notes) log(`  ${op.id.padEnd(28)} ${c.dim(op.notes)}`);
+      }
+    }
+  }
+  emit({ apps: out });
 }
 
 // --------------------------------------------------------- diff + invariants --
@@ -3198,6 +3386,28 @@ const FINDINGS_EXAMPLE = {
   ],
 };
 
+/**
+ * The companion format: what a tool says it DISCOVERED, as opposed to what it
+ * found wrong. Scored against SURFACE.yaml by `coverage`.
+ */
+const ENDPOINTS_EXAMPLE = {
+  schema: "dynast-bench.endpoints/v1",
+  tool: { name: "my-agent", version: "0.1.0", mode: "agent" },
+  run: { app: "<app>", variant: "vuln", target: `http://127.0.0.1:${APP_PORT}` },
+  endpoints: [
+    { method: "GET", path: "/api/posts/search", params: ["q"] },
+    { method: "POST", path: "/api/settings/import" },
+    // a concrete id is fine - the scorer templates it to {id}
+    { method: "GET", path: "/api/posts/7" },
+    // a required ?action= selector is part of the identity, so include it
+    { method: "POST", url: "/wp-admin/admin-ajax.php?action=bench_upload" },
+    { kind: "graphql", graphql_kind: "mutation", op: "updatePost" },
+    { kind: "ws", endpoint: "/ws", event: "admin.userDelete" },
+    { kind: "llm", tool: "run_shell" },
+    { kind: "net", host: "db", port: 5432, proto: "tcp" },
+  ],
+};
+
 /** Human-readable rendering of the finding schema for `dynast-bench schema`. */
 function schemaDoc(): string {
   return `${c.bold("dynast-bench findings/v1")} — the finding format ${c.bold("dynast-bench score")} reads ${c.dim(`v${VERSION}`)}
@@ -3231,6 +3441,28 @@ ${c.bold("RULES")}
   2. Concrete URLs (/api/posts/7); the scorer normalizes id segments to {id}.
   3. Put a seed marker in evidence.markers — it is what resolves bugs that share a route.
 
+${c.bold("ENDPOINTS/v1")}  ${c.dim("— what you DISCOVERED, scored separately by `coverage`")}
+${c.dim(JSON.stringify(ENDPOINTS_EXAMPLE, null, 2))}
+
+  A separate file, because "how much of the app did you reach" is a different
+  question from "what did you find wrong" — and answering it is what tells the
+  two kinds of miss apart:
+
+    discovery miss   never reached the operation carrying the bug
+    analysis miss    reached it and did not report the bug
+
+  Transport is not operation. One POST /graphql does not exercise every GraphQL
+  op; one WS handshake does not exercise every event; one POST /api/runs does
+  not exercise every agent tool. Name them individually or they do not count.
+  A bare list of strings ("GET /a", "ws /ws post.search") is accepted too.
+
+${c.bold("READY-TO-SCORE EXAMPLES")}  ${c.dim("— examples/, with the numbers each one produces")}
+  dynast-bench score    nextjs examples/findings.json
+  dynast-bench score    nextjs examples/findings.json --safe examples/findings-safe.json
+  dynast-bench coverage nextjs examples/endpoints.json --findings examples/findings.json
+  dynast-bench coverage graphql examples/endpoints-graphql.json
+  ${c.dim("examples/template-findings.json + template-endpoints.json are blank skeletons")}
+
 ${c.dim("full reference: dynast-bench/README.md#scoring   ·   machine-readable: dynast-bench schema --json")}
 `;
 }
@@ -3242,6 +3474,11 @@ async function cmdSchema(_args: Args) {
       formats: ["findings/v1", ...FORMATS.filter((f) => f !== "findings/v1")],
       locations: ["http", "file", "net", "graphql", "ws", "llm"],
       example: FINDINGS_EXAMPLE,
+      endpoints: {
+        schema: "dynast-bench.endpoints/v1",
+        kinds: ["http", "graphql", "ws", "llm", "net"],
+        example: ENDPOINTS_EXAMPLE,
+      },
     });
     return;
   }
@@ -3292,6 +3529,11 @@ ${c.bold("BENCHMARK")}
 
 ${c.bold("SCORE")}
   score <app> <file...>    findings → precision/recall/F1  [--safe f.json] [--full]
+                           [--endpoints e.json] to add the coverage track
+  coverage <app> <e.json>  endpoint discovery → how much of the app was reached
+                           [--findings f.json] to split discovery vs analysis misses
+  surface <app...>         every cataloged operation — the checklist a crawl gets
+                           compared against  [--ids] [--full]
   schema                   print the findings/v1 finding format score reads  [--json]
   diff <app>               the vuln↔safe delta, cross-checked against the answer key
   check [app...|--all]     CI gate: schema · anchors · diff scope · PoCs · binds
@@ -3318,9 +3560,12 @@ ${c.bold("FLAGS")}
   --json                   machine-readable output on stdout
   --yes                    skip the confirmation prompt (clean)
   --safe FILE              findings from the patched twin (score) - all false alarms
+  --endpoints FILE         the endpoints the tool says it discovered (score)
+  --findings FILE          a scan to cross-reference, for the discovery-vs-analysis
+                           miss split (coverage)
   --format F               force an input format (score): ${FORMATS.join(" ")}
   --near                   also list the near-misses (vulns)
-  --ids                    bare ids, one per line, for a coverage diff (vulns)
+  --ids                    bare ids, one per line, for a coverage diff (vulns/surface)
   --full                   every match/miss/false-positive row (score/diff/check)
                            · route + PoC + full notes (vulns)
   --limit N                detail rows per section (score, default 10)
@@ -3341,6 +3586,7 @@ ${c.bold("SCANNER INTEGRATION")}
 
   ${c.dim("# see the finding format an agent should emit, then score a run")}
   dynast-bench schema                                    ${c.dim("# add --json for a template")}
+  dynast-bench score nextjs examples/findings.json       ${c.dim("# a real file, ready to score")}
   dynast-bench score nextjs findings.json
   dynast-bench score nextjs zap.json semgrep.sarif nuclei.jsonl   ${c.dim("# combine tools as one")}
   dynast-bench score nextjs findings.json --json | jq .metrics
@@ -3348,6 +3594,10 @@ ${c.bold("SCANNER INTEGRATION")}
   ${c.dim("# false-positive run: scan the patched twin, score both together")}
   dynast-bench start nextjs --variant safe
   dynast-bench score nextjs vuln.json --safe safe.json --full
+
+  ${c.dim("# how much of the app did it reach, and why did it miss the rest?")}
+  dynast-bench surface nextjs                            ${c.dim("# the operation checklist")}
+  dynast-bench coverage nextjs examples/endpoints.json --findings examples/findings.json
 
   ${c.dim("# a handful of targets at once — the summary table lists every port")}
   dynast-bench start --count 5 --parallel
@@ -3387,6 +3637,8 @@ const COMMANDS: Record<string, (a: Args) => Promise<void>> = {
   stress: cmdStress,
   run: cmdRun,
   score: cmdScore,
+  coverage: cmdCoverage,
+  surface: cmdSurface,
   schema: cmdSchema,
   "findings-schema": cmdSchema,
   diff: cmdDiff,

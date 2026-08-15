@@ -1,0 +1,160 @@
+# Attack-surface catalog for websocket - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: websocket
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.ws.get
+    kind: http
+    method: GET
+    path: "/ws"
+    discovery: interaction
+    reachability: user
+    vulns: [CSWSH-001]
+  - id: http.socket-io.get
+    kind: http
+    method: GET
+    path: "/socket.io/"
+    query: { transport: polling }
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [DOWNGRADE-001]
+  - id: http.ws.ws
+    kind: http
+    method: WS
+    path: "/ws"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [TICKET-001, EXPIRY-001, RESUME-001, SUBPROTO-001, PAYLOAD-001, RATE-001, ROOM-001]
+  - id: http.api-health.get
+    kind: http
+    method: GET
+    path: "/api/health"
+    params: [token]
+    discovery: interaction
+    reachability: user
+    vulns: [TOKEN-LEAK-001]
+  - id: http.admin
+    kind: http
+    path: "/admin"
+    discovery: interaction
+    reachability: user
+    vulns: [SIO-ADMIN-001]
+  - id: ws.subscribe
+    kind: ws
+    event: subscribe
+    channel: "org:globex:posts"
+    discovery: interaction
+    reachability: user
+    vulns: [CHAN-BOLA-001]
+  - id: ws.subscribe-2
+    kind: ws
+    event: subscribe
+    channel: "org:*"
+    discovery: interaction
+    reachability: user
+    vulns: [CHAN-WILD-001]
+  - id: ws.subscribe-3
+    kind: ws
+    event: subscribe
+    channel: "internal:billing"
+    discovery: interaction
+    reachability: user
+    vulns: [CHAN-INTERNAL-001]
+  - id: ws.chat-send
+    kind: ws
+    event: chat.send
+    discovery: interaction
+    reachability: user
+    vulns: [IMPERSONATE-001]
+  - id: ws.admin-userdelete
+    kind: ws
+    event: admin.userDelete
+    discovery: interaction
+    reachability: user
+    vulns: [BFLA-001]
+  - id: ws.post-get
+    kind: ws
+    event: post.get
+    discovery: interaction
+    reachability: user
+    vulns: [IDOR-001]
+  - id: ws.post-search
+    kind: ws
+    event: post.search
+    discovery: interaction
+    reachability: user
+    vulns: [SQLI-001]
+  - id: ws.sub-filter
+    kind: ws
+    event: sub.filter
+    discovery: interaction
+    reachability: user
+    vulns: [RCE-001]
+  - id: ws.presence-update
+    kind: ws
+    event: presence.update
+    discovery: interaction
+    reachability: user
+    vulns: [PROTO-001, LOG-001]
+  - id: ws.webhook-test
+    kind: ws
+    event: webhook.test
+    discovery: interaction
+    reachability: user
+    vulns: [SSRF-001]
+  - id: ws.file-get
+    kind: ws
+    event: file.get
+    discovery: interaction
+    reachability: user
+    vulns: [TRAVERSAL-001]
+  - id: http.api-rooms-id-transcript.get
+    kind: http
+    method: GET
+    path: "/api/rooms/{id}/transcript"
+    discovery: interaction
+    reachability: user
+    vulns: [XSS-STORED-001]
+  - id: http.api-auth-login.post
+    kind: http
+    method: POST
+    path: "/api/auth/login"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [CORS-COOKIE-001, DEFAULT-CREDS-001]
+  - id: ws.billing-seats
+    kind: ws
+    event: billing.seats
+    discovery: interaction
+    reachability: user
+    vulns: [BILLING-001]
+  - id: ws.invite-create
+    kind: ws
+    event: invite.create
+    discovery: interaction
+    reachability: user
+    vulns: [RACE-001]
+  - id: http.api-debug-access-log
+    kind: http
+    path: "/api/debug/access-log"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from src/server.mjs - REVIEW"
+  - id: http.ws-secure
+    kind: http
+    path: "/ws/secure"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from src/server.mjs - REVIEW"
+  - id: http.api-rooms
+    kind: http
+    path: "/api/rooms/"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from src/server.mjs - REVIEW"

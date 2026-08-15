@@ -1,0 +1,57 @@
+{
+  "schema": "dynast-bench.endpoints/v1",
+  "tool": { "name": "example-agent", "version": "0.1.0", "mode": "agent" },
+  "run": {
+    "app": "graphql",
+    "variant": "vuln",
+    "target": "http://127.0.0.1:13314"
+  },
+  "endpoints": [
+    {
+      "kind": "http",
+      "method": "POST",
+      "path": "/graphql",
+      "note": "the transport. On its own this is ONE operation, not the whole API"
+    },
+    { "kind": "http", "method": "POST", "path": "/graphql/public" },
+    { "kind": "http", "method": "GET", "path": "/", "note": "landing page" },
+    { "kind": "http", "method": "GET", "path": "/api/export" },
+
+    {
+      "kind": "graphql",
+      "graphql_kind": "query",
+      "op": "__schema",
+      "note": "introspection is on, so the schema itself names most of the surface"
+    },
+    { "kind": "graphql", "graphql_kind": "query", "op": "posts" },
+    { "kind": "graphql", "graphql_kind": "query", "op": "users" },
+    { "kind": "graphql", "graphql_kind": "query", "op": "node" },
+    { "kind": "graphql", "graphql_kind": "query", "op": "searchPosts" },
+    { "kind": "graphql", "graphql_kind": "mutation", "op": "login" },
+    {
+      "kind": "graphql",
+      "graphql_kind": "mutation",
+      "op": "updateProfile",
+      "note": "kind matters - query.updateProfile would be a different operation"
+    },
+    { "kind": "graphql", "graphql_kind": "mutation", "op": "addComment" },
+    {
+      "kind": "graphql",
+      "graphql_kind": "query",
+      "op": "User.passwordHash",
+      "note": "a security-relevant FIELD is its own operation to reach"
+    },
+
+    {
+      "kind": "ws",
+      "endpoint": "/graphql/ws",
+      "note": "the subscription handshake; opening it does not exercise the subscriptions"
+    },
+    {
+      "kind": "graphql",
+      "graphql_kind": "subscription",
+      "op": "postUpdated",
+      "note": "...this does"
+    }
+  ]
+}

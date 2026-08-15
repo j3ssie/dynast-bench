@@ -1,0 +1,208 @@
+# Attack-surface catalog for llmchat - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: llmchat
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.api-chat.post
+    kind: http
+    method: POST
+    path: "/api/chat"
+    discovery: interaction
+    reachability: user
+    vulns: [PI-001, RAGPI-002, URLPI-003, ROLE-004, PROMPTLEAK-005, GUARD-007, VECTOR-014, CACHE-016, OPTIONS-022, QUOTA-023, MODEL-024]
+  - id: http.api-chat-config.get
+    kind: http
+    method: GET
+    path: "/api/chat/config"
+    discovery: interaction
+    reachability: user
+    vulns: [DEBUG-006]
+  - id: http.api-conversations-id-html.get
+    kind: http
+    method: GET
+    path: "/api/conversations/{id}/html"
+    discovery: interaction
+    reachability: user
+    vulns: [XSS-008]
+  - id: http.api-stream.post
+    kind: http
+    method: POST
+    path: "/api/stream"
+    discovery: interaction
+    reachability: user
+    vulns: [STREAM-XSS-009]
+  - id: http.api-analytics-ask.post
+    kind: http
+    method: POST
+    path: "/api/analytics/ask"
+    discovery: interaction
+    reachability: user
+    vulns: [NLSQL-010]
+  - id: http.api-tools-calc.post
+    kind: http
+    method: POST
+    path: "/api/tools/calc"
+    discovery: interaction
+    reachability: user
+    vulns: [EXEC-011]
+  - id: http.api-citations-fetch.post
+    kind: http
+    method: POST
+    path: "/api/citations/fetch"
+    discovery: interaction
+    reachability: user
+    vulns: [SSRF-012]
+  - id: http.api-citations-render.get
+    kind: http
+    method: GET
+    path: "/api/citations/render"
+    params: [url]
+    discovery: interaction
+    reachability: user
+    vulns: [REDIRECT-013]
+  - id: http.api-rag-search.get
+    kind: http
+    method: GET
+    path: "/api/rag/search"
+    discovery: interaction
+    reachability: user
+    vulns: [BOLA-015]
+  - id: http.api-debug-traces.get
+    kind: http
+    method: GET
+    path: "/api/_debug/traces"
+    discovery: interaction
+    reachability: user
+    vulns: [TRACE-017]
+  - id: http.api-conversations-id.get
+    kind: http
+    method: GET
+    path: "/api/conversations/{id}"
+    discovery: interaction
+    reachability: user
+    vulns: [IDOR-018]
+  - id: http.api-admin-system-prompt.put
+    kind: http
+    method: PUT
+    path: "/api/admin/system-prompt"
+    discovery: interaction
+    reachability: user
+    vulns: [BFLA-019]
+  - id: http.api-documents-id-raw.get
+    kind: http
+    method: GET
+    path: "/api/documents/{id}/raw"
+    discovery: interaction
+    reachability: user
+    vulns: [TRAVERSAL-020]
+  - id: http.share.get
+    kind: http
+    method: GET
+    path: "/share/"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [SHARE-021]
+  - id: http.api-summarize-id.post
+    kind: http
+    method: POST
+    path: "/api/summarize/{id}"
+    discovery: interaction
+    reachability: user
+    vulns: [RECURSION-025]
+  - id: http.api-llm.post
+    kind: http
+    method: POST
+    path: "/api/llm/"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [OLLAMA-026]
+  - id: http.api-llm-id
+    kind: http
+    path: "/api/llm/{path}"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [OLLAMA-026]
+  - id: http.api-retriever-config.post
+    kind: http
+    method: POST
+    path: "/api/retriever/config"
+    discovery: interaction
+    reachability: user
+    vulns: [PICKLE-027]
+  - id: http.api-chat.options
+    kind: http
+    method: OPTIONS
+    path: "/api/chat"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [CORS-028]
+  - id: http.api-errors-langchain.get
+    kind: http
+    method: GET
+    path: "/api/errors/langchain"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [ERRORS-029]
+  - id: http.api-auth-login.post
+    kind: http
+    method: POST
+    path: "/api/auth/login"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [SECRETS-030]
+  - id: http.root.get
+    kind: http
+    method: GET
+    path: "/"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from app.py - REVIEW"
+  - id: http.api-chat-v2.post
+    kind: http
+    method: POST
+    path: "/api/chat/v2"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from app.py - REVIEW"
+  - id: http.api-documents.post
+    kind: http
+    method: POST
+    path: "/api/documents"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from app.py - REVIEW"
+  - id: http.api-documents-id.delete
+    kind: http
+    method: DELETE
+    path: "/api/documents/{doc_id}"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from app.py - REVIEW"
+  - id: http.api-conversations-id-share.post
+    kind: http
+    method: POST
+    path: "/api/conversations/{conv_id}/share"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from app.py - REVIEW"
+  - id: http.share-id.get
+    kind: http
+    method: GET
+    path: "/share/{code}"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [SHARE-021]
+    notes: "benign? derived from app.py - REVIEW"
+  - id: http.api-admin-system-prompt.get
+    kind: http
+    method: GET
+    path: "/api/admin/system-prompt"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "benign? derived from app.py - REVIEW"

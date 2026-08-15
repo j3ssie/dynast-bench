@@ -1,0 +1,131 @@
+{
+  "schema": "dynast-bench.findings/v1",
+  "tool": { "name": "example-agent", "version": "0.1.0", "mode": "agent" },
+  "run": {
+    "app": "nextjs",
+    "variant": "vuln",
+    "target": "http://127.0.0.1:13311",
+    "duration_s": 42
+  },
+  "findings": [
+    {
+      "id": "f-01",
+      "title": "SQL injection in post search - proof by seed marker",
+      "cwe": "CWE-89",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/posts/search?q=%27%20OR%201%3D1--%20",
+          "path": "/api/posts/search",
+          "param": "q",
+          "param_in": "query",
+          "status": 200
+        }
+      },
+      "evidence": {
+        "markers": ["GLOBEX-CONFIDENTIAL-MARKER-7f3a"],
+        "request": "GET /api/posts/search?q=' OR 1=1-- HTTP/1.1",
+        "response_excerpt": "{\"posts\":[{\"body\":\"... GLOBEX-CONFIDENTIAL-MARKER-7f3a ...\"}]}",
+        "note": "a published-only, org-scoped query can never return a Globex DRAFT"
+      },
+      "exploited": true
+    },
+
+    {
+      "id": "f-02",
+      "title": "IDOR on post detail - same marker, different bug",
+      "cwe": "CWE-639",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/posts/7",
+          "path": "/api/posts/7",
+          "status": 200
+        },
+        "file": {
+          "path": "vuln/src/app/api/posts/[id]/route.ts",
+          "line": 12,
+          "symbol": "GET"
+        }
+      },
+      "evidence": {
+        "markers": ["GLOBEX-CONFIDENTIAL-MARKER-7f3a"],
+        "note": "read as user1 (Acme); the row belongs to Globex"
+      },
+      "exploited": true
+    },
+
+    {
+      "id": "f-03",
+      "title": "SSRF in link preview",
+      "cwe": "CWE-918",
+      "severity": "high",
+      "confidence": "firm",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/preview?url=http://mailpit:8025/api/v1/messages",
+          "path": "/api/preview",
+          "param": "url",
+          "param_in": "query"
+        }
+      },
+      "evidence": {
+        "response_excerpt": "{\"status\":200,\"body\":\"{\\\"messages\\\":[...]}\"}",
+        "note": "server fetched an internal-only sidecar the client cannot reach"
+      },
+      "exploited": true
+    },
+
+    {
+      "id": "f-04",
+      "title": "Prototype pollution via settings import - source only, no proof",
+      "cwe": "CWE-1321",
+      "severity": "high",
+      "confidence": "tentative",
+      "location": {
+        "file": {
+          "path": "vuln/src/lib/merge.ts",
+          "line": 9,
+          "symbol": "deepMerge"
+        }
+      },
+      "exploited": false
+    },
+
+    {
+      "id": "f-05",
+      "title": "Deployment env file served publicly",
+      "cwe": "CWE-538",
+      "severity": "critical",
+      "confidence": "certain",
+      "location": {
+        "http": { "method": "GET", "path": "/env.production", "status": 200 }
+      },
+      "evidence": { "markers": ["ENVFILE-LEAK-MARKER-5d2c"] },
+      "exploited": true
+    },
+
+    {
+      "id": "f-06",
+      "title": "Open redirect - reported as a related CWE, still credited",
+      "cwes": ["CWE-601", "CWE-20"],
+      "severity": "low",
+      "confidence": "firm",
+      "location": {
+        "http": {
+          "method": "GET",
+          "path": "/goto",
+          "param": "next",
+          "param_in": "query",
+          "status": 302
+        }
+      },
+      "exploited": true
+    }
+  ]
+}

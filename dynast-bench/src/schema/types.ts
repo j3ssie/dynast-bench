@@ -9,6 +9,7 @@
  */
 
 export const FINDINGS_SCHEMA_ID = "dynast-bench.findings/v1";
+export const ENDPOINTS_SCHEMA_ID = "dynast-bench.endpoints/v1";
 
 export type Variant = "vuln" | "safe";
 export type Severity = "info" | "low" | "medium" | "high" | "critical";
@@ -245,6 +246,96 @@ export interface GroundTruth {
   seed_notes?: string;
   vulnerabilities: GtVulnerability[];
   near_misses: GtNearMiss[];
+}
+
+// ------------------------------------------------------ attack surface (v1) ---
+
+/**
+ * The protocols an operation can live on. `http` is the transport every other
+ * kind rides on; the rest exist because "did you reach POST /graphql" and "did
+ * you exercise mutation.updatePost" are different questions, and an app whose
+ * whole surface hides behind one URL would otherwise score 100% coverage from a
+ * single request.
+ */
+export const OPERATION_KINDS = ["http", "graphql", "ws", "llm", "net"] as const;
+export type OperationKind = (typeof OPERATION_KINDS)[number];
+
+/**
+ * Anything that can be compared as an operation identity - one shape for both
+ * sides of the coverage diff, so the catalog and the agent's report normalize
+ * through exactly the same code.
+ */
+export interface OperationRef {
+  kind?: string;
+  // http
+  method?: string;
+  url?: string;
+  path?: string;
+  /** query pairs that MUST be present - `?action=x` style discriminators */
+  query?: Record<string, string>;
+  /** injectable parameter names; diagnostics only, never part of identity */
+  params?: string[];
+  /** only for sidecar operations that are not on the app port */
+  port?: number;
+  // graphql
+  op?: string;
+  graphql_kind?: string;
+  field?: string;
+  // ws / socket.io
+  endpoint?: string;
+  event?: string;
+  channel?: string;
+  /** socket.io namespace */
+  namespace?: string;
+  // llm
+  tool?: string;
+  injection_channel?: string;
+  // net
+  host?: string;
+  proto?: string;
+}
+
+export interface SurfaceOperation extends OperationRef {
+  id: string;
+  kind: OperationKind;
+  /** id of the operation this one rides on (graphql op -> its POST /graphql) */
+  via?: string;
+  /** crawl capability needed to reach it - see DISCOVERY_TIERS */
+  discovery?: string;
+  reachability?: string;
+  /** vulnerability ids planted here; empty = a benign operation */
+  vulns?: string[];
+  /**
+   * Which twin exposes it. "both" is the default and the overwhelming case; a
+   * fix that removes an operation outright declares "vuln" so the safe twin is
+   * not scored against an endpoint that no longer exists.
+   */
+  variant?: "both" | Variant;
+  notes?: string;
+  [k: string]: unknown;
+}
+
+export interface Surface {
+  app?: string;
+  entry?: string;
+  notes?: string;
+  operations: SurfaceOperation[];
+}
+
+// ------------------------------------------------------------ endpoints/v1 ---
+
+/** One operation a tool claims it discovered. */
+export interface ReportedEndpoint extends OperationRef {
+  /** free-form, for the report only */
+  id?: string;
+  note?: string;
+}
+
+export interface EndpointsFile {
+  schema: string;
+  tool: FindingsToolInfo;
+  run: FindingsRun;
+  endpoints: ReportedEndpoint[];
 }
 
 // --------------------------------------------------------------- validation --

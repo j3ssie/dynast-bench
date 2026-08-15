@@ -1,0 +1,205 @@
+# Attack-surface catalog for jsp - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: jsp
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.reflect-jsp.get
+    kind: http
+    method: GET
+    path: "/reflect.jsp"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XSS-001]
+  - id: http.upload.post
+    kind: http
+    method: POST
+    path: "/upload"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [UPLOAD-001]
+  - id: http.import.post
+    kind: http
+    method: POST
+    path: "/import"
+    query: { type: obj }
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DESER-001]
+  - id: http.import.post-2
+    kind: http
+    method: POST
+    path: "/import"
+    query: { type: xml }
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XXE-001]
+  - id: http.admin-public-users.get
+    kind: http
+    method: GET
+    path: "/admin;public/users"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [AUTHZ-001]
+  - id: http.search.get
+    kind: http
+    method: GET
+    path: "/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SQLI-001]
+  - id: http.report.get
+    kind: http
+    method: GET
+    path: "/report"
+    params: [id]
+    discovery: static-html
+    reachability: user
+    vulns: [SQLI-002]
+  - id: http.report.get-2
+    kind: http
+    method: GET
+    path: "/report"
+    query: { mode: el }
+    params: [expr]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TEMPLATE-001]
+  - id: http.fetch.get
+    kind: http
+    method: GET
+    path: "/fetch"
+    params: [url]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SSRF-001]
+  - id: http.export.get
+    kind: http
+    method: GET
+    path: "/export"
+    params: [format]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CMD-001]
+  - id: http.download.get
+    kind: http
+    method: GET
+    path: "/download"
+    params: [file]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TRAVERSAL-001]
+  - id: http.post.get
+    kind: http
+    method: GET
+    path: "/post"
+    params: [id]
+    discovery: static-html
+    reachability: user
+    vulns: [IDOR-001]
+  - id: http.manage-users.get
+    kind: http
+    method: GET
+    path: "/manage/users"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [BFLA-001]
+  - id: http.profile.post
+    kind: http
+    method: POST
+    path: "/profile"
+    discovery: static-html
+    reachability: user
+    vulns: [MASSASSIGN-001]
+  - id: http.login.post
+    kind: http
+    method: POST
+    path: "/login"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SESSION-001, RATE-001, ENUM-001, REDIRECT-001]
+  - id: http.api-jwt-me.get
+    kind: http
+    method: GET
+    path: "/api/jwt/me"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [JWT-001]
+  - id: http.reset.post
+    kind: http
+    method: POST
+    path: "/reset"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RESET-001]
+  - id: http.comments-jsp.get
+    kind: http
+    method: GET
+    path: "/comments.jsp"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XSS-002]
+  - id: http.error-demo.get
+    kind: http
+    method: GET
+    path: "/error-demo"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [ERROR-001]
+  - id: http.manager-html.get
+    kind: http
+    method: GET
+    path: "/manager/html"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [MANAGER-001]
+  - id: http.internal-admin.get
+    kind: http
+    method: GET
+    path: "/internal/admin"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XFF-001]
+  - id: http.crypto.get
+    kind: http
+    method: GET
+    path: "/crypto"
+    params: [secret]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CRYPTO-001]
+  - id: http.billing-seats.post
+    kind: http
+    method: POST
+    path: "/billing/seats"
+    discovery: static-html
+    reachability: user
+    vulns: [BILLING-001]
+  - id: http.invite.post
+    kind: http
+    method: POST
+    path: "/invite"
+    discovery: static-html
+    reachability: user
+    vulns: [RACE-001]
+  - id: http.captcha.get
+    kind: http
+    method: GET
+    path: "/captcha"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CAPTCHA-001]
+  - id: http.index-jsp.get
+    kind: http
+    method: GET
+    path: "/index.jsp"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from /index.jsp - REVIEW"

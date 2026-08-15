@@ -1,0 +1,71 @@
+{
+  "_comment": "findings/v1 skeleton - every field the scorer reads. Delete _comment keys and the location blocks that do not apply; unknown keys are ignored. Machine-readable copy: dynast-bench schema --json",
+
+  "schema": "dynast-bench.findings/v1",
+  "tool": {
+    "name": "your-tool",
+    "version": "0.0.0",
+    "mode": "agent"
+  },
+  "run": {
+    "app": "<app>",
+    "variant": "vuln",
+    "target": "http://127.0.0.1:13311",
+    "duration_s": 0
+  },
+  "findings": [
+    {
+      "id": "f-001",
+      "title": "one line: what is wrong and where",
+      "cwe": "CWE-89",
+      "cwes": ["CWE-89", "CWE-943"],
+      "severity": "high",
+      "confidence": "firm",
+
+      "_comment_location": "at least ONE block below. Use as many as you can prove; more anchors resolve bugs that share a route.",
+      "location": {
+        "http": {
+          "method": "GET",
+          "url": "http://127.0.0.1:13311/api/posts/search?q=payload",
+          "path": "/api/posts/search",
+          "param": "q",
+          "param_in": "query",
+          "status": 200
+        },
+        "file": {
+          "path": "vuln/src/app/api/posts/search/route.ts",
+          "line": 21,
+          "end_line": 24,
+          "symbol": "GET"
+        },
+        "net": {
+          "host": "db",
+          "port": 5432,
+          "proto": "tcp",
+          "service": "postgresql",
+          "version": "16.2",
+          "state": "open"
+        },
+        "graphql": { "op": "posts", "kind": "query", "field": "User.passwordHash" },
+        "ws": {
+          "transport": "ws",
+          "endpoint": "/ws",
+          "event": "admin.userDelete",
+          "channel": "org:globex:posts"
+        },
+        "llm": { "tool": "run_shell", "channel": "rag", "run_id": "run-123" }
+      },
+
+      "evidence": {
+        "_comment": "a seed marker here is near-conclusive proof and is what separates two bugs on one route",
+        "markers": ["GLOBEX-CONFIDENTIAL-MARKER-7f3a"],
+        "request": "GET /api/posts/search?q=' OR 1=1-- HTTP/1.1",
+        "response_excerpt": "first few hundred chars of the response",
+        "note": "why this proves impact"
+      },
+
+      "exploited": true,
+      "tags": ["free-form", "not-scored"]
+    }
+  ]
+}

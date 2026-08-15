@@ -1,0 +1,93 @@
+{
+  "_comment": "endpoints/v1 skeleton - what your tool DISCOVERED, not what it found wrong. One entry per operation; unknown keys are ignored. Machine-readable copy: dynast-bench schema --json",
+
+  "schema": "dynast-bench.endpoints/v1",
+  "tool": {
+    "name": "your-tool",
+    "version": "0.0.0",
+    "mode": "agent"
+  },
+  "run": {
+    "app": "<app>",
+    "variant": "vuln",
+    "target": "http://127.0.0.1:13311",
+    "duration_s": 0
+  },
+  "endpoints": [
+    {
+      "_comment": "http - kind is optional, it is inferred from the fields present",
+      "method": "GET",
+      "path": "/api/posts/search",
+      "params": ["q"]
+    },
+    {
+      "_comment": "a concrete id is fine; the scorer templates it to {id}",
+      "method": "GET",
+      "path": "/api/posts/7"
+    },
+    {
+      "_comment": "a full URL works too - the host and port are stripped",
+      "method": "POST",
+      "url": "http://127.0.0.1:13311/api/settings/import"
+    },
+    {
+      "_comment": "a required ?action= selector IS part of the identity - include it or this credits nothing",
+      "method": "POST",
+      "path": "/wp-admin/admin-ajax.php",
+      "query": { "action": "bench_upload" }
+    },
+    {
+      "_comment": "a sidecar on its own port",
+      "method": "GET",
+      "path": "/",
+      "port": 13315
+    },
+
+    {
+      "_comment": "graphql - the op behind POST /graphql, which is its own separate entry",
+      "kind": "graphql",
+      "graphql_kind": "mutation",
+      "op": "updatePost"
+    },
+    {
+      "_comment": "a security-relevant field is its own operation",
+      "kind": "graphql",
+      "graphql_kind": "query",
+      "field": "User.passwordHash"
+    },
+
+    {
+      "_comment": "ws - the handshake alone; it does not exercise the events",
+      "kind": "ws",
+      "endpoint": "/ws"
+    },
+    {
+      "_comment": "...each event does, and a channel pins it to one room",
+      "kind": "ws",
+      "endpoint": "/ws",
+      "event": "admin.userDelete",
+      "channel": "org:globex:posts"
+    },
+    {
+      "_comment": "socket.io adds a namespace",
+      "kind": "ws",
+      "namespace": "/rt",
+      "event": "post.search"
+    },
+
+    {
+      "_comment": "llm - a tool the agent can actually invoke, not the route that starts a run",
+      "kind": "llm",
+      "tool": "run_shell",
+      "injection_channel": "rag"
+    },
+
+    {
+      "_comment": "net - a service, for the port-discovery apps",
+      "kind": "net",
+      "host": "db",
+      "port": 5432,
+      "proto": "tcp"
+    }
+  ]
+}

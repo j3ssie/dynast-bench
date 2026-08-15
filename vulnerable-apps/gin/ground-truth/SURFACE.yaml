@@ -1,0 +1,167 @@
+# Attack-surface catalog for gin - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: gin
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.api-debug-info.get
+    kind: http
+    method: GET
+    path: "/api/debug/info"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [INFO-001]
+  - id: http.api-auth-login.post
+    kind: http
+    method: POST
+    path: "/api/auth/login"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DEFAULT-CREDS-001]
+  - id: http.api-grants.get
+    kind: http
+    method: GET
+    path: "/api/grants/"
+    discovery: static-html
+    reachability: user
+    vulns: [IDOR-001]
+  - id: http.api-grants-id
+    kind: http
+    path: "/api/grants/{token}"
+    discovery: static-html
+    reachability: user
+    vulns: [IDOR-001]
+  - id: http.api-users-me.patch
+    kind: http
+    method: PATCH
+    path: "/api/users/me"
+    discovery: static-html
+    reachability: user
+    vulns: [MASSASSIGN-001]
+  - id: http.api-reports-timeline.get
+    kind: http
+    method: GET
+    path: "/api/reports/timeline"
+    discovery: static-html
+    reachability: user
+    vulns: [SQLI-001]
+  - id: http.api-images-thumbnail.post
+    kind: http
+    method: POST
+    path: "/api/images/thumbnail"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RCE-001]
+  - id: http.api-render-pdf.post
+    kind: http
+    method: POST
+    path: "/api/render/pdf"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SSRF-001]
+  - id: http.api-import-preview.post
+    kind: http
+    method: POST
+    path: "/api/import/preview"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DOS-001]
+  - id: http.api-admin-users.get
+    kind: http
+    method: GET
+    path: "/api/admin/users"
+    discovery: static-html
+    reachability: user
+    vulns: [AUTHZ-001]
+  - id: http.goto.get
+    kind: http
+    method: GET
+    path: "/goto"
+    params: [next]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [REDIRECT-001]
+  - id: http.search.get
+    kind: http
+    method: GET
+    path: "/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XSS-REFLECT-001]
+  - id: http.notes-preview.get
+    kind: http
+    method: GET
+    path: "/notes/preview"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XSS-DOMPURIFY-001]
+  - id: http.root.get
+    kind: http
+    method: GET
+    path: "/"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-version.get
+    kind: http
+    method: GET
+    path: "/api/version"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-posts-search.get
+    kind: http
+    method: GET
+    path: "/api/posts/search"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-posts-id.get
+    kind: http
+    method: GET
+    path: "/api/posts/:id"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-posts-id-grant.post
+    kind: http
+    method: POST
+    path: "/api/posts/:id/grant"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-grants-token.get
+    kind: http
+    method: GET
+    path: "/api/grants/:token"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-images-thumbnail-safe.post
+    kind: http
+    method: POST
+    path: "/api/images/thumbnail-safe"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-link-preview.get
+    kind: http
+    method: GET
+    path: "/api/link/preview"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-import-text.post
+    kind: http
+    method: POST
+    path: "/api/import/text"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"

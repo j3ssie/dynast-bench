@@ -1,0 +1,187 @@
+# Attack-surface catalog for swagger - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: swagger
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.api-schema.get
+    kind: http
+    method: GET
+    path: "/api/schema/"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DOCS-PUBLIC-001, SPEC-LEAK-001]
+  - id: http.api-docs.get
+    kind: http
+    method: GET
+    path: "/api/docs/"
+    params: [url]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SWAGGERUI-001, DOCS-PUBLIC-001]
+  - id: http.api-v1-internal-debug-config.get
+    kind: http
+    method: GET
+    path: "/api/v1/internal/debug/config"
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [SHADOW-001]
+  - id: http.api-v0-users-id.get
+    kind: http
+    method: GET
+    path: "/api/v0/users/{id}"
+    discovery: js-runtime
+    reachability: user
+    vulns: [ZOMBIE-001]
+  - id: http.api-v1-users-me.patch
+    kind: http
+    method: PATCH
+    path: "/api/v1/users/me"
+    discovery: static-html
+    reachability: user
+    vulns: [DRIFT-001]
+  - id: http.api-v1-reports.post
+    kind: http
+    method: POST
+    path: "/api/v1/reports"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [REPORTS-ALLOWANY-001]
+  - id: http.api-v1-posts-id.delete
+    kind: http
+    method: DELETE
+    path: "/api/v1/posts/{id}"
+    discovery: js-runtime
+    reachability: user
+    vulns: [METHODS-DRIFT-001]
+  - id: http.api-v1-admin-users.get
+    kind: http
+    method: GET
+    path: "/api/v1/admin/users"
+    discovery: js-runtime
+    reachability: user
+    vulns: [SERIALIZER-LEAK-001]
+  - id: http.api-v1-posts.get
+    kind: http
+    method: GET
+    path: "/api/v1/posts"
+    params: [ordering]
+    discovery: static-html
+    reachability: user
+    vulns: [ORDER-SQLI-001]
+  - id: http.api-v1-crash.get
+    kind: http
+    method: GET
+    path: "/api/v1/crash"
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [DEBUG-LEAK-001]
+  - id: http.api-v1-auth-reset.post
+    kind: http
+    method: POST
+    path: "/api/v1/auth/reset"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [HOST-CORS-JWT-001]
+  - id: http.api-v1-posts-id.get
+    kind: http
+    method: GET
+    path: "/api/v1/posts/{id}"
+    discovery: static-html
+    reachability: user
+    vulns: [BOLA-001]
+  - id: http.api-v1-admin-users-id-role.post
+    kind: http
+    method: POST
+    path: "/api/v1/admin/users/{id}/role"
+    discovery: js-runtime
+    reachability: user
+    vulns: [BFLA-001]
+  - id: http.api-v1-integrations-fetch.post
+    kind: http
+    method: POST
+    path: "/api/v1/integrations/fetch"
+    discovery: static-html
+    reachability: user
+    vulns: [SSRF-001]
+  - id: http.api-v1-integrations-partner-sync.post
+    kind: http
+    method: POST
+    path: "/api/v1/integrations/partner/sync"
+    discovery: static-html
+    reachability: user
+    vulns: [API10-YAML-001]
+  - id: http.api-v1-uploads.post
+    kind: http
+    method: POST
+    path: "/api/v1/uploads"
+    discovery: js-runtime
+    reachability: user
+    vulns: [UPLOAD-001]
+  - id: http.api-v1-invites.post
+    kind: http
+    method: POST
+    path: "/api/v1/invites"
+    discovery: js-runtime
+    reachability: user
+    vulns: [SEATS-001]
+  - id: http.api-v1-internal-audit.get
+    kind: http
+    method: GET
+    path: "/api/v1/internal/audit"
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [LOG-TOKEN-001]
+  - id: http.root.get
+    kind: http
+    method: GET
+    path: "/"
+    discovery: static-html
+    notes: "landing page"
+  - id: http.api-auth-login.post
+    kind: http
+    method: POST
+    path: "/api/auth/login"
+    discovery: static-html
+    notes: "documented auth route"
+  - id: http.api-v1-auth-token.post
+    kind: http
+    method: POST
+    path: "/api/v1/auth/token"
+    discovery: static-html
+    notes: "benign? derived from app/main.py - REVIEW"
+  - id: http.api-redoc.get
+    kind: http
+    method: GET
+    path: "/api/redoc/"
+    discovery: js-runtime
+    notes: "hidden behind the x-admin-docs header"
+  - id: http.api-docs-v2.get
+    kind: http
+    method: GET
+    path: "/api/docs/v2/"
+    discovery: static-html
+    notes: "benign? derived from app/main.py - REVIEW"
+  - id: http.api-v1-users-id.get
+    kind: http
+    method: GET
+    path: "/api/v1/users/{user_id}"
+    discovery: static-html
+    notes: "benign? derived from app/main.py - REVIEW"
+  - id: http.api-v1-admin-summary.get
+    kind: http
+    method: GET
+    path: "/api/v1/admin/summary"
+    discovery: js-runtime
+    notes: "benign? derived from app/main.py - REVIEW"
+  - id: http.api-v1-exports-legacy.get
+    kind: http
+    method: GET
+    path: "/api/v1/exports/legacy"
+    discovery: js-runtime
+    notes: "undocumented legacy export"

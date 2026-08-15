@@ -3,6 +3,7 @@
  * --json never has to route around this).
  */
 
+import type { CoverageTrack } from "./coverage.ts";
 import type { Bucket } from "./metrics.ts";
 import type { ScoreReport } from "./score.ts";
 
@@ -25,6 +26,70 @@ function bucketLines(title: string, buckets: Record<string, Bucket>, indent = " 
       return `${indent}  ${k.padEnd(width)}  ${String(b.tp).padStart(3)}/${String(b.gt).padEnd(3)} ${bar(b.recall, 12)} ${pct(b.recall)}`;
     }),
   ];
+}
+
+const sliceLine = (label: string, s: { touched: number; expected: number; coverage: number | null }) =>
+  `    ${label.padEnd(12)}${bar(s.coverage)}  ${pct(s.coverage)}   ${s.touched} of ${s.expected}`;
+
+/**
+ * The coverage block. Rendered by both `score` (alongside vulnerability
+ * matching) and `coverage` (on its own), so it lives here rather than in either
+ * command.
+ */
+export function coverageLines(cov: CoverageTrack | null, opts: RenderOpts = {}): string[] {
+  if (!cov) return [];
+  const limit = opts.limit ?? 10;
+  const out: string[] = ["", `  endpoint coverage  ·  evidence: ${cov.evidence_source}`];
+
+  out.push(sliceLine("operations", cov.operations));
+  out.push(sliceLine("routes", cov.routes));
+  out.push(sliceLine("vulnerable", cov.vulnerable_operations));
+  out.push(sliceLine("benign", cov.benign_operations));
+  out.push(
+    `    ${"precision".padEnd(12)}${bar(cov.precision)}  ${pct(cov.precision)}   ` +
+      `${cov.reported} reported · ${cov.unknown.length} matched no cataloged operation`,
+  );
+
+  // The headline of the whole track: was a miss a crawl failure or an analysis
+  // failure? Only printed when the answer key mapping made it computable.
+  if (cov.detection_given_touch !== null) {
+    out.push("");
+    out.push(
+      `    ${"detection".padEnd(12)}${bar(cov.detection_given_touch)}  ${pct(cov.detection_given_touch)}   ` +
+        `of the bugs on operations it reached`,
+    );
+    out.push(
+      `    misses:     ${cov.discovery_misses.length} never reached the operation · ` +
+        `${cov.analysis_misses.length} reached it and did not report`,
+    );
+  }
+
+  if (Object.keys(cov.by_discovery).length) {
+    out.push("");
+    out.push(...bucketLines("coverage by discovery tier", cov.by_discovery, "    "));
+  }
+  if (Object.keys(cov.by_kind).length > 1) {
+    out.push("");
+    out.push(...bucketLines("coverage by protocol", cov.by_kind, "    "));
+  }
+  if (opts.full && Object.keys(cov.by_reachability).length) {
+    out.push("");
+    out.push(...bucketLines("coverage by reachability", cov.by_reachability, "    "));
+  }
+
+  const list = (title: string, rows: string[]) => {
+    if (!rows.length) return;
+    const shown = opts.full ? rows : rows.slice(0, limit);
+    out.push("", `    ${title} (${rows.length})`);
+    for (const r of shown) out.push(`      ${r}`);
+    if (rows.length > shown.length) out.push(`      … ${rows.length - shown.length} more (--full)`);
+  };
+  list("never reached", cov.untouched);
+  list("analysis misses", cov.analysis_misses);
+  list("reported but not in the catalog", cov.unknown);
+
+  for (const w of cov.warnings) out.push(`    !! ${w}`);
+  return out;
 }
 
 export interface RenderOpts {
@@ -114,6 +179,8 @@ export function renderReport(r: ScoreReport, opts: RenderOpts = {}): string[] {
     if (d.missed.length) out.push(`    missed      ${d.missed.slice(0, 12).join(" ")}`);
     if (d.spurious.length) out.push(`    spurious    ${d.spurious.slice(0, 12).join(" ")}`);
   }
+
+  out.push(...coverageLines(r.tracks.coverage, opts));
 
   const show = <T>(rows: T[]) => (opts.full ? rows : rows.slice(0, limit));
 

@@ -42,6 +42,7 @@ import { join } from "node:path";
 import { cweFamily } from "../src/schema/cwe.ts";
 import { fileKey, httpKeyFromUrl, parseRoute, routePaths, templatePath } from "../src/schema/keys.ts";
 import { appsDir, listApps, repoRoot, vulnTagsIn } from "../src/repo.ts";
+import { flowMap, flowSeq, q } from "./yaml-emit.ts";
 import { parseUnifiedDiff, type Hunk } from "../src/twin-diff.ts";
 
 const ROOT = repoRoot(import.meta.dir);
@@ -75,21 +76,6 @@ const tokensOf = (s: string, generic: Set<string>): string[] => {
     .filter((t) => t.length >= 4 && !generic.has(t.toLowerCase()))
     .sort((a, b) => rank(a) - rank(b) || b.length - a.length);
 };
-
-/** YAML flow-scalar quoting: anything that could be read as structure gets quoted. */
-function q(v: string | number | boolean): string {
-  if (typeof v !== "string") return String(v);
-  if (v === "") return '""';
-  if (/^[A-Za-z0-9_][A-Za-z0-9_.\/=-]*$/.test(v) && !/^(?:y|n|yes|no|true|false|on|off|null|~)$/i.test(v)) {
-    return v;
-  }
-  return `"${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-const flowMap = (pairs: [string, string][]): string =>
-  `{ ${pairs.map(([k, v]) => `${k}: ${v}`).join(", ")} }`;
-
-const flowSeq = (items: string[]): string => `[${items.join(", ")}]`;
 
 // ------------------------------------------------------------------ the diff --
 

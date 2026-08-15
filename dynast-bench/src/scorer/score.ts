@@ -22,8 +22,16 @@
  */
 
 import { isOpenState } from "../schema/keys.ts";
-import type { Finding, FindingsFile, GroundTruth, Variant } from "../schema/types.ts";
+import type {
+  Finding,
+  FindingsFile,
+  GroundTruth,
+  ReportedEndpoint,
+  Surface,
+  Variant,
+} from "../schema/types.ts";
 import { gtAnchors, isSourceOnly, nearMissAnchors, type GtAnchors } from "./anchors.ts";
+import { coverageTrack, type CoverageTrack, type EvidenceSource } from "./coverage.ts";
 import { assign, candidatesFor, type Candidate, type Tier } from "./match.ts";
 import {
   bucketize,
@@ -133,7 +141,7 @@ export interface ScoreReport {
   by_cwe: Record<string, Bucket>;
   by_family: Record<string, Bucket>;
   extra: Record<string, Record<string, Bucket>>;
-  tracks: { discovery: DiscoveryTrack | null };
+  tracks: { discovery: DiscoveryTrack | null; coverage: CoverageTrack | null };
   matches: MatchRow[];
   misses: MissRow[];
   false_positives: FpRow[];
@@ -147,6 +155,20 @@ export interface ScoreInput {
   /** one entry per scanned twin; a safe-variant run contributes only false positives */
   runs: FindingsFile[];
   lenientCwe?: boolean;
+  /**
+   * The app's endpoint catalog. Absent = no coverage track at all, which is the
+   * point: a missing trace must read as "not measured", never as "reached 0%".
+   */
+  surface?: Surface;
+  /** what the tool says it discovered */
+  endpoints?: ReportedEndpoint[];
+  endpointsSource?: EvidenceSource;
+  /**
+   * Which twin the endpoint trace came from. Only the coverage track reads it -
+   * an operation a fix removes is not expected on `safe`. Findings carry their
+   * own variant per run.
+   */
+  endpointsVariant?: Variant;
 }
 
 interface Tagged {
@@ -461,6 +483,20 @@ export function scoreApp(input: ScoreInput): ScoreReport {
         vulns,
         vulnRun.map((t) => t.finding),
       ),
+      // Needs a catalog AND a trace. Either one missing yields null rather than
+      // a zero, because "we did not measure this" and "the tool reached nothing"
+      // are opposite claims about the tool.
+      coverage:
+        input.surface && input.endpoints
+          ? coverageTrack({
+              surface: input.surface,
+              reported: input.endpoints,
+              evidenceSource: input.endpointsSource ?? "reported",
+              variant: input.endpointsVariant ?? "vuln",
+              vulns,
+              foundVulnIds: new Set([...matchedGt].map((i) => vulns[i]!.id)),
+            })
+          : null,
     },
     matches,
     misses,

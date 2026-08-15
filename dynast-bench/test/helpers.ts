@@ -1,12 +1,20 @@
 /** Shared fixtures + loaders for the scorer tests. */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { appsDir, builtApps, groundTruthPath, repoRoot } from "../src/repo.ts";
 import { validateFindings } from "../src/schema/findings.ts";
 import { parseGroundTruthFile } from "../src/schema/ground-truth.ts";
-import type { Finding, FindingsFile, GroundTruth, Variant } from "../src/schema/types.ts";
+import { parseSurfaceFile } from "../src/schema/surface.ts";
+import type {
+  Finding,
+  FindingsFile,
+  GroundTruth,
+  ReportedEndpoint,
+  Surface,
+  Variant,
+} from "../src/schema/types.ts";
 import { gtAnchors } from "../src/scorer/anchors.ts";
 
 export const ROOT = repoRoot(import.meta.dir);
@@ -96,6 +104,33 @@ export function synthetic(app: string, gt: GroundTruth, mode: SyntheticMode): Fi
     });
   });
   return envelope(app, findings, "vuln", mode);
+}
+
+export const surfacePath = (app: string) => join(APPS_DIR, app, "ground-truth", "SURFACE.yaml");
+
+/** The endpoint catalog, or null for an app that has none yet. */
+export function loadSurface(app: string): Surface | null {
+  const p = surfacePath(app);
+  if (!existsSync(p)) return null;
+  const res = parseSurfaceFile(p);
+  if (!res.value) throw new Error(`${app} SURFACE.yaml: ${JSON.stringify(res.errors)}`);
+  return res.value;
+}
+
+/**
+ * A trace that reports every cataloged operation exactly as the catalog states
+ * it. This is the fixed point the coverage matcher has to have: if a perfect
+ * trace does not score 100%, the identity function disagrees with the catalog
+ * and every real number is wrong by an unknown amount.
+ */
+export function perfectTrace(surface: Surface): ReportedEndpoint[] {
+  // Strip the catalog-only keys and keep the rest, rather than listing the
+  // identity fields: `SurfaceOperation extends OperationRef`, so enumerating
+  // them here would silently omit any field added later - and this trace is the
+  // fixed point that is supposed to catch exactly that.
+  return surface.operations.map(
+    ({ id, via, discovery, reachability, vulns, variant, notes, ...ref }) => ref,
+  );
 }
 
 /** Load a checked-in golden fixture. */

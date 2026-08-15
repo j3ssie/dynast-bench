@@ -1,0 +1,217 @@
+# Attack-surface catalog for graphql - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: graphql
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: gql.query.schema
+    kind: graphql
+    op: __schema
+    graphql_kind: query
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [GQL-INTROSPECT-001]
+  - id: gql.query.validation
+    kind: graphql
+    op: validation
+    graphql_kind: query
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [GQL-SUGGEST-001]
+  - id: gql.query.me-organization-posts
+    kind: graphql
+    op: me.organization.posts
+    graphql_kind: query
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-DEPTH-001]
+  - id: gql.query.posts
+    kind: graphql
+    op: posts
+    graphql_kind: query
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-COST-001, GQL-ERROR-001, GQL-SQLI-001]
+  - id: gql.mutation.login
+    kind: graphql
+    op: login
+    graphql_kind: mutation
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [GQL-ALIAS-001, GQL-CSRF-001, GQL-LOGIN-001, GQL-CREDS-001]
+  - id: gql.query.batch-transport
+    kind: graphql
+    op: "batch transport"
+    graphql_kind: query
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [GQL-BATCH-001]
+  - id: gql.query.users
+    kind: graphql
+    op: users
+    graphql_kind: query
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [GQL-BATCHAUTH-001, GQL-JWT-001]
+  - id: gql.mutation.persistedquery
+    kind: graphql
+    op: persistedQuery
+    graphql_kind: mutation
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [GQL-APQ-001]
+  - id: gql.query.landing
+    kind: graphql
+    op: landing
+    graphql_kind: query
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [GQL-LANDING-001]
+  - id: gql.query.node
+    kind: graphql
+    op: node
+    graphql_kind: query
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-NODE-001]
+  - id: gql.query.user-passwordhash
+    kind: graphql
+    op: User.passwordHash
+    graphql_kind: query
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-FIELDAUTHZ-001]
+  - id: gql.query.organization-posts
+    kind: graphql
+    op: Organization.posts
+    graphql_kind: query
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-NESTEDAUTHZ-001]
+  - id: gql.mutation.deleteorganization
+    kind: graphql
+    op: deleteOrganization
+    graphql_kind: mutation
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-MISSINGAUTH-001]
+  - id: gql.mutation.updateprofile
+    kind: graphql
+    op: updateProfile
+    graphql_kind: mutation
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-MASSASSIGN-001]
+  - id: gql.subscription.postupdated
+    kind: graphql
+    op: postUpdated
+    graphql_kind: subscription
+    discovery: interaction
+    reachability: user
+    vulns: [GQL-SUBAUTH-001]
+  - id: gql.query.reportrun
+    kind: graphql
+    op: reportRun
+    graphql_kind: query
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-SECONDSQLI-001]
+  - id: gql.query.searchposts
+    kind: graphql
+    op: searchPosts
+    graphql_kind: query
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-JSON-001]
+  - id: gql.mutation.exportreport
+    kind: graphql
+    op: exportReport
+    graphql_kind: mutation
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-CMD-001]
+  - id: gql.mutation.addcomment
+    kind: graphql
+    op: addComment
+    graphql_kind: mutation
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-XSS-001]
+  - id: gql.query.linkpreview
+    kind: graphql
+    op: linkPreview
+    graphql_kind: query
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [GQL-SSRF-001]
+  - id: gql.mutation.uploadavatar
+    kind: graphql
+    op: uploadAvatar
+    graphql_kind: mutation
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-UPLOAD-001]
+  - id: gql.query.auth-callback
+    kind: graphql
+    op: "auth callback"
+    graphql_kind: query
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [GQL-REDIRECT-001]
+  - id: gql.query.transport
+    kind: graphql
+    op: transport
+    graphql_kind: query
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [GQL-CORS-001]
+  - id: gql.mutation.purchaseseats
+    kind: graphql
+    op: purchaseSeats
+    graphql_kind: mutation
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-SEATS-001]
+  - id: gql.mutation.inviteuser
+    kind: graphql
+    op: inviteUser
+    graphql_kind: mutation
+    discovery: static-html
+    reachability: user
+    vulns: [GQL-RACE-001]
+  - id: ws.graphql-transport
+    kind: ws
+    endpoint: "/graphql/ws"
+    discovery: interaction
+    reachability: pre-auth
+    notes: "graphql-ws handshake; the subscription operations ride on it"
+  - id: http.graphql
+    kind: http
+    path: "/graphql"
+    discovery: static-html
+    notes: "the GraphQL transport itself"
+  - id: http.graphql-public
+    kind: http
+    path: "/graphql/public"
+    discovery: static-html
+    notes: "second GraphQL mount"
+  - id: http.api-export
+    kind: http
+    path: "/api/export"
+    discovery: static-html
+    notes: "conventional top-level route"
+  - id: http.auth-callback
+    kind: http
+    path: "/auth/callback"
+    discovery: static-html
+    notes: "conventional oauth callback path"
+  - id: http.root
+    kind: http
+    path: "/"
+    discovery: static-html
+    notes: "landing page"

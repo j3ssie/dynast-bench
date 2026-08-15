@@ -8,6 +8,7 @@
  */
 
 import { isObj, num, str, strArray } from "./coerce.ts";
+import { parseEnvelope } from "./envelope.ts";
 import { normalizeCwe } from "./cwe.ts";
 import { normalizeMethod } from "./keys.ts";
 import {
@@ -297,75 +298,15 @@ export function validateFindings(
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
 
-  let root: Record<string, unknown>;
-  if (Array.isArray(doc)) {
-    root = { findings: doc };
-    warnings.push({ at: "$", msg: "bare array accepted as {findings: [...]}" });
-  } else if (isObj(doc)) {
-    root = doc;
-  } else {
-    return {
-      ok: false,
-      errors: [{ at: "$", msg: "document is not an object or array" }],
-      warnings,
-    };
-  }
-
-  const schema = str(root.schema);
-  if (!schema) {
-    warnings.push({ at: "schema", msg: `missing - assuming ${FINDINGS_SCHEMA_ID}` });
-  } else if (schema !== FINDINGS_SCHEMA_ID) {
-    const major = schema.match(/\/v(\d+)/)?.[1];
-    if (major && major !== "1") {
-      errors.push({ at: "schema", msg: `unsupported schema "${schema}" (this build reads v1)` });
-    } else {
-      warnings.push({ at: "schema", msg: `unrecognised schema "${schema}" - read as v1` });
-    }
-  }
-
-  const rawTool = isObj(root.tool) ? root.tool : {};
-  const toolName = str(rawTool.name) ?? str(root.tool) ?? "unknown";
-  if (!isObj(root.tool) && !str(root.tool)) {
-    warnings.push({ at: "tool", msg: 'missing - recorded as "unknown"' });
-  }
-  const modeRaw = str(rawTool.mode)?.toLowerCase();
-  const mode = modeRaw && (TOOL_MODES as string[]).includes(modeRaw)
-    ? (modeRaw as ToolMode)
-    : undefined;
-  if (modeRaw && !mode) {
-    warnings.push({ at: "tool.mode", msg: `unknown mode "${modeRaw}" - expected ${TOOL_MODES.join("|")}` });
-  }
-
-  const rawRun = isObj(root.run) ? root.run : {};
-  const app = str(rawRun.app) ?? opts.app;
-  const variantRaw = str(rawRun.variant)?.toLowerCase();
-  let variant: Variant | undefined;
-  if (variantRaw === "vuln" || variantRaw === "safe") variant = variantRaw;
-  else if (variantRaw) {
-    errors.push({ at: "run.variant", msg: `must be "vuln" or "safe" (got "${variantRaw}")` });
-  }
-  if (!variant) {
-    variant = opts.variant ?? "vuln";
-    warnings.push({
-      at: "run.variant",
-      msg: `missing - assuming "${variant}"; a safe-twin scan MUST say so or its findings score as true positives`,
-    });
-  }
-  if (opts.app && app && app !== opts.app) {
-    errors.push({ at: "run.app", msg: `findings are for "${app}", scoring "${opts.app}"` });
-  }
-  if (opts.variant && variant !== opts.variant) {
-    errors.push({
-      at: "run.variant",
-      msg: `findings are from the "${variant}" twin, scoring "${opts.variant}"`,
-    });
-  }
-
-  const rawFindings = root.findings;
-  if (!Array.isArray(rawFindings)) {
-    errors.push({ at: "findings", msg: "missing or not an array" });
-    return { ok: false, errors, warnings };
-  }
+  const env = parseEnvelope(
+    doc,
+    { schemaId: FINDINGS_SCHEMA_ID, listKey: "findings", noun: "findings" },
+    opts,
+    errors,
+    warnings,
+  );
+  const rawFindings = env.items;
+  if (!rawFindings) return { ok: false, errors, warnings };
 
   const seenIds = new Set<string>();
   const findings: Finding[] = [];
@@ -376,14 +317,8 @@ export function validateFindings(
 
   const value: FindingsFile = {
     schema: FINDINGS_SCHEMA_ID,
-    tool: { name: toolName, version: str(rawTool.version), mode },
-    run: {
-      ...rawRun,
-      app,
-      variant,
-      target: str(rawRun.target),
-      duration_s: num(rawRun.duration_s),
-    },
+    tool: env.tool,
+    run: env.run,
     findings,
   };
 

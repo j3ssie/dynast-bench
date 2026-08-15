@@ -13,10 +13,11 @@ import { join } from "node:path";
 
 import { vulnTagsIn } from "../repo.ts";
 import { twinFiles, type Differ } from "../twin-diff.ts";
-import { fileKey } from "../schema/keys.ts";
+import { fileKey, isHarnessPath } from "../schema/keys.ts";
 import { parseGroundTruthFile } from "../schema/ground-truth.ts";
+import { parseSurfaceFile } from "../schema/surface.ts";
 import type { GroundTruth } from "../schema/types.ts";
-import { anchorFingerprint, gtAnchors } from "../scorer/anchors.ts";
+import { anchorFingerprint, gtAnchors, isSourceOnly } from "../scorer/anchors.ts";
 
 export type IssueLevel = "error" | "warn";
 
@@ -132,6 +133,77 @@ export async function twinDiff(
 }
 
 /**
+ * SURFACE.yaml invariants - the endpoint-coverage denominator.
+ *
+ * The failure this exists to catch is denominator drift. A coverage score is
+ * only comparable across runs if the catalog it divides by is stable, and the
+ * two ways it silently stops being stable are (a) a bug whose operation nobody
+ * cataloged, so `detection_given_touch` quietly grades a subset, and (b) an
+ * entry that names an endpoint the app does not serve, which no tool can ever
+ * reach and which therefore caps coverage below 100% forever.
+ *
+ * An app with no catalog is NOT an error: it is "not coverage-scoreable yet",
+ * reported once so the fleet gap is visible without failing the gate.
+ */
+function checkSurface(target: CheckTarget, gt: GroundTruth): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  const add = (level: IssueLevel, at: string, msg: string) =>
+    issues.push({ app: target.name, level, at, msg });
+
+  const path = join(target.dir, "ground-truth", "SURFACE.yaml");
+  if (!existsSync(path)) {
+    add("warn", "SURFACE.yaml", "no endpoint catalog - this app is not coverage-scoreable");
+    return issues;
+  }
+  const res = parseSurfaceFile(path);
+  for (const e of res.errors) add("error", `SURFACE.yaml ${e.at}`, e.msg);
+  for (const w of res.warnings) add("warn", `SURFACE.yaml ${w.at}`, w.msg);
+  const surface = res.value;
+  if (!surface) return issues;
+
+  const vulnIds = new Set(gt.vulnerabilities.map((v) => v.id));
+
+  // every vulns: reference resolves - a typo here drops the bug out of the miss
+  // split without changing any visible number
+  for (const op of surface.operations) {
+    for (const id of op.vulns ?? []) {
+      if (!vulnIds.has(id)) {
+        add("error", `SURFACE.yaml ${op.id}.vulns`, `references unknown vulnerability "${id}"`);
+      }
+    }
+  }
+
+  // Every runtime bug needs an operation, or detection_given_touch silently
+  // grades only the mapped subset. Source-only entries are exempt: there is no
+  // endpoint to reach.
+  const mapped = new Set(surface.operations.flatMap((o) => o.vulns ?? []));
+  const unmapped = gt.vulnerabilities.filter(
+    (v) => !mapped.has(v.id) && !isSourceOnly(gtAnchors(v)),
+  );
+  if (unmapped.length) {
+    add(
+      "error",
+      `SURFACE.yaml`,
+      `${unmapped.length} reachable bug(s) map to no operation ` +
+        `(${unmapped.slice(0, 6).map((v) => v.id).join(",")}${unmapped.length > 6 ? ",…" : ""}) - ` +
+        `they would be excluded from detection_given_touch and the miss split`,
+    );
+  }
+
+  // `via:` resolution is already an error out of validateSurface, relayed above.
+
+  // The harness's own endpoints are not attack surface. Cataloging one makes
+  // every app look like it has an extra endpoint nobody is supposed to find.
+  for (const op of surface.operations) {
+    if (op.path && isHarnessPath(op.path)) {
+      add("error", `SURFACE.yaml ${op.id}`, `${op.path} is the harness verification API, not app surface`);
+    }
+  }
+
+  return issues;
+}
+
+/**
  * Every invariant, for one app. `skeleton` apps (copied from `_template` and not
  * filled in) return a single informational row rather than a pile of schema errors.
  */
@@ -236,6 +308,8 @@ export async function checkApp(target: CheckTarget, run: Differ): Promise<CheckI
         `a partial breakdown reports recall over the labelled subset only`,
     );
   }
+
+  issues.push(...checkSurface(target, gt));
 
   // the twin delta stays inside the answer key
   const diff = await twinDiff(target, gt, run);

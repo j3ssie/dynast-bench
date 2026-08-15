@@ -1,0 +1,259 @@
+# Attack-surface catalog for php - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: php
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.page-php.get
+    kind: http
+    method: GET
+    path: "/page.php"
+    params: [page]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [LFI-001]
+  - id: http.login-php.post
+    kind: http
+    method: POST
+    path: "/login.php"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TYPEJUGGLE-001, DEFAULT-CREDS-001, SESSION-001]
+  - id: http.import-php.post
+    kind: http
+    method: POST
+    path: "/import.php"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [UNSERIALIZE-001, XXE-001]
+  - id: http.profile-php.post
+    kind: http
+    method: POST
+    path: "/profile.php"
+    discovery: static-html
+    reachability: user
+    vulns: [UPLOAD-001, MASSASSIGN-001]
+  - id: http.search-php.get
+    kind: http
+    method: GET
+    path: "/search.php"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SQLI-001, XSS-REFLECT-001]
+  - id: http.fetch-php.get
+    kind: http
+    method: GET
+    path: "/fetch.php"
+    params: [url]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SSRF-001]
+  - id: http.download-php.get
+    kind: http
+    method: GET
+    path: "/download.php"
+    params: [file]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TRAVERSAL-001]
+  - id: http.posts-php.get
+    kind: http
+    method: GET
+    path: "/posts.php"
+    params: [id]
+    discovery: static-html
+    reachability: user
+    vulns: [IDOR-001]
+  - id: http.admin-users-php.get
+    kind: http
+    method: GET
+    path: "/admin_users.php"
+    discovery: static-html
+    reachability: user
+    vulns: [AUTHZ-001]
+  - id: http.redirect-php.get
+    kind: http
+    method: GET
+    path: "/redirect.php"
+    params: [next]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [REDIRECT-001]
+  - id: http.request-reset-php.post
+    kind: http
+    method: POST
+    path: "/request_reset.php"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RESET-001]
+  - id: http.info-php.get
+    kind: http
+    method: GET
+    path: "/info.php"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [INFO-001]
+  - id: http.root
+    kind: http
+    path: "/"
+    port: 13312
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [PHPMYADMIN-001]
+  - id: http.tools-report-php.post
+    kind: http
+    method: POST
+    path: "/tools/report.php"
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [CODEINJ-001]
+  - id: http.signup-php.get
+    kind: http
+    method: GET
+    path: "/signup.php"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [DOMXSS-001, POSTMSG-001]
+  - id: http.api-signup-start-php.post
+    kind: http
+    method: POST
+    path: "/api/signup/start.php"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [SIGNUP-ENUM-001]
+  - id: http.api-signup-verify-php.post
+    kind: http
+    method: POST
+    path: "/api/signup/verify.php"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-TOKEN-001]
+  - id: http.api-signup-profile-php.post
+    kind: http
+    method: POST
+    path: "/api/signup/profile.php"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-MASSASSIGN-001]
+  - id: http.api-signup-complete-php.post
+    kind: http
+    method: POST
+    path: "/api/signup/complete.php"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-STEPSKIP-001]
+  - id: http.api-signup-draft-php.get
+    kind: http
+    method: GET
+    path: "/api/signup/draft.php"
+    params: [id]
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-IDOR-001]
+  - id: http.me-php.get
+    kind: http
+    method: GET
+    path: "/me.php"
+    discovery: static-html
+    notes: "conventional page"
+  - id: http.login-php.get
+    kind: http
+    method: GET
+    path: "/login.php"
+    discovery: static-html
+    notes: "benign? derived from /login.php - REVIEW"
+  - id: http.tools-report-php.get
+    kind: http
+    method: GET
+    path: "/tools/report.php"
+    discovery: js-runtime
+    notes: "benign? derived from /tools/report.php - REVIEW"
+  - id: http.import-php.get
+    kind: http
+    method: GET
+    path: "/import.php"
+    discovery: static-html
+    notes: "benign? derived from /import.php - REVIEW"
+  - id: http.index-php.get
+    kind: http
+    method: GET
+    path: "/index.php"
+    discovery: static-html
+    vulns: [CORS-001]
+    notes: "landing page"
+  - id: http.request-reset-php.get
+    kind: http
+    method: GET
+    path: "/request_reset.php"
+    discovery: static-html
+    notes: "benign? derived from /request_reset.php - REVIEW"
+  - id: http.comments-php.get
+    kind: http
+    method: GET
+    path: "/comments.php"
+    discovery: static-html
+    reachability: user
+    vulns: [XSS-STORED-001]
+    notes: "benign? derived from /comments.php - REVIEW"
+  - id: http.export-php.get
+    kind: http
+    method: GET
+    path: "/export.php"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CMD-001]
+    notes: "benign? derived from /export.php - REVIEW"
+  - id: http.logout-php.get
+    kind: http
+    method: GET
+    path: "/logout.php"
+    discovery: static-html
+    notes: "conventional page"
+  - id: http.profile-php.get
+    kind: http
+    method: GET
+    path: "/profile.php"
+    discovery: static-html
+    notes: "benign? derived from /profile.php - REVIEW"
+  - id: http.api-signup-resend-php.get
+    kind: http
+    method: GET
+    path: "/api/signup/resend.php"
+    discovery: flow
+    notes: "only reachable mid-signup"
+  - id: http.api-signup-complete-php.get
+    kind: http
+    method: GET
+    path: "/api/signup/complete.php"
+    discovery: flow
+    notes: "benign? derived from /api/signup/complete.php - REVIEW"
+  - id: http.api-signup-profile-php.get
+    kind: http
+    method: GET
+    path: "/api/signup/profile.php"
+    discovery: flow
+    notes: "benign? derived from /api/signup/profile.php - REVIEW"
+  - id: http.api-signup-verify-php.get
+    kind: http
+    method: GET
+    path: "/api/signup/verify.php"
+    discovery: flow
+    notes: "benign? derived from /api/signup/verify.php - REVIEW"
+  - id: http.api-signup-start-php.get
+    kind: http
+    method: GET
+    path: "/api/signup/start.php"
+    discovery: interaction
+    notes: "benign? derived from /api/signup/start.php - REVIEW"
+  - id: http.pages-home-php.get
+    kind: http
+    method: GET
+    path: "/pages/home.php"
+    discovery: static-html
+    notes: "conventional page"

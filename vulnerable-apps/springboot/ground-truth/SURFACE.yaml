@@ -1,0 +1,362 @@
+# Attack-surface catalog for springboot - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: springboot
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.api-reports-eval.get
+    kind: http
+    method: GET
+    path: "/api/reports/eval"
+    params: [expr]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SPEL-001]
+  - id: http.actuator-env.get
+    kind: http
+    method: GET
+    path: "/actuator/env"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [ACTUATOR-001]
+  - id: http.actuator-heapdump.get
+    kind: http
+    method: GET
+    path: "/actuator/heapdump"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [ACTUATOR-002]
+  - id: http.actuator-prometheus.get
+    kind: http
+    method: GET
+    path: "/actuator/prometheus"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [PROM-001]
+  - id: http.api-import-object.post
+    kind: http
+    method: POST
+    path: "/api/import/object"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DESER-001]
+  - id: http.api-import-xml.post
+    kind: http
+    method: POST
+    path: "/api/import/xml"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XXE-001]
+  - id: http.api-admin-users.get
+    kind: http
+    method: GET
+    path: "/api/admin/users"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [AUTH-MISORDER-001]
+  - id: http.api-security-csrf.get
+    kind: http
+    method: GET
+    path: "/api/security/csrf"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CSRF-001]
+  - id: http.api-reports-admin-summary.get
+    kind: http
+    method: GET
+    path: "/api/reports/admin-summary"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [JWT-001]
+  - id: http.api-auth-login.post
+    kind: http
+    method: POST
+    path: "/api/auth/login"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RATE-001, ENUM-001]
+  - id: http.api-auth-reset-request.post
+    kind: http
+    method: POST
+    path: "/api/auth/reset/request"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RESET-001]
+  - id: http.api-posts-id.get
+    kind: http
+    method: GET
+    path: "/api/posts/{id}"
+    discovery: static-html
+    reachability: user
+    vulns: [IDOR-001]
+  - id: http.api-users-me.patch
+    kind: http
+    method: PATCH
+    path: "/api/users/me"
+    discovery: static-html
+    reachability: user
+    vulns: [MASSASSIGN-001]
+  - id: http.api-users-id-promote.post
+    kind: http
+    method: POST
+    path: "/api/users/{id}/promote"
+    discovery: static-html
+    reachability: user
+    vulns: [BFLA-001]
+  - id: http.api-posts-search.get
+    kind: http
+    method: GET
+    path: "/api/posts/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SQLI-001]
+  - id: http.api-reports-run-id.get
+    kind: http
+    method: GET
+    path: "/api/reports/run/{id}"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SQLI-002]
+  - id: http.api-fetch.get
+    kind: http
+    method: GET
+    path: "/api/fetch"
+    params: [url]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SSRF-001]
+  - id: http.api-export.get
+    kind: http
+    method: GET
+    path: "/api/export"
+    params: [format]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CMD-001]
+  - id: http.posts-id-view.get
+    kind: http
+    method: GET
+    path: "/posts/{id}/view"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XSS-STORED-001]
+  - id: http.search.get
+    kind: http
+    method: GET
+    path: "/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XSS-REFLECT-001]
+  - id: http.api-template.get
+    kind: http
+    method: GET
+    path: "/api/template"
+    params: [view]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TPL-001]
+  - id: http.api-public-cors.get
+    kind: http
+    method: GET
+    path: "/api/public/cors"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CORS-001]
+  - id: http.api-attachments-download.get
+    kind: http
+    method: GET
+    path: "/api/attachments/download"
+    params: [name]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TRAVERSAL-001]
+  - id: http.api-docs-read.get
+    kind: http
+    method: GET
+    path: "/api/docs/read"
+    params: [path]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TRAVERSAL-BYPASS-001]
+  - id: http.api-docs-list.get
+    kind: http
+    method: GET
+    path: "/api/docs/list"
+    params: [path]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DIRLIST-001]
+  - id: http.api-reports-admin-export.get
+    kind: http
+    method: GET
+    path: "/api/reports/admin-export"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [PREAUTH-BYPASS-001]
+  - id: http.api-import-typed.post
+    kind: http
+    method: POST
+    path: "/api/import/typed"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [JACKSON-DESER-001]
+  - id: http.api-config-public.get
+    kind: http
+    method: GET
+    path: "/api/config/public"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SECRETS-001]
+  - id: http.api-errors-boom.get
+    kind: http
+    method: GET
+    path: "/api/errors/boom"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [ERRORS-001]
+  - id: http.api-billing-seats.post
+    kind: http
+    method: POST
+    path: "/api/billing/seats"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [BILLING-001]
+  - id: http.api-invites.post
+    kind: http
+    method: POST
+    path: "/api/invites"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RACE-001]
+  - id: http.goto.get
+    kind: http
+    method: GET
+    path: "/goto"
+    params: [next]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [REDIRECT-001]
+  - id: http.api-tools-report.post
+    kind: http
+    method: POST
+    path: "/api/tools/report"
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [CONFIGDUMP-001]
+  - id: http.signup.get
+    kind: http
+    method: GET
+    path: "/signup"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [DOMXSS-001, POSTMSG-001]
+  - id: http.api-signup-start.post
+    kind: http
+    method: POST
+    path: "/api/signup/start"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [SIGNUP-ENUM-001]
+  - id: http.api-signup-verify.post
+    kind: http
+    method: POST
+    path: "/api/signup/verify"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-TOKEN-001]
+  - id: http.api-signup-profile.post
+    kind: http
+    method: POST
+    path: "/api/signup/profile"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-MASSASSIGN-001]
+  - id: http.api-signup-complete.post
+    kind: http
+    method: POST
+    path: "/api/signup/complete"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-STEPSKIP-001]
+  - id: http.api-signup-draft-id.get
+    kind: http
+    method: GET
+    path: "/api/signup/draft/{id}"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-IDOR-001]
+  - id: http.api-docs-read-safe.get
+    kind: http
+    method: GET
+    path: "/api/docs/read-safe"
+    discovery: static-html
+    notes: "benign? derived from src/main/java/com/bench/springboot/FilesController.java - REVIEW"
+  - id: http.api-import-typed-safe.post
+    kind: http
+    method: POST
+    path: "/api/import/typed-safe"
+    discovery: static-html
+    notes: "benign? derived from src/main/java/com/bench/springboot/NovelController.java - REVIEW"
+  - id: http.api-auth-reset-complete.post
+    kind: http
+    method: POST
+    path: "/api/auth/reset/complete"
+    discovery: static-html
+    notes: "benign? derived from src/main/java/com/bench/springboot/Controllers.java - REVIEW"
+  - id: http.api-posts-list.get
+    kind: http
+    method: GET
+    path: "/api/posts/list"
+    discovery: static-html
+    notes: "benign? derived from src/main/java/com/bench/springboot/Controllers.java - REVIEW"
+  - id: http.api-posts-id-comments.post
+    kind: http
+    method: POST
+    path: "/api/posts/{id}/comments"
+    discovery: static-html
+    notes: "benign? derived from src/main/java/com/bench/springboot/Controllers.java - REVIEW"
+  - id: http.api-reports-field.get
+    kind: http
+    method: GET
+    path: "/api/reports/field"
+    discovery: static-html
+    notes: "benign? derived from src/main/java/com/bench/springboot/Controllers.java - REVIEW"
+  - id: http.api-reports.post
+    kind: http
+    method: POST
+    path: "/api/reports"
+    discovery: static-html
+    notes: "benign? derived from src/main/java/com/bench/springboot/Controllers.java - REVIEW"
+  - id: http.api-invites-reset.post
+    kind: http
+    method: POST
+    path: "/api/invites/reset"
+    discovery: static-html
+    notes: "benign? derived from src/main/java/com/bench/springboot/Controllers.java - REVIEW"
+  - id: http.api-invites-count.get
+    kind: http
+    method: GET
+    path: "/api/invites/count"
+    discovery: static-html
+    notes: "benign? derived from src/main/java/com/bench/springboot/Controllers.java - REVIEW"
+  - id: http.root.get
+    kind: http
+    method: GET
+    path: "/"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [JENKINS-001]
+    notes: "benign? derived from src/main/java/com/bench/springboot/Controllers.java - REVIEW"
+  - id: http.api-signup-resend.post
+    kind: http
+    method: POST
+    path: "/api/signup/resend"
+    discovery: flow
+    notes: "only reachable mid-signup"

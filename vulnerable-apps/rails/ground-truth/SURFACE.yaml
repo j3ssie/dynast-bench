@@ -1,0 +1,268 @@
+# Attack-surface catalog for rails - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: rails
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.api-users-me.patch
+    kind: http
+    method: PATCH
+    path: "/api/users/me"
+    discovery: static-html
+    reachability: user
+    vulns: [MASSASSIGN-001]
+  - id: http.api-import-yaml.post
+    kind: http
+    method: POST
+    path: "/api/import/yaml"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [YAML-001]
+  - id: http.api-preview-inline.post
+    kind: http
+    method: POST
+    path: "/api/preview/inline"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SSTI-001]
+  - id: http.api-admin-check-email.post
+    kind: http
+    method: POST
+    path: "/api/admin/check_email"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [REGEX-001]
+  - id: http.api-users-id-promote.post
+    kind: http
+    method: POST
+    path: "/api/users/{id}/promote"
+    discovery: static-html
+    reachability: user
+    vulns: [AUTHZ-001]
+  - id: http.api-posts-search.get
+    kind: http
+    method: GET
+    path: "/api/posts/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SQLI-001, CORS-001]
+  - id: http.api-reports-id-run.get
+    kind: http
+    method: GET
+    path: "/api/reports/{id}/run"
+    discovery: static-html
+    reachability: user
+    vulns: [SQLI-002]
+  - id: http.api-fetch.get
+    kind: http
+    method: GET
+    path: "/api/fetch"
+    params: [url]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SSRF-001]
+  - id: http.api-export.get
+    kind: http
+    method: GET
+    path: "/api/export"
+    params: [name]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CMD-001]
+  - id: http.api-reflect.post
+    kind: http
+    method: POST
+    path: "/api/reflect"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [REFL-001]
+  - id: http.api-secrets.get
+    kind: http
+    method: GET
+    path: "/api/secrets"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SECRET-001, SECRET-KEY-001, SECRET-COMPOSE-001, SECRET-STANDALONE-001]
+  - id: http.root.get
+    kind: http
+    method: GET
+    path: "/"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CONFIG-LEAK-001]
+  - id: http.api-auth-login.post
+    kind: http
+    method: POST
+    path: "/api/auth/login"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CREDS-001]
+  - id: http.api-posts-id.get
+    kind: http
+    method: GET
+    path: "/api/posts/{id}"
+    discovery: static-html
+    reachability: user
+    vulns: [IDOR-001]
+  - id: http.posts-id.get
+    kind: http
+    method: GET
+    path: "/posts/{id}"
+    discovery: static-html
+    reachability: user
+    vulns: [XSS-STORED-001]
+  - id: http.posts-search.get
+    kind: http
+    method: GET
+    path: "/posts/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XSS-REFLECT-001]
+  - id: http.goto.get
+    kind: http
+    method: GET
+    path: "/goto"
+    params: [next]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [REDIRECT-001]
+  - id: http.api-attachments-download.get
+    kind: http
+    method: GET
+    path: "/api/attachments/download"
+    params: [name]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TRAVERSAL-001]
+  - id: http.api-csrf-profile.post
+    kind: http
+    method: POST
+    path: "/api/csrf/profile"
+    discovery: static-html
+    reachability: user
+    vulns: [CSRF-001]
+  - id: http.api-billing-seats.post
+    kind: http
+    method: POST
+    path: "/api/billing/seats"
+    discovery: static-html
+    reachability: user
+    vulns: [BILLING-001]
+  - id: http.api-invites.post
+    kind: http
+    method: POST
+    path: "/api/invites"
+    discovery: static-html
+    reachability: user
+    vulns: [RACE-001]
+  - id: http.api-uploads.post
+    kind: http
+    method: POST
+    path: "/api/uploads"
+    discovery: static-html
+    reachability: user
+    vulns: [UPLOAD-001]
+  - id: http.api-tools-report.post
+    kind: http
+    method: POST
+    path: "/api/tools/report"
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [CODEINJ-001]
+  - id: http.signup.get
+    kind: http
+    method: GET
+    path: "/signup"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [DOMXSS-001, POSTMSG-001]
+  - id: http.api-signup-start.post
+    kind: http
+    method: POST
+    path: "/api/signup/start"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [SIGNUP-ENUM-001]
+  - id: http.api-signup-verify.post
+    kind: http
+    method: POST
+    path: "/api/signup/verify"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-TOKEN-001]
+  - id: http.api-signup-profile.post
+    kind: http
+    method: POST
+    path: "/api/signup/profile"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-MASSASSIGN-001]
+  - id: http.api-signup-complete.post
+    kind: http
+    method: POST
+    path: "/api/signup/complete"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-STEPSKIP-001]
+  - id: http.api-signup-draft-id.get
+    kind: http
+    method: GET
+    path: "/api/signup/draft/{id}"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-IDOR-001]
+  - id: http.api-auth-logout.delete
+    kind: http
+    method: DELETE
+    path: "/api/auth/logout"
+    discovery: static-html
+    notes: "benign? derived from config/routes.rb - REVIEW"
+  - id: http.api-signup-resend.post
+    kind: http
+    method: POST
+    path: "/api/signup/resend"
+    discovery: flow
+    notes: "only reachable mid-signup"
+  - id: http.api-users-me.get
+    kind: http
+    method: GET
+    path: "/api/users/me"
+    discovery: static-html
+    notes: "benign? derived from config/routes.rb - REVIEW"
+  - id: http.api-profile.patch
+    kind: http
+    method: PATCH
+    path: "/api/profile"
+    discovery: static-html
+    notes: "conventional API route"
+  - id: http.api-import-json.post
+    kind: http
+    method: POST
+    path: "/api/import/json"
+    discovery: static-html
+    notes: "benign? derived from config/routes.rb - REVIEW"
+  - id: http.api-preview-safe.post
+    kind: http
+    method: POST
+    path: "/api/preview/safe"
+    discovery: static-html
+    notes: "benign? derived from config/routes.rb - REVIEW"
+  - id: http.api-posts-id-comments.post
+    kind: http
+    method: POST
+    path: "/api/posts/:id/comments"
+    discovery: static-html
+    notes: "benign? derived from config/routes.rb - REVIEW"
+  - id: http.api-reports.post
+    kind: http
+    method: POST
+    path: "/api/reports"
+    discovery: static-html
+    notes: "benign? derived from config/routes.rb - REVIEW"

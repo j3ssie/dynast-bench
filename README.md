@@ -15,9 +15,10 @@ patched twin.
 
 ## The apps at a glance
 
-**19 apps · 549 planted vulnerabilities · 146 near-misses · 546 runnable PoCs.**
-Every app boots on `127.0.0.1:13311`, ships a `vuln/`+`safe/` twin pair and a
-single-image `--solo` build. `dynast-bench list` prints this table live.
+**19 apps · 549 planted vulnerabilities · 146 near-misses · 546 runnable PoCs ·
+594 cataloged endpoints.** Every app boots on `127.0.0.1:13311`, ships a
+`vuln/`+`safe/` twin pair and a single-image `--solo` build. `dynast-bench list`
+prints this table live; `dynast-bench surface <app>` prints its endpoint catalog.
 
 | App | Stack | Datastore | Vulns | Near-miss | Docs |
 |-----|-------|-----------|------:|----------:|------|
@@ -119,6 +120,7 @@ reported as one number. The per-app catalogs live in
 ```
 dynast-bench/
 ├── README.md             # you are here - overview, safety, run/score guide
+├── examples/             # ready-to-score findings/v1 + endpoints/v1 files
 ├── Makefile              # top-level runner: list / run / verify / validate / solo any app
 ├── benchmark-plans/      # per-stack design docs (the vulnerability catalogs)
 ├── dynast-bench/           # the `dynast-bench` CLI + scorer (Bun/TS)
@@ -219,7 +221,8 @@ vulnerable-apps/<stack>/
 │   ├── app/
 │   └── db/seed.sql
 └── ground-truth/        # the answer key - see "Ground truth" below
-    ├── VULNERABILITIES.yaml
+    ├── VULNERABILITIES.yaml  # every planted bug
+    ├── SURFACE.yaml          # every endpoint the app exposes
     ├── verify/          # one runnable PoC per bug
     └── expected/        # optional golden normalized findings
 ```
@@ -247,6 +250,9 @@ app, by construction.
 
 ## Ground truth (`ground-truth/`)
 
+Two answer keys, because there are two questions. `VULNERABILITIES.yaml` says
+what is **wrong** in the app; `SURFACE.yaml` says what is **there** at all.
+
 `VULNERABILITIES.yaml` records one entry per planted bug:
 
 ```yaml
@@ -270,6 +276,32 @@ app, by construction.
   poc: ground-truth/verify/sqli_001.sh
 ```
 
+`SURFACE.yaml` records one entry per **operation the app exposes**, vulnerable
+and benign alike - it is the denominator for [endpoint
+coverage](#endpoint-coverage):
+
+```yaml
+operations:
+  - id: posts.search
+    kind: http                 # http | graphql | ws | llm | net
+    method: GET
+    path: /api/posts/search
+    params: [q]
+    discovery: js-runtime      # same crawl tiers as the answer key
+    reachability: user
+    vulns: [SQLI-001]          # omit when the operation is benign
+
+  - id: graphql.mutation.update-post
+    kind: graphql              # the op BEHIND POST /graphql, which is its own entry
+    op: updatePost
+    graphql_kind: mutation
+    via: graphql.transport
+    discovery: static-html
+```
+
+Benign operations are in there on purpose: a catalog of only the vulnerable
+routes would measure coverage of the answer key rather than of the app.
+
 `verify/` holds one runnable PoC per bug - it exits **0 against `vuln/`** and
 **non-zero against `safe/`**. That's the executable definition of "the bug is
 real (and actually fixed in the twin)."
@@ -288,22 +320,37 @@ One toolchain, used by every app, so cross-stack results are comparable:
 
 - **`dynast-bench.ts`** - the CLI: start/stop/reset/clean, health gating, port
   arbitration, PoC verification, scoring, `--json` for harnesses.
-- **`src/schema/`** - types + validators for the finding format and
-  `VULNERABILITIES.yaml`, the CWE-family table used for partial credit, and the
-  path/route/file normalizers both sides of a comparison go through.
+- **`src/schema/`** - types + validators for the two report formats
+  (`findings/v1`, `endpoints/v1`) and the two answer keys
+  (`VULNERABILITIES.yaml`, `SURFACE.yaml`), the CWE-family table used for
+  partial credit, and the path/route/operation normalizers both sides of a
+  comparison go through.
 - **`src/normalize/`** - adapters converting raw scanner output (OWASP ZAP, SARIF
   from Semgrep/CodeQL/Snyk, nuclei, Burp XML, nmap XML) into that format. The
   format is auto-detected, so `score` takes native output directly.
 - **`src/scorer/`** - matches findings against the answer key and emits
   **precision / recall / F1**, recall per difficulty / severity / reachability /
   taint / CWE, a **discrimination** score over the near-misses, and a duplicate
-  (noise) ratio.
+  (noise) ratio. Alongside it, an [endpoint-coverage](#endpoint-coverage) track
+  grades how much of the app a run actually reached and splits every miss into
+  "never found the endpoint" vs "found it, missed the bug".
 
 ```
-dynast-bench verify <app>                # run the app's ground-truth PoCs
-dynast-bench score  <app> findings.json  # findings → P/R/F1 + per-dimension recall
-dynast-bench diff   <app>                # the vuln↔safe delta vs the answer key
-dynast-bench check  --all                # CI gate: schema · anchors · diff scope · binds
+dynast-bench verify   <app>                 # run the app's ground-truth PoCs
+dynast-bench score    <app> findings.json   # findings → P/R/F1 + per-dimension recall
+dynast-bench coverage <app> endpoints.json  # endpoint discovery → how much was reached
+dynast-bench surface  <app>                 # the operation checklist a crawl is graded on
+dynast-bench diff     <app>                 # the vuln↔safe delta vs the answer key
+dynast-bench check    --all                 # CI gate: schema · anchors · diff scope · binds
+```
+
+[`examples/`](examples/) holds files you can score immediately - a findings run, a
+false-positive run, three endpoint traces and two blank templates, each documented
+with the numbers it produces:
+
+```bash
+dynast-bench score    nextjs examples/findings.json --safe examples/findings-safe.json
+dynast-bench coverage nextjs examples/endpoints.json --findings examples/findings.json
 ```
 
 Full reference - the finding schema, the matching tiers, every metric:
@@ -394,11 +441,11 @@ make reset   # fresh state
 - **The scorer - built** (`dynast-bench/src/`): scanner output → normalized findings
   → precision/recall/F1, per-difficulty recall, a discrimination score over the
   near-misses, and separate discovery (network) and injection-channel (LLM) tracks.
-  191 tests, including per-app invariants over all 19 answer keys: `make test`.
-- **Known gap** (`dynast-bench check --all` reports it): `nextjs` patches a
-  predictable-session-id bug (`SESSION-001`, `src/lib/session.ts`) in the safe twin
-  without recording it in `VULNERABILITIES.yaml`, so a tool that finds it is scored
-  as a false positive. Either add the entry or revert the fix.
+- **Endpoint coverage - built**: a `SURFACE.yaml` per app (~600 operations across
+  the fleet) grading how much of the app a run actually reached, and splitting
+  every miss into "never found the endpoint" vs "found it, missed the bug".
+- Per-app invariants over all 19 answer keys and surface catalogs run in
+  `make test`; `dynast-bench check --all` is the CI gate.
 
 ## Scoring a tool
 
@@ -414,8 +461,19 @@ dynast-bench score nextjs zap.json --safe safe.json
 ```
 
 `score` reads a `findings/v1` file or native ZAP / SARIF / nuclei / Burp / nmap
-output - the format is sniffed. See
-[`dynast-bench/README.md`](dynast-bench/README.md#scoring) for the schema, the
+output - the format is sniffed. Start from [`examples/`](examples/) if you are
+wiring up a tool: `examples/template-findings.json` is a blank skeleton with every
+field, and `examples/findings.json` is a working file you can score right now.
+
+Endpoint discovery is graded separately, against each app's `SURFACE.yaml`:
+
+```bash
+dynast-bench coverage nextjs endpoints.json --findings findings.json
+```
+
+That is what separates a **discovery miss** (never reached the endpoint - fix the
+crawler) from an **analysis miss** (reached it, did not report - fix the scanner).
+See [`dynast-bench/README.md`](dynast-bench/README.md#scoring) for the schema, the
 matching tiers and every metric.
 
 ### Reading the report (`Leg │ Precision │ Recall │ F1`)
@@ -439,6 +497,57 @@ All three run `0.0`–`1.0`, and for all three **higher is better** (`1.0` is pe
 The one inversion: on the **`safe-twin` leg there is nothing real to find**, so
 every finding there is a false alarm - fewer is better, and an empty report is
 the perfect score.
+
+## Endpoint coverage
+
+Recall tells you how many bugs a tool found. It cannot tell you **why** it missed
+the rest - and the two reasons need opposite fixes:
+
+| Miss | Meaning | What to fix |
+|---|---|---|
+| **discovery miss** | never reached the endpoint carrying the bug | the crawler |
+| **analysis miss** | reached the endpoint, did not report the bug | the analysis |
+
+Telling them apart needs a second input: the endpoints your tool says it found.
+That is `endpoints/v1`, scored against each app's `SURFACE.yaml`.
+
+```bash
+dynast-bench surface  nextjs                       # the checklist a crawl is graded on
+dynast-bench coverage nextjs endpoints.json        # how much did it reach?
+dynast-bench coverage nextjs endpoints.json --findings findings.json   # ...and why not the rest
+dynast-bench score    nextjs findings.json --endpoints endpoints.json  # both in one report
+```
+
+A crawler that reads HTML and runs JS but never completes a multi-step flow:
+
+```
+operations   62.5%   25 of 40
+detection    25.0%   of the bugs on operations it reached
+misses:      11 never reached the operation · 18 reached it and did not report
+
+  static-html    6/6   100.0%
+  js-static      5/5   100.0%
+  js-runtime    11/19   57.9%
+  interaction    3/5    60.0%
+  flow           0/5     0.0%
+```
+
+The tier breakdown is the useful part: 100% on `static-html` and 0% on `flow` is
+a discovery problem, not a scanner problem, and those read identically in a
+single recall number.
+
+Two rules keep the number honest:
+
+- **Transport is not operation.** One `POST /graphql` does not exercise the 25
+  GraphQL operations behind it; one WebSocket handshake does not exercise its
+  events; one `POST /api/runs` does not exercise an agent's tools. Reaching a URL
+  and exercising what lives there are separately scored.
+- **Missing telemetry produces no track at all**, never `0%`. "We did not measure
+  this" and "it reached nothing" are opposite claims about a tool.
+
+Reported endpoints that match nothing cost precision but never reduce coverage,
+so spraying a wordlist is not a way to score higher. Full model:
+[`dynast-bench/README.md#endpoint-coverage`](dynast-bench/README.md#endpoint-coverage).
 
 ## License
 

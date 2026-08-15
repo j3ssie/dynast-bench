@@ -7,8 +7,9 @@ here is app-specific; per-app data lives in `vulnerable-apps/<stack>/ground-trut
   apps: start / stop / reset / clean, health-gated boots, PoC verification, and
   a `run` wrapper for pointing a real scanner at a target.
 - **`src/{schema,normalize,scorer}/`** - ✅ built. The scoring pipeline: scanner
-  output → normalized findings → precision/recall/F1 and per-dimension recall.
-  See [Scoring](#scoring).
+  output → normalized findings → precision/recall/F1 and per-dimension recall,
+  plus an [endpoint-coverage](#endpoint-coverage) track scored against each app's
+  `SURFACE.yaml`. See [Scoring](#scoring).
 
 ## Install
 
@@ -76,6 +77,11 @@ BENCHMARK
 
 SCORE
   score <app> <file...>    findings → precision/recall/F1  [--safe f.json] [--full]
+                           [--endpoints e.json] to add the coverage track
+  coverage <app> <e.json>  endpoint discovery → how much of the app was reached
+                           [--findings f.json] to split discovery vs analysis misses
+  surface <app...>         every cataloged operation — the checklist a crawl gets
+                           compared against  [--ids] [--full]
   diff <app>               the vuln↔safe delta, cross-checked against the answer key
   check [app...|--all]     CI gate: schema · anchors · diff scope · PoCs · binds
 ```
@@ -93,7 +99,7 @@ Aliases: `ls`/`apps` → `list`, `up` → `start`, `down` → `stop`, `ps` → `
 | `--count N`, `-c N` | `start` N apps: the ones named, else the first N of the catalog |
 | `--parallel[=N]` | bring them up 3 at a time, or N (`start`) |
 | `--near` | also list the near-misses (`vulns`) |
-| `--ids` | bare ids, one per line, for a coverage diff (`vulns`) |
+| `--ids` | bare ids, one per line, for a coverage diff (`vulns`, `surface`) |
 | `--all` | every app (`stop`/`clean`; `start` also needs `--solo`) |
 | `--force` | remove containers directly instead of a `compose down` per stack (`stop`) |
 | `--no-build` | skip the docker build (reuse the existing image) |
@@ -106,9 +112,11 @@ Aliases: `ls`/`apps` → `list`, `up` → `start`, `down` → `stop`, `ps` → `
 | `--json` | machine-readable output on stdout |
 | `--yes` | skip the confirmation prompt (`clean`) |
 | `--safe FILE` | findings from the patched twin (`score`) - all false alarms |
+| `--endpoints FILE` | the endpoints the tool says it discovered (`score`) |
+| `--findings FILE` | a scan to cross-reference for the miss split (`coverage`) |
 | `--format F` | force an input format (`score`): findings/v1 zap sarif nuclei burp nmap |
 | `--full` | every match/miss/false-positive row (`score`, `diff`, `check`); route + PoC + full notes (`vulns`) |
-| `--limit N` | detail rows per section (`score`, default 10) |
+| `--limit N` | detail rows per section (`score`, `coverage`; default 10) |
 | `--lenient-cwe` | accept a match whose CWE is unrelated (`score`) |
 
 Exit codes: `0` ok · `1` operation failed (incl. PoCs off-expectation) · `2` usage error.
@@ -356,6 +364,16 @@ port arbitration, health gating, `--json`, and fleet-wide stop/clean.
 
 ## Scoring
 
+Ready-to-score files live in [`examples/`](../examples/) - a findings run, a
+false-positive run, three endpoint traces and two blank templates, each with the
+numbers it produces:
+
+```bash
+dynast-bench score    nextjs examples/findings.json --safe examples/findings-safe.json
+dynast-bench coverage nextjs examples/endpoints.json --findings examples/findings.json
+```
+
+
 ```
 dynast-bench score <app> <findings.json...>   # findings -> precision/recall/F1
 dynast-bench diff  <app>                      # the vuln<->safe delta vs the answer key
@@ -527,6 +545,116 @@ Two extra tracks run alongside the main matcher:
   precision/recall plus a version-match rate, per `benchmark-plans/network.md`.
   A port reported *closed* is an observation, not a false positive.
 - **injection channel** (`llmchat`, `llmagent`): recall per channel and per tool.
+
+## Endpoint coverage
+
+Vulnerability recall answers "how many bugs did it find". It cannot tell you
+**why** it missed the rest - and the two reasons call for opposite fixes:
+
+```
+discovery miss   never reached the operation carrying the bug   -> fix the crawler
+analysis miss    reached the operation, did not report the bug  -> fix the analysis
+```
+
+Separating them needs a second input: the endpoints the tool says it found.
+
+```bash
+# how much of the app did it reach?
+dynast-bench coverage nextjs endpoints.json
+
+# ...and split the misses, by cross-referencing a scan
+dynast-bench coverage nextjs endpoints.json --findings findings.json
+
+# or fold the same track into a normal score run
+dynast-bench score nextjs findings.json --endpoints endpoints.json
+
+# the checklist a crawl is graded against
+dynast-bench surface nextjs
+```
+
+The denominator is `ground-truth/SURFACE.yaml`, one per app: every deliberate
+operation the app exposes, **vulnerable and benign**. A catalog of only
+vulnerable routes would measure coverage of the answer key, not of the app.
+
+```
+↑ operations         cataloged operations reached / all of them   ← the headline
+↑ routes             the transport layer only - a crawler diagnostic
+↑ vulnerable/benign  the same split, so "found the bugs but crawled nothing"
+                     and "crawled everything" are distinguishable
+↑ precision          reported endpoints that exist / all reported
+↑ detection_given_touch   recall restricted to the part it actually reached
+```
+
+Plus coverage by `discovery` tier, by protocol and by reachability. The tier
+breakdown is the useful one: a tool at 100% on `static-html` and 0% on
+`js-runtime` has a crawler problem, not a scanner problem, and that reads very
+differently from the single number both produce.
+
+### The endpoint format
+
+`endpoints/v1` - see `dynast-bench schema`, or [`examples/`](../examples/) for
+files you can run through `coverage` right now.
+
+```json
+{
+  "schema": "dynast-bench.endpoints/v1",
+  "tool": { "name": "my-agent", "mode": "agent" },
+  "run": { "app": "nextjs", "variant": "vuln" },
+  "endpoints": [
+    { "method": "GET", "path": "/api/posts/search", "params": ["q"] },
+    { "method": "POST", "url": "/wp-admin/admin-ajax.php?action=bench_upload" },
+    { "kind": "graphql", "graphql_kind": "mutation", "op": "updatePost" },
+    { "kind": "ws", "endpoint": "/ws", "event": "admin.userDelete" },
+    { "kind": "llm", "tool": "run_shell" }
+  ]
+}
+```
+
+A bare array of strings (`["GET /a", "ws /ws post.search", "llm run_shell"]`) is
+accepted too. Passing a *findings* file to `--endpoints` also works: the
+operations it implies are used instead, labelled `evidence_source: findings`
+because that only counts where a bug was filed and is a floor, not a
+measurement. With no `--endpoints` at all there is no coverage track - "not
+measured" and "reached nothing" must not render the same way.
+
+### What counts as reaching an operation
+
+The same normalization the finding matcher uses, plus one rule of its own:
+
+- Concrete ids template onto the catalog (`/api/posts/7` → `/api/posts/{id}`).
+- Method matters. A catalog entry with no `method:` is reached by any verb; a
+  report with no method against a pinned verb is credited as a **loose** hit and
+  counted in `loose_hits`.
+- Case, trailing slash and percent-encoding are significant in the strict pass -
+  `weirdproxy` plants `/admin/` and `/ADMIN` as genuinely different endpoints.
+- A required `?action=` selector is part of the identity; ordinary parameter
+  values are not.
+- **Transport is not operation.** One `POST /graphql` does not exercise every
+  GraphQL op, one WS handshake does not exercise every event, one `POST
+  /api/runs` does not exercise every agent tool.
+- A reported endpoint that matches nothing is a diagnostic. It costs precision;
+  it never reduces coverage.
+- Missing telemetry produces **no track at all**, never `0%`. "We did not measure
+  this" and "it reached nothing" are opposite claims about a tool.
+
+### Maintaining the catalog
+
+```bash
+bun dynast-bench/tools/derive-surface.ts nextjs           # dry run
+bun dynast-bench/tools/derive-surface.ts --all --write
+bun dynast-bench/tools/derive-surface.ts --all --check    # CI: fail if stale
+```
+
+It drafts from two sources: the vulnerable operations come straight from
+`VULNERABILITIES.yaml` (already tiered, already mapped to bug ids), the benign
+ones from a per-stack pass over the app source. An entry that already exists is
+never rewritten and one it no longer produces is never deleted - hand review is
+the expensive input, and a catalog that silently shrinks makes every tool look
+better without anyone touching a tool.
+
+`check` enforces the rest: unique identities, `via:` resolves, every reachable
+bug maps to an operation, no harness endpoints, and the same all-or-nothing tier
+rule as the answer key.
 
 ### False positives
 

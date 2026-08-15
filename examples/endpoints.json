@@ -1,0 +1,50 @@
+{
+  "schema": "dynast-bench.endpoints/v1",
+  "tool": { "name": "example-agent", "version": "0.1.0", "mode": "agent" },
+  "run": {
+    "app": "nextjs",
+    "variant": "vuln",
+    "target": "http://127.0.0.1:13311",
+    "duration_s": 42
+  },
+  "endpoints": [
+    { "method": "GET", "path": "/", "note": "landing page - linked in the served HTML" },
+    { "method": "GET", "path": "/login" },
+    { "method": "GET", "path": "/signup" },
+    { "method": "GET", "path": "/env.production", "note": "guessed from a common deploy-file wordlist" },
+    { "method": "GET", "path": "/goto", "params": ["next"] },
+    { "method": "POST", "path": "/api/auth/login" },
+    { "method": "POST", "path": "/api/auth/logout" },
+
+    { "method": "GET", "path": "/integrations" },
+    { "method": "GET", "path": "/api/integrations/token", "note": "literal path in the client bundle" },
+    { "method": "POST", "path": "/api/integrations/sync" },
+    { "method": "GET", "path": "/_next/static/chunks/app-4f2c1b.js.map", "note": "globs in the catalog match" },
+
+    {
+      "method": "GET",
+      "path": "/api/nav",
+      "note": "assembled at runtime by api(\"nav\") - only a browser finds this"
+    },
+    { "method": "GET", "path": "/api/posts/search", "params": ["q"] },
+    { "method": "GET", "path": "/api/posts/7", "note": "a concrete id; the scorer templates it to {id}" },
+    { "method": "GET", "path": "/api/preview", "params": ["url"] },
+    { "method": "GET", "path": "/api/users/me" },
+    { "method": "PATCH", "path": "/api/users/me", "note": "a different verb is a different operation" },
+    { "method": "POST", "path": "/api/settings/import" },
+    { "method": "GET", "path": "/api/admin/users", "note": "401 still counts - routing reached the operation" },
+    { "method": "GET", "path": "/admin/users" },
+    { "method": "GET", "path": "/posts/search" },
+    { "method": "GET", "path": "/api/cache" },
+
+    { "method": "GET", "path": "/posts", "note": "reached by clicking through the nav" },
+    { "method": "GET", "path": "/posts/7" },
+    { "method": "GET", "path": "/profile" },
+
+    {
+      "method": "GET",
+      "path": "/api/notifications",
+      "note": "not a real route - costs precision, but never reduces coverage"
+    }
+  ]
+}

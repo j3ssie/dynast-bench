@@ -1,0 +1,171 @@
+# Attack-surface catalog for network - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: network
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: net.edge-proxy-443
+    kind: net
+    port: 443
+    host: edge-proxy
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-TLS-001, NET-TLS-002]
+  - id: net.edge-proxy-80
+    kind: net
+    port: 80
+    host: edge-proxy
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-HTTP-001, NET-STATUS-001, NET-SEG-001, NET-HEADERS-001]
+  - id: net.edge-bastion-22
+    kind: net
+    port: 22
+    host: edge-bastion
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-SSH-001, NET-SSH-002, NET-SSH-003, NET-CRED-001]
+  - id: net.edge-ftp-21
+    kind: net
+    port: 21
+    host: edge-ftp
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-FTP-001, NET-FTP-002]
+  - id: net.edge-mail-25
+    kind: net
+    port: 25
+    host: edge-mail
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-SMTP-001, NET-SMTP-002]
+  - id: net.app-web-31337
+    kind: net
+    port: 31337
+    host: app-web
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-ROGUE-001]
+  - id: net.app-legacy-23
+    kind: net
+    port: 23
+    host: app-legacy
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-TELNET-001]
+  - id: net.app-legacy-8000
+    kind: net
+    port: 8000
+    host: app-legacy
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-LEGACY-001]
+  - id: net.data-postgres-5432
+    kind: net
+    port: 5432
+    host: data-postgres
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-PG-001]
+  - id: net.data-redis-6379
+    kind: net
+    port: 6379
+    host: data-redis
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-REDIS-001, NET-SEG-002, NET-MARKER-001]
+  - id: net.data-mongo-27017
+    kind: net
+    port: 27017
+    host: data-mongo
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-MONGO-001]
+  - id: net.data-elastic-9200
+    kind: net
+    port: 9200
+    host: data-elastic
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-ELASTIC-001]
+  - id: net.data-memcached-11211
+    kind: net
+    port: 11211
+    host: data-memcached
+    proto: udp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-MEMC-001]
+  - id: net.mgmt-jenkins-8080
+    kind: net
+    port: 8080
+    host: mgmt-jenkins
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-JENKINS-001, NET-SEG-003]
+  - id: net.mgmt-grafana-3000
+    kind: net
+    port: 3000
+    host: mgmt-grafana
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-GRAFANA-001]
+  - id: net.mgmt-rabbitmq-15672
+    kind: net
+    port: 15672
+    host: mgmt-rabbitmq
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-RABBIT-001]
+  - id: net.mgmt-phpmyadmin-8081
+    kind: net
+    port: 8081
+    host: mgmt-phpmyadmin
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-PMA-001]
+  - id: net.mgmt-minio-9000
+    kind: net
+    port: 9000
+    host: mgmt-minio
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-MINIO-001]
+  - id: net.mgmt-snmp-161
+    kind: net
+    port: 161
+    host: mgmt-snmp
+    proto: udp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-SNMP-001]
+  - id: net.edge-ftp-30000
+    kind: net
+    port: 30000
+    host: edge-ftp
+    proto: tcp
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NET-FTP-003]

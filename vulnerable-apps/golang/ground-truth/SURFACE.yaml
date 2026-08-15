@@ -1,0 +1,200 @@
+# Attack-surface catalog for golang - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: golang
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.api-auth-login.post
+    kind: http
+    method: POST
+    path: "/api/auth/login"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [AUTH-ENUM-001, AUTH-RATE-001, DEFAULT-CREDS-001]
+  - id: http.api-reports-admin-summary.get
+    kind: http
+    method: GET
+    path: "/api/reports/admin-summary"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [JWT-001]
+  - id: http.api-auth-reset.post
+    kind: http
+    method: POST
+    path: "/api/auth/reset"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RESET-001]
+  - id: http.api-posts-id.get
+    kind: http
+    method: GET
+    path: "/api/posts/{id}"
+    discovery: static-html
+    reachability: user
+    vulns: [IDOR-001]
+  - id: http.api-admin-users.get
+    kind: http
+    method: GET
+    path: "/api/admin/users"
+    discovery: static-html
+    reachability: user
+    vulns: [AUTHZ-001]
+  - id: http.api-users-me.patch
+    kind: http
+    method: PATCH
+    path: "/api/users/me"
+    discovery: static-html
+    reachability: user
+    vulns: [MASSASSIGN-001]
+  - id: http.api-posts-search.get
+    kind: http
+    method: GET
+    path: "/api/posts/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SQLI-001]
+  - id: http.api-reports-id-results.get
+    kind: http
+    method: GET
+    path: "/api/reports/{id}/results"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SQLI-002]
+  - id: http.api-reports-render.post
+    kind: http
+    method: POST
+    path: "/api/reports/render"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SSTI-XSS-001]
+  - id: http.api-reports-export.post
+    kind: http
+    method: POST
+    path: "/api/reports/export"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CMD-001]
+  - id: http.api-fetch.get
+    kind: http
+    method: GET
+    path: "/api/fetch"
+    params: [url]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SSRF-001]
+  - id: http.api-attachments-download.get
+    kind: http
+    method: GET
+    path: "/api/attachments/download"
+    params: [name]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TRAVERSAL-001]
+  - id: http.api-import-archive.post
+    kind: http
+    method: POST
+    path: "/api/import/archive"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [ZIPSLIP-001]
+  - id: http.goto.get
+    kind: http
+    method: GET
+    path: "/goto"
+    params: [next]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [REDIRECT-001]
+  - id: http.root.options
+    kind: http
+    method: OPTIONS
+    path: "/*"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CORS-001]
+  - id: http.api-billing-seats.post
+    kind: http
+    method: POST
+    path: "/api/billing/seats"
+    discovery: static-html
+    reachability: user
+    vulns: [CSRF-001, BILLING-001]
+  - id: http.search.get
+    kind: http
+    method: GET
+    path: "/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XSS-REFLECT-001]
+  - id: http.posts-id-html.get
+    kind: http
+    method: GET
+    path: "/posts/{id}/html"
+    discovery: static-html
+    reachability: user
+    vulns: [XSS-STORED-001]
+  - id: http.api-invites.post
+    kind: http
+    method: POST
+    path: "/api/invites"
+    discovery: static-html
+    reachability: user
+    vulns: [RACE-001]
+  - id: http.debug-pprof-goroutine.get
+    kind: http
+    method: GET
+    path: "/debug/pprof/goroutine"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [PPROF-001]
+  - id: http.metrics.get
+    kind: http
+    method: GET
+    path: "/metrics"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [METRICS-001]
+  - id: http.api-org.get
+    kind: http
+    method: GET
+    path: "/api/org"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [GRAFANA-001]
+  - id: http.debug-pprof
+    kind: http
+    path: "/debug/pprof/"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.debug-pprof-cmdline
+    kind: http
+    path: "/debug/pprof/cmdline"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.debug-pprof-profile
+    kind: http
+    path: "/debug/pprof/profile"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.debug-pprof-symbol
+    kind: http
+    path: "/debug/pprof/symbol"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.debug-pprof-trace
+    kind: http
+    path: "/debug/pprof/trace"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"

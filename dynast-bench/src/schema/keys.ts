@@ -280,6 +280,17 @@ export function fileMatches(a: string, b: string): boolean {
 }
 
 /**
+ * Is this path the harness's own verification API rather than app surface?
+ *
+ * Anchored on the `_verify` SEGMENT, not on "verify" anywhere: seven apps serve a
+ * genuine `/api/signup/verify`, and excluding a real app route would cap endpoint
+ * coverage below 100% forever. Defined once because the generator and the CI gate
+ * both need it and a looser copy on either side is invisible until it fires.
+ */
+export const isHarnessPath = (path: string): boolean =>
+  /\/(?:_|%5F)verify(?:\/|$|\.)/i.test(path);
+
+/**
  * Is a reported port state a live claim? Anything else ("closed", "filtered") is a
  * negative observation, which must not match a bug and must not count against
  * precision. Defined once - three call sites used to disagree about it.

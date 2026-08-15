@@ -1,0 +1,288 @@
+# Attack-surface catalog for nextjs - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: nextjs
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.api-admin-users.get
+    kind: http
+    method: GET
+    path: "/api/admin/users"
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [MW-BYPASS-001]
+  - id: http.api-settings-import.post
+    kind: http
+    method: POST
+    path: "/api/settings/import"
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [PROTO-001]
+  - id: http.api-posts-search.get
+    kind: http
+    method: GET
+    path: "/api/posts/search"
+    params: [q]
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [SQLI-001, CORS-001]
+  - id: http.api-preview.get
+    kind: http
+    method: GET
+    path: "/api/preview"
+    params: [url]
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [SSRF-001]
+  - id: http.api-posts-id.get
+    kind: http
+    method: GET
+    path: "/api/posts/{id}"
+    discovery: js-runtime
+    reachability: user
+    vulns: [IDOR-001]
+  - id: http.api-users-me.patch
+    kind: http
+    method: PATCH
+    path: "/api/users/me"
+    discovery: js-runtime
+    reachability: user
+    vulns: [MASSASSIGN-001]
+  - id: http.api-users-id-promote.post
+    kind: http
+    method: POST
+    path: "/api/users/{id}/promote"
+    discovery: js-runtime
+    reachability: user
+    vulns: [AUTHZ-001]
+  - id: http.api-reports-admin-summary.get
+    kind: http
+    method: GET
+    path: "/api/reports/admin-summary"
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [JWT-001]
+  - id: http.posts-id.get
+    kind: http
+    method: GET
+    path: "/posts/{id}"
+    discovery: interaction
+    reachability: user
+    vulns: [XSS-STORED-001]
+  - id: http.posts-search.get
+    kind: http
+    method: GET
+    path: "/posts/search"
+    params: [q]
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [XSS-REFLECT-002]
+  - id: http.api-attachments-download.get
+    kind: http
+    method: GET
+    path: "/api/attachments/download"
+    params: [name]
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [TRAVERSAL-001]
+  - id: http.goto.get
+    kind: http
+    method: GET
+    path: "/goto"
+    params: [next]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [REDIRECT-001]
+  - id: http.root.get
+    kind: http
+    method: GET
+    path: "/"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SECRET-001, CONFIG-LEAK-001]
+  - id: http.integrations.get
+    kind: http
+    method: GET
+    path: "/integrations"
+    discovery: js-static
+    reachability: pre-auth
+    vulns: [SECRET-002, CREDS-BUNDLE-001, POSTMSG-003]
+  - id: http.login.get
+    kind: http
+    method: GET
+    path: "/login"
+    discovery: js-static
+    reachability: pre-auth
+    vulns: [CREDS-JS-001]
+  - id: http.next-static-chunks-js-map.get
+    kind: http
+    method: GET
+    path: "/_next/static/chunks/*.js.map"
+    discovery: js-static
+    reachability: pre-auth
+    vulns: [SOURCEMAP-001]
+  - id: http.env-production.get
+    kind: http
+    method: GET
+    path: "/env.production"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [ENVFILE-001]
+  - id: http.api-auth-login.post
+    kind: http
+    method: POST
+    path: "/api/auth/login"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [ENUM-001, SESSION-001]
+  - id: http.api-billing-seats.post
+    kind: http
+    method: POST
+    path: "/api/billing/seats"
+    discovery: js-runtime
+    reachability: user
+    vulns: [BILLING-001]
+  - id: http.api-invites.post
+    kind: http
+    method: POST
+    path: "/api/invites"
+    discovery: js-runtime
+    reachability: user
+    vulns: [RACE-001]
+  - id: http.api-cache.get
+    kind: http
+    method: GET
+    path: "/api/cache"
+    params: [key]
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [CACHE-POISON-001]
+  - id: http.api-debug-report.post
+    kind: http
+    method: POST
+    path: "/api/_debug/report"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [CODEINJ-001]
+  - id: http.posts.get
+    kind: http
+    method: GET
+    path: "/posts"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [DOMXSS-001]
+  - id: http.profile.get
+    kind: http
+    method: GET
+    path: "/profile"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [POSTMSG-001, POSTMSG-002]
+  - id: http.api-signup-start.post
+    kind: http
+    method: POST
+    path: "/api/signup/start"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [SIGNUP-ENUM-001]
+  - id: http.api-signup-verify.post
+    kind: http
+    method: POST
+    path: "/api/signup/verify"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-TOKEN-001]
+  - id: http.api-signup-profile.post
+    kind: http
+    method: POST
+    path: "/api/signup/profile"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-MASSASSIGN-001]
+  - id: http.api-signup-complete.post
+    kind: http
+    method: POST
+    path: "/api/signup/complete"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-STEPSKIP-001]
+  - id: http.api-signup-draft-id.get
+    kind: http
+    method: GET
+    path: "/api/signup/draft/{id}"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-IDOR-001]
+  - id: http.signup.get
+    kind: http
+    method: GET
+    path: "/signup"
+    discovery: static-html
+    notes: "literal <a href=\"/signup\"> on / and /login"
+  - id: http.admin-users.get
+    kind: http
+    method: GET
+    path: "/admin/users"
+    discovery: js-runtime
+    notes: "only appears in the /api/nav response"
+  - id: http.api-comments.post
+    kind: http
+    method: POST
+    path: "/api/comments"
+    discovery: js-runtime
+    notes: "in the lib/routes.ts registry"
+  - id: http.api-preview-internal.get
+    kind: http
+    method: GET
+    path: "/api/preview-internal"
+    discovery: js-runtime
+    notes: "NM-FETCH endpoint, unlinked sibling of /api/preview"
+  - id: http.api-auth-logout.post
+    kind: http
+    method: POST
+    path: "/api/auth/logout"
+    discovery: static-html
+    notes: "benign? derived from /api/auth/logout/route.ts - REVIEW"
+  - id: http.api-signup-resend.post
+    kind: http
+    method: POST
+    path: "/api/signup/resend"
+    discovery: flow
+    notes: "only reachable mid-signup"
+  - id: http.api-integrations-token.get
+    kind: http
+    method: GET
+    path: "/api/integrations/token"
+    discovery: js-static
+    notes: "benign? derived from /api/integrations/token/route.ts - REVIEW"
+  - id: http.api-integrations-sync.post
+    kind: http
+    method: POST
+    path: "/api/integrations/sync"
+    discovery: js-static
+    reachability: pre-auth
+    vulns: [CREDS-BUNDLE-001]
+    notes: "benign? derived from /api/integrations/sync/route.ts - REVIEW"
+  - id: http.api-users-me.get
+    kind: http
+    method: GET
+    path: "/api/users/me"
+    discovery: js-runtime
+    notes: "benign? derived from /api/users/me/route.ts - REVIEW"
+  - id: http.api-cache-scoped.get
+    kind: http
+    method: GET
+    path: "/api/cache-scoped"
+    discovery: js-runtime
+    notes: "NM-CACHE endpoint, unlinked sibling of /api/cache"
+  - id: http.api-nav.get
+    kind: http
+    method: GET
+    path: "/api/nav"
+    discovery: js-runtime
+    notes: "fetched as api(\"nav\") - path assembled at runtime"

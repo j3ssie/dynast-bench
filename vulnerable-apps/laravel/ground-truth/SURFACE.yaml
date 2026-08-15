@@ -1,0 +1,299 @@
+# Attack-surface catalog for laravel - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: laravel
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.search.get
+    kind: http
+    method: GET
+    path: "/search"
+    params: [q]
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [SQLI-001, XSS-REFLECT-001]
+  - id: http.reports-titles.get
+    kind: http
+    method: GET
+    path: "/reports/titles"
+    discovery: js-runtime
+    reachability: user
+    vulns: [SQLI-002]
+  - id: http.posts-id-comments.post
+    kind: http
+    method: POST
+    path: "/posts/{id}/comments"
+    discovery: interaction
+    reachability: user
+    vulns: [XSS-STORED-001]
+  - id: http.tools-preview.get
+    kind: http
+    method: GET
+    path: "/tools/preview"
+    params: [tpl]
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [SSTI-001]
+  - id: http.tools-export.get
+    kind: http
+    method: GET
+    path: "/tools/export"
+    params: [format]
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [CMD-001]
+  - id: http.profile-avatar.post
+    kind: http
+    method: POST
+    path: "/profile/avatar"
+    discovery: interaction
+    reachability: user
+    vulns: [UPLOAD-001]
+  - id: http.posts-id.get
+    kind: http
+    method: GET
+    path: "/posts/{id}"
+    discovery: js-runtime
+    reachability: user
+    vulns: [IDOR-001, XSS-STORED-001]
+  - id: http.admin-users.get
+    kind: http
+    method: GET
+    path: "/admin/users"
+    discovery: js-runtime
+    reachability: user
+    vulns: [AUTHZ-001]
+  - id: http.profile.post
+    kind: http
+    method: POST
+    path: "/profile"
+    discovery: interaction
+    reachability: user
+    vulns: [MASSASSIGN-001]
+  - id: http.tools-download.get
+    kind: http
+    method: GET
+    path: "/tools/download"
+    params: [file]
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [TRAVERSAL-001]
+  - id: http.go.get
+    kind: http
+    method: GET
+    path: "/go"
+    params: [next]
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [REDIRECT-001]
+  - id: http.account-name.post
+    kind: http
+    method: POST
+    path: "/account/name"
+    discovery: interaction
+    reachability: user
+    vulns: [CSRF-001]
+  - id: http.tools-import.post
+    kind: http
+    method: POST
+    path: "/tools/import"
+    discovery: interaction
+    reachability: user
+    vulns: [DESER-001]
+  - id: http.tools-fetch.get
+    kind: http
+    method: GET
+    path: "/tools/fetch"
+    params: [url]
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [SSRF-001]
+  - id: http.diagnostics.get
+    kind: http
+    method: GET
+    path: "/diagnostics"
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [DEBUG-001]
+  - id: http.env-backup.get
+    kind: http
+    method: GET
+    path: "/.env.backup"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SECRET-001]
+  - id: http.password-email.post
+    kind: http
+    method: POST
+    path: "/password/email"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RESET-001]
+  - id: http.login.post
+    kind: http
+    method: POST
+    path: "/login"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [ENUM-001, RATELIMIT-001, DEFAULT-CREDS-001]
+  - id: http.billing-invite.post
+    kind: http
+    method: POST
+    path: "/billing/invite"
+    discovery: interaction
+    reachability: user
+    vulns: [RACE-001]
+  - id: http.billing-topup.post
+    kind: http
+    method: POST
+    path: "/billing/topup"
+    discovery: interaction
+    reachability: user
+    vulns: [BILLING-001]
+  - id: http.api-tools-import-mapping.post
+    kind: http
+    method: POST
+    path: "/api/tools/import-mapping"
+    discovery: js-runtime
+    reachability: pre-auth
+    vulns: [XXE-001]
+  - id: http.dashboard.get
+    kind: http
+    method: GET
+    path: "/dashboard"
+    discovery: interaction
+    reachability: user
+    vulns: [DOMXSS-001]
+  - id: http.profile.get
+    kind: http
+    method: GET
+    path: "/profile"
+    discovery: interaction
+    reachability: user
+    vulns: [POSTMSG-001]
+  - id: http.api-signup-start.post
+    kind: http
+    method: POST
+    path: "/api/signup/start"
+    discovery: interaction
+    reachability: pre-auth
+    vulns: [SIGNUP-ENUM-001]
+  - id: http.api-signup-verify.post
+    kind: http
+    method: POST
+    path: "/api/signup/verify"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-TOKEN-001]
+  - id: http.api-signup-profile.post
+    kind: http
+    method: POST
+    path: "/api/signup/profile"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-MASSASSIGN-001]
+  - id: http.api-signup-complete.post
+    kind: http
+    method: POST
+    path: "/api/signup/complete"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-STEPSKIP-001]
+  - id: http.api-signup-draft-id.get
+    kind: http
+    method: GET
+    path: "/api/signup/draft/{id}"
+    discovery: flow
+    reachability: pre-auth
+    vulns: [SIGNUP-IDOR-001]
+  - id: http.root.get
+    kind: http
+    method: GET
+    path: "/"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [PHPMYADMIN-001, CORS-001]
+    notes: "benign? derived from routes/web.php - REVIEW"
+  - id: http.nav.get
+    kind: http
+    method: GET
+    path: "/nav"
+    discovery: static-html
+    notes: "literal fetch(\"/nav\") inline in home.blade.php"
+  - id: http.login.get
+    kind: http
+    method: GET
+    path: "/login"
+    discovery: static-html
+    notes: "benign? derived from routes/web.php - REVIEW"
+  - id: http.logout.post
+    kind: http
+    method: POST
+    path: "/logout"
+    discovery: interaction
+    notes: "form submit"
+  - id: http.register.get
+    kind: http
+    method: GET
+    path: "/register"
+    discovery: static-html
+    notes: "auth page, like /login"
+  - id: http.register.post
+    kind: http
+    method: POST
+    path: "/register"
+    discovery: static-html
+    notes: "auth form post, like POST /login"
+  - id: http.password-reset.post
+    kind: http
+    method: POST
+    path: "/password/reset"
+    discovery: static-html
+    notes: "benign? derived from routes/web.php - REVIEW"
+  - id: http.signup.get
+    kind: http
+    method: GET
+    path: "/signup"
+    discovery: interaction
+    notes: "matches POST /api/signup/start"
+  - id: http.api-signup-resend.post
+    kind: http
+    method: POST
+    path: "/api/signup/resend"
+    discovery: flow
+    notes: "only reachable mid-signup"
+  - id: http.posts.get
+    kind: http
+    method: GET
+    path: "/posts"
+    discovery: js-runtime
+    notes: "reached from the nav response, like /posts/{id}"
+  - id: http.posts.post
+    kind: http
+    method: POST
+    path: "/posts"
+    discovery: interaction
+    notes: "form submit, like POST /posts/{id}"
+  - id: http.posts-id-audit.get
+    kind: http
+    method: GET
+    path: "/posts/{post}/audit"
+    discovery: js-runtime
+    notes: "NM-IDOR-001 endpoint beside /posts/{id}"
+  - id: http.admin-audit.get
+    kind: http
+    method: GET
+    path: "/admin/audit"
+    discovery: js-runtime
+    notes: "benign? derived from routes/web.php - REVIEW"
+  - id: http.billing.get
+    kind: http
+    method: GET
+    path: "/billing"
+    discovery: interaction
+    notes: "benign? derived from routes/web.php - REVIEW"

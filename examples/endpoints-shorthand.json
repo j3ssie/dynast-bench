@@ -1,0 +1,19 @@
+{
+  "schema": "dynast-bench.endpoints/v1",
+  "tool": { "name": "example-crawler", "mode": "dast" },
+  "run": { "app": "nextjs", "variant": "vuln" },
+  "endpoints": [
+    "GET /",
+    "GET /login",
+    "GET /signup",
+    "GET /env.production",
+    "GET /goto?next=",
+    "POST /api/auth/login",
+    "POST /api/auth/logout",
+    "http://127.0.0.1:13311/api/posts/search?q=test",
+    "GET /integrations",
+    "GET /api/integrations/token",
+    "POST /api/integrations/sync",
+    "GET /_next/static/chunks/app-4f2c1b.js.map"
+  ]
+}

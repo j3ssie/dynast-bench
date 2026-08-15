@@ -1,0 +1,249 @@
+# Attack-surface catalog for aspnet - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: aspnet
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.api-users-me.post
+    kind: http
+    method: POST
+    path: "/api/users/me"
+    discovery: static-html
+    reachability: user
+    vulns: [OVERPOST-001]
+  - id: http.api-import-binary.post
+    kind: http
+    method: POST
+    path: "/api/import/binary"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DESER-BIN-001]
+  - id: http.api-import-json.post
+    kind: http
+    method: POST
+    path: "/api/import/json"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DESER-JSON-001]
+  - id: http.api-import-xml.post
+    kind: http
+    method: POST
+    path: "/api/import/xml"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XXE-001]
+  - id: http.api-posts-search.get
+    kind: http
+    method: GET
+    path: "/api/posts/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SQLI-001]
+  - id: http.api-reports-run.get
+    kind: http
+    method: GET
+    path: "/api/reports/run"
+    discovery: static-html
+    reachability: user
+    vulns: [SQLI-002]
+  - id: http.comments.get
+    kind: http
+    method: GET
+    path: "/comments"
+    discovery: static-html
+    reachability: user
+    vulns: [XSS-001]
+  - id: http.search.get
+    kind: http
+    method: GET
+    path: "/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XSS-002]
+  - id: http.login.get
+    kind: http
+    method: GET
+    path: "/login"
+    params: [returnUrl]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [OPENREDIR-001]
+  - id: http.api-fetch.get
+    kind: http
+    method: GET
+    path: "/api/fetch"
+    params: [url]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SSRF-001]
+  - id: http.api-export.get
+    kind: http
+    method: GET
+    path: "/api/export"
+    params: [format]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CMD-001]
+  - id: http.api-files-download.get
+    kind: http
+    method: GET
+    path: "/api/files/download"
+    params: [name]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [TRAVERSAL-001]
+  - id: http.api-posts-id.get
+    kind: http
+    method: GET
+    path: "/api/posts/{id}"
+    discovery: static-html
+    reachability: user
+    vulns: [IDOR-001]
+  - id: http.api-admin-users.get
+    kind: http
+    method: GET
+    path: "/api/admin/users"
+    discovery: static-html
+    reachability: user
+    vulns: [BFLA-001]
+  - id: http.api-profile-csrf-note.post
+    kind: http
+    method: POST
+    path: "/api/profile/csrf-note"
+    discovery: static-html
+    reachability: user
+    vulns: [CSRF-001]
+  - id: http.api-reports-admin-summary.get
+    kind: http
+    method: GET
+    path: "/api/reports/admin-summary"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [JWT-001]
+  - id: http.api-auth-rate-probe.get
+    kind: http
+    method: GET
+    path: "/api/auth/rate-probe"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RATE-001]
+  - id: http.api-auth-login.post
+    kind: http
+    method: POST
+    path: "/api/auth/login"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [ENUM-001, COOKIE-001, DEFAULTCREDS-001]
+  - id: http.api-auth-reset-request.post
+    kind: http
+    method: POST
+    path: "/api/auth/reset/request"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RESET-001]
+  - id: http.api-cors-secret.get
+    kind: http
+    method: GET
+    path: "/api/cors/secret"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CORS-001]
+  - id: http.api-debug-crash.get
+    kind: http
+    method: GET
+    path: "/api/debug/crash"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [ERROR-001]
+  - id: http.api-config-client.get
+    kind: http
+    method: GET
+    path: "/api/config/client"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CONFIG-001]
+  - id: http.api-crypto-hash.get
+    kind: http
+    method: GET
+    path: "/api/crypto/hash"
+    params: [text]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CRYPTO-001]
+  - id: http.api-upload-avatar.post
+    kind: http
+    method: POST
+    path: "/api/upload/avatar"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [UPLOAD-001]
+  - id: http.api-billing-seats.post
+    kind: http
+    method: POST
+    path: "/api/billing/seats"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [BILLING-001]
+  - id: http.api-invite.post
+    kind: http
+    method: POST
+    path: "/api/invite"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RACE-001]
+  - id: http.root.get
+    kind: http
+    method: GET
+    path: "/"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from Program.cs - REVIEW"
+  - id: http.api-posts.get
+    kind: http
+    method: GET
+    path: "/api/posts/*"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from Program.cs - REVIEW"
+  - id: http.api-reports-name.post
+    kind: http
+    method: POST
+    path: "/api/reports/name"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from Program.cs - REVIEW"
+  - id: http.api-comments.post
+    kind: http
+    method: POST
+    path: "/api/comments"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from Program.cs - REVIEW"
+  - id: http.api-import-binary-sample.get
+    kind: http
+    method: GET
+    path: "/api/import/binary/sample"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from Program.cs - REVIEW"
+  - id: http.api-billing-seats.get
+    kind: http
+    method: GET
+    path: "/api/billing/seats"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from Program.cs - REVIEW"
+  - id: http.api-invite-count.get
+    kind: http
+    method: GET
+    path: "/api/invite/count"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from Program.cs - REVIEW"

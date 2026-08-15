@@ -1,0 +1,216 @@
+# Attack-surface catalog for wordpress - the endpoint-coverage denominator.
+#
+# Every operation a tool is expected to DISCOVER. Coverage is measured against
+# this list, so it must stay complete: an entry removed here makes every tool
+# look better without anyone touching a tool.
+#
+# Drafted by dynast-bench/tools/derive-surface.ts, then reviewed by hand.
+app: wordpress
+entry: http://127.0.0.1:13311
+
+operations:
+  - id: http.wp-json-bench-tasks-v1-task.get
+    kind: http
+    method: GET
+    path: "/wp-json/bench-tasks/v1/task"
+    params: [id]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SQLI-001]
+  - id: http.wp-json-bench-tasks-v1-report.get
+    kind: http
+    method: GET
+    path: "/wp-json/bench-tasks/v1/report"
+    discovery: static-html
+    reachability: user
+    vulns: [SQLI-002]
+  - id: http.wp-admin-admin-post-php.post
+    kind: http
+    method: POST
+    path: "/wp-admin/admin-post.php"
+    query: { action: bench_set_webhook }
+    discovery: static-html
+    reachability: user
+    vulns: [CSRF-001]
+  - id: http.wp-admin-admin-post-php.post-2
+    kind: http
+    method: POST
+    path: "/wp-admin/admin-post.php"
+    query: { action: bench_admin_export }
+    discovery: static-html
+    reachability: user
+    vulns: [AUTHZ-001]
+  - id: http.wp-admin-admin-ajax-php.get
+    kind: http
+    method: GET
+    path: "/wp-admin/admin-ajax.php"
+    query: { action: bench_promote_user }
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [NOPRIV-001]
+  - id: http.wp-json-bench-tasks-v1-import.post
+    kind: http
+    method: POST
+    path: "/wp-json/bench-tasks/v1/import"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DESER-001]
+  - id: http.wp-admin-admin-ajax-php.post
+    kind: http
+    method: POST
+    path: "/wp-admin/admin-ajax.php"
+    query: { action: bench_upload }
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [UPLOAD-001]
+  - id: http.wp-admin-admin-php.get
+    kind: http
+    method: GET
+    path: "/wp-admin/admin.php"
+    query: { page: bench_tasks }
+    params: [view]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [LFI-001]
+  - id: http.wp-json-bench-tasks-v1-fetch.get
+    kind: http
+    method: GET
+    path: "/wp-json/bench-tasks/v1/fetch"
+    params: [url]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [SSRF-001]
+  - id: http.tasks.get
+    kind: http
+    method: GET
+    path: "/tasks"
+    params: [id]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XSS-STORED-001]
+  - id: http.search.get
+    kind: http
+    method: GET
+    path: "/search"
+    params: [q]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XSS-REFLECT-001]
+  - id: http.wp-json-bench-tasks-v1-private-task.get
+    kind: http
+    method: GET
+    path: "/wp-json/bench-tasks/v1/private-task"
+    params: [id]
+    discovery: static-html
+    reachability: user
+    vulns: [IDOR-001]
+  - id: http.wp-json-bench-tasks-v1-profile.post
+    kind: http
+    method: POST
+    path: "/wp-json/bench-tasks/v1/profile"
+    discovery: static-html
+    reachability: user
+    vulns: [ROLE-ESC-001]
+  - id: http.wp-json-bench-tasks-v1-export.get
+    kind: http
+    method: GET
+    path: "/wp-json/bench-tasks/v1/export"
+    params: [format]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CMD-001]
+  - id: http.go.get
+    kind: http
+    method: GET
+    path: "/go"
+    params: [to]
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [REDIRECT-001]
+  - id: http.wp-admin-admin-php.get-2
+    kind: http
+    method: GET
+    path: "/wp-admin/admin.php"
+    query: { page: bench_options }
+    discovery: static-html
+    reachability: user
+    vulns: [SECRET-001]
+  - id: http.wp-login-php.get
+    kind: http
+    method: GET
+    path: "/wp-login.php"
+    query: { action: rp }
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RESET-001]
+  - id: http.wp-json-wp-v2-users.get
+    kind: http
+    method: GET
+    path: "/wp-json/wp/v2/users"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [REST-ENUM-001]
+  - id: http.root.get
+    kind: http
+    method: GET
+    path: "/"
+    query: { author: 1 }
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [AUTHOR-ENUM-001]
+  - id: http.xmlrpc-php.post
+    kind: http
+    method: POST
+    path: "/xmlrpc.php"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [XMLRPC-001]
+  - id: http.wp-config-php-bak.get
+    kind: http
+    method: GET
+    path: "/wp-config.php.bak"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [WEAK-SALTS-001, BACKUP-001]
+  - id: http.wp-content-debug-log.get
+    kind: http
+    method: GET
+    path: "/wp-content/debug.log"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DEBUG-001]
+  - id: http.wp-json-bench-tasks-v1-billing.post
+    kind: http
+    method: POST
+    path: "/wp-json/bench-tasks/v1/billing"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [BILLING-001]
+  - id: http.wp-json-bench-tasks-v1-invite.post
+    kind: http
+    method: POST
+    path: "/wp-json/bench-tasks/v1/invite"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [RACE-001]
+  - id: http.wp-json-bench-tasks-v1-cors.get
+    kind: http
+    method: GET
+    path: "/wp-json/bench-tasks/v1/cors"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [CORS-001]
+  - id: http.wp-content-plugins-bench-tasks-vendor-vulnerable-lib-js.get
+    kind: http
+    method: GET
+    path: "/wp-content/plugins/bench-tasks/vendor/vulnerable-lib.js"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DEP-001]
+  - id: http.wp-login-php.post
+    kind: http
+    method: POST
+    path: "/wp-login.php"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [DEFAULT-CREDS-001]

@@ -4,10 +4,15 @@
 !.env.example
 
 # --- scanner output & scoring artifacts (not checked in) ---
+# Unanchored on purpose: a scan dropped anywhere in the tree stays out.
 findings.json
 findings/
 scores/
 *.sarif
+
+# ...except examples/, which ships deliberate fixtures with those exact names.
+# They are checked in and asserted by dynast-bench/test/examples.test.ts.
+!examples/**
 
 # --- Node / bench tooling ---
 node_modules/

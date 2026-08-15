@@ -8,6 +8,8 @@
 #   make verify APP=nextjs        # run its ground-truth PoCs (expect all exploitable)
 #   make validate APP=nextjs      # full twin loop: vuln all-pass -> safe all-fixed
 #   make score APP=nextjs FINDINGS=f.json   # grade a scanner -> precision/recall/F1
+#   make coverage APP=nextjs ENDPOINTS=e.json  # grade endpoint discovery -> coverage
+#   make surface APP=nextjs       # the endpoint catalog coverage is measured against
 #   make check                    # CI gate over every app (schema, anchors, diff scope)
 #   make test                     # the scorer test suite
 #   make down APP=nextjs          # stop it
@@ -32,7 +34,7 @@ DIST       := $(abspath dynast-bench/dist/dynast-bench)
 BIN_DIR    ?= $(HOME)/.bun/bin
 BIN        := $(BIN_DIR)/dynast-bench
 
-.PHONY: help build install uninstall test list run down stop stop-all browser-image clean verify validate score check diff solo solo-down guard-app
+.PHONY: help build install uninstall test list run down stop stop-all browser-image clean verify validate score coverage surface check diff solo solo-down guard-app
 
 help:            ## show usage + app list
 	@echo "DynAST-Bench — intentionally vulnerable app suite"
@@ -122,12 +124,20 @@ score: guard-app    ## grade findings against APP's answer key [FINDINGS= SAFE_F
 	$(MAKE) -C vulnerable-apps/$(APP) score FINDINGS=$(abspath $(FINDINGS)) \
 	  $(if $(SAFE_FINDINGS),SAFE_FINDINGS=$(abspath $(SAFE_FINDINGS)),) SCORE_FLAGS="$(SCORE_FLAGS)"
 
+coverage: guard-app ## grade endpoint discovery against APP's surface catalog [ENDPOINTS= FINDINGS=]
+	@bun "$(CLI)" coverage $(APP) $(abspath $(ENDPOINTS)) \
+	  $(if $(FINDINGS),--findings $(abspath $(FINDINGS)),) $(COVERAGE_FLAGS)
+
+surface:            ## print APP's endpoint catalog, or every app's when APP is unset
+	@bun "$(CLI)" surface $(if $(APP),$(APP),--all)
+
 diff: guard-app     ## APP's vuln<->safe delta, cross-checked against the answer key
 	@bun "$(CLI)" diff $(APP)
 
 check:              ## CI gate for APP, or every app when APP is unset
 	@bun "$(CLI)" check $(if $(APP),$(APP),--all)
 	@bun dynast-bench/tools/derive-match.ts $(if $(APP),$(APP),--all) --check >/dev/null
+	@bun dynast-bench/tools/derive-surface.ts $(if $(APP),$(APP),--all) --check >/dev/null
 
 test:               ## run the scorer test suite (schema, matcher, every answer key)
 	@command -v bun >/dev/null || { echo "!! bun is required (https://bun.sh)"; exit 2; }
