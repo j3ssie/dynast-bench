@@ -19,7 +19,10 @@ budget="${3:-180}"
 printf '>> waiting for %s' "$name"
 deadline=$(( $(date +%s) + budget ))
 while [ "$(date +%s)" -lt "$deadline" ]; do
-  if curl -sf -o /dev/null "$url"; then
+  # --max-time or the deadline below is not a deadline: an app that accepts the
+  # connection and then never answers holds curl open indefinitely, and the loop
+  # never gets back around to check the clock.
+  if curl -sf -o /dev/null --max-time 5 "$url"; then
     echo "  ready"
     exit 0
   fi

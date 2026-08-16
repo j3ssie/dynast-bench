@@ -71,13 +71,29 @@ _browser_url() {
   fi
 }
 
+# Chromium is the one container in the suite that is NOT the app under test, and
+# it was the only one with no ceiling: a renderer fed a hostile page (which is
+# exactly what a DOM-XSS PoC feeds it) can take the docker VM down and every
+# other app on the daemon with it. --init also matters more here than anywhere -
+# chrome forks a zombie-prone tree of zygote/renderer/gpu processes.
+_browser_limits() {
+  echo "--memory=1g --cpus=2 --pids-limit=512 --init --log-opt max-size=5m"
+}
+
 browser() {
   browser_require || return 2
-  local url="$1"
+  local url="$1" rc
   shift
-  # shellcheck disable=SC2046  # the net flag is one word and must not be quoted
-  docker run --rm $(_browser_net) "$DYNAST_BROWSER_IMAGE" \
+  # shellcheck disable=SC2046  # the flags are separate words and must not be quoted
+  docker run --rm $(_browser_net) $(_browser_limits) "$DYNAST_BROWSER_IMAGE" \
     --url "$(_browser_url "$url")" "$@"
+  rc=$?
+  # drive.mjs uses its exit code ONLY for "the probe itself could not run" -
+  # whether the page was vulnerable is decided by grepping the JSON below. So any
+  # nonzero (chromium failed to launch, navigation failed, `docker run` itself
+  # errored with 125) is a harness result, never "not exploitable". Collapsing
+  # them to 2 is what stops the runner reading a broken probe as "fixed".
+  [ "$rc" -eq 0 ] || return 2
 }
 
 # Proof that injected script EXECUTED: a dialog whose text carries our marker.

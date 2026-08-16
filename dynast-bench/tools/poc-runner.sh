@@ -65,14 +65,21 @@ _poc_secs() { printf '%d.%02d' $(( $1 / 1000 )) $(( $1 % 1000 / 10 )); }
 # 0 = the app is up and serving. This is the oracle that lets a nonzero PoC be
 # read as "the exploit was rejected" rather than "nothing was listening", so it
 # has to distinguish a real response from a refused connection (000) and from an
-# app that is answering but broken (5xx).
+# app that is answering but broken.
+#
+# 2xx ONLY. This used to accept anything that was not empty/000/5xx, which meant
+# a 404 counted as healthy - so a stale proxy, a wrong POC_HEALTH, or a container
+# that had swapped in some other service on the port could satisfy the oracle and
+# let every PoC's nonzero exit be recorded as "cleanly rejected = fixed". 2xx is
+# also exactly what every app's own compose healthcheck requires (`curl -sf`,
+# `r.ok`, a JSON parse), so nothing in the suite is on a non-2xx health route.
 poc_healthy() {
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
     -H "X-Verify-Token: ${VERIFY_TOKEN:-benchsecret}" "${TARGET}${POC_HEALTH}" 2>/dev/null)"
   case "$code" in
-    ""|000|5??) return 1 ;;
-    *) return 0 ;;
+    2??) return 0 ;;
+    *) return 1 ;;
   esac
 }
 

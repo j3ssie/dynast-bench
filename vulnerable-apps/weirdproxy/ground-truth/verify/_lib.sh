@@ -17,8 +17,13 @@ NGINX="$TARGET"
 # defaults are only the fallback for a bare `make verify`. Hardcoding them meant
 # every `dynast-bench validate` dialled another app's port and reported all 11
 # Apache/Traefik bugs as not exploitable.
-APACHE="${WEIRDPROXY_APACHE:-$SCHEME://$HOSTNAME:${DYNAST_PORT_APACHE_80:-13312}}"
-TRAEFIK="${WEIRDPROXY_TRAEFIK:-$SCHEME://$HOSTNAME:${DYNAST_PORT_TRAEFIK_80:-13313}}"
+# Three layers, narrowest first:
+#   DYNAST_PORT_<SERVICE>_80   compose - the runner reads it back off docker
+#   DYNAST_SOLO_PORT_808x      solo - one container, no compose service label, so
+#                              the publishes are named by the port EXPOSE gave them
+#   13312 / 13313              the compose defaults, for a bare `make verify`
+APACHE="${WEIRDPROXY_APACHE:-$SCHEME://$HOSTNAME:${DYNAST_PORT_APACHE_80:-${DYNAST_SOLO_PORT_8081:-13312}}}"
+TRAEFIK="${WEIRDPROXY_TRAEFIK:-$SCHEME://$HOSTNAME:${DYNAST_PORT_TRAEFIK_80:-${DYNAST_SOLO_PORT_8082:-13313}}}"
 
 # leak <base> <raw-path> [extra-header]
 # --path-as-is keeps curl from collapsing //, /./, .. before the request is sent.

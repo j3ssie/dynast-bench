@@ -2,6 +2,14 @@
 .env
 *.env.local
 !.env.example
+# ...except an app's own .env, which is part of the app under test rather than a
+# developer's local secret. laravel plants DEBUG-001 (APP_DEBUG=true) and a
+# committed APP_KEY in exactly that file, and SECRET-001 IS a .env backup served
+# from the web root. Ignoring them made a fresh clone ship neither bug.
+# Guarded by dynast-bench/test/tracked.test.ts.
+!vulnerable-apps/*/vuln/.env
+!vulnerable-apps/*/safe/.env
+!vulnerable-apps/*/vuln/**/.env.backup
 
 # --- scanner output & scoring artifacts (not checked in) ---
 # Unanchored on purpose: a scan dropped anywhere in the tree stays out.
@@ -31,8 +39,11 @@ target/
 build/
 *.war
 *.class
-# .NET
-bin/
+# .NET  (`bin/` is build output — but unanchored it also swallowed Rails'
+# binstubs, and rails/entrypoint.sh runs `bin/rails db:prepare` at boot, so a
+# fresh clone built an image whose container exited before Puma started.)
+**/bin/Debug/
+**/bin/Release/
 obj/
 # Ruby
 vendor/bundle/

@@ -94,6 +94,12 @@ interface PortDecl {
   isApp: boolean;
 }
 
+interface SoloLimits {
+  memMb: number;
+  cpus: number;
+  pids: number;
+}
+
 interface App {
   name: string;
   dir: string;
@@ -111,6 +117,14 @@ interface App {
   ports: Record<Variant, PortDecl[]>;
   /** port the standalone image listens on inside the container */
   soloInternalPort: number;
+  /**
+   * Every port the standalone image serves (`EXPOSE` order, app first). Usually
+   * one; weirdproxy runs three proxies in the single image and all three carry
+   * bugs, so all three have to be published or 11 PoCs have nothing to dial.
+   */
+  soloPorts: number[];
+  /** ceiling for the solo container: the sum of the compose stack's own caps */
+  soloLimits: SoloLimits;
   hasSolo: boolean;
   healthPath: string;
   pocCount: number;
@@ -193,6 +207,12 @@ function fatal(err: unknown): never {
   throw err;
 }
 
+/** Call once, hand every later caller the same promise. */
+function memo<T>(fn: () => Promise<T>): () => Promise<T> {
+  let p: Promise<T> | null = null;
+  return () => (p ??= fn());
+}
+
 /** Run module-init work that may die() — main()'s handler isn't up yet. */
 function init<T>(fn: () => T): T {
   try {
@@ -247,16 +267,31 @@ async function exec(
     stderr: "pipe",
   });
 
+  // Everything read from a child is retained so a failure can be reported with
+  // its log - but a scanner under `run`, or `docker build` on a cold cache,
+  // produces megabytes of it, and an unbounded array made the CLI's own memory a
+  // function of how chatty the tool under test is. Keep the tail: the last
+  // screenful is what a failure is diagnosed from.
+  const CAP = 4 << 20;
   const drain = async (
     rs: ReadableStream<Uint8Array>,
     sink: NodeJS.WriteStream,
   ) => {
     const chunks: Uint8Array[] = [];
+    let held = 0;
+    let dropped = 0;
     for await (const chunk of rs) {
-      chunks.push(chunk);
       if (stream) sink.write(chunk);
+      chunks.push(chunk);
+      held += chunk.byteLength;
+      while (held > CAP && chunks.length > 1) {
+        const gone = chunks.shift()!;
+        held -= gone.byteLength;
+        dropped += gone.byteLength;
+      }
     }
-    return Buffer.concat(chunks).toString("utf8");
+    const text = Buffer.concat(chunks).toString("utf8");
+    return dropped ? `... [${humanBytes(dropped)} of earlier output dropped]\n${text}` : text;
   };
 
   const [stdout, stderr, code] = await Promise.all([
@@ -380,6 +415,72 @@ function parseComposePorts(text: string): PortDecl[] {
   return out;
 }
 
+/**
+ * Every port the standalone image serves, in `EXPOSE` order — first is the app
+ * under test.
+ *
+ * This used to be inferred by regexing one line of the app Makefile's `docker
+ * run`. weirdproxy writes that command across four lines (it runs three proxies
+ * in the one image), the regex missed, and the CLI fell back to container port
+ * 3000: `dynast-bench start weirdproxy --solo` published the wrong port, never
+ * went healthy, and left 11 of the 16 PoCs with nothing to dial. `make solo` was
+ * fine, which is why it went unnoticed.
+ *
+ * `EXPOSE` is the image's own declaration of what it listens on, so reading it
+ * needs no new per-app metadata file and cannot drift from the image.
+ */
+function parseExposed(text: string): number[] {
+  const out: number[] = [];
+  for (const line of text.split("\n")) {
+    const m = line.match(/^\s*EXPOSE\s+(.+?)\s*(?:#.*)?$/i);
+    if (!m) continue;
+    for (const tok of m[1]!.split(/\s+/)) {
+      const port = Number(tok.split("/")[0]);
+      if (Number.isInteger(port) && port > 0 && port < 65536 && !out.includes(port)) {
+        out.push(port);
+      }
+    }
+  }
+  return out;
+}
+
+/** Bytes from a compose `mem_limit:` value (`512m`, `2g`, `1073741824`). */
+function parseMem(v: string): number {
+  const m = v.trim().match(/^(\d+(?:\.\d+)?)\s*([kmgKMG])?[bB]?$/);
+  if (!m) return 0;
+  const mult = { k: 1024, m: 1024 ** 2, g: 1024 ** 3 }[(m[2] ?? "").toLowerCase()] ?? 1;
+  return Math.round(Number(m[1]) * mult);
+}
+
+/**
+ * What one solo image is allowed to use: the sum of what the compose stack it
+ * replaces was allowed to use.
+ *
+ * The compose fleet is capped service by service (see "Resource limits" in
+ * CLAUDE.md) but `docker run` for solo mode was not capped at all — and a solo
+ * image embeds every datastore the compose stack ran as its own service, so
+ * copying only the app service's limit would under-provision it. Summing keeps
+ * the ceiling honest: the container does all the work the stack did. These are
+ * ceilings, not reservations, so a generous number costs nothing until
+ * something actually runs away.
+ */
+function soloLimits(compose: string): SoloLimits {
+  let mem = 0, cpus = 0, pids = 0;
+  for (const line of compose.split("\n")) {
+    const mm = line.match(/^\s+mem_limit:\s*(\S+)/);
+    if (mm) mem += parseMem(mm[1]!);
+    const mc = line.match(/^\s+cpus:\s*(\S+)/);
+    if (mc) cpus += Number(mc[1]) || 0;
+    const mp = line.match(/^\s+pids_limit:\s*(\d+)/);
+    if (mp) pids += Number(mp[1]);
+  }
+  return {
+    memMb: mem ? Math.max(512, Math.round(mem / 1024 ** 2)) : 2048,
+    cpus: cpus ? Math.round(cpus * 10) / 10 : 4,
+    pids: pids || 2048,
+  };
+}
+
 function loadApp(name: string): App {
   const dir = join(APPS_DIR, name);
   const composeFile = join(dir, "vuln", "docker-compose.yml");
@@ -394,11 +495,23 @@ function loadApp(name: string): App {
   // DYNAST_PORT marks the app under test; fall back to the first publish.
   const appPort = ports.vuln.find((p) => p.isApp) ?? ports.vuln[0];
 
+  // The image's own EXPOSE is the source of truth. The Makefile's `docker run`
+  // is only the fallback for an app that has no standalone Dockerfile yet — and
+  // it has to tolerate a line-continued command, which the old single-line regex
+  // did not (see parseExposed).
+  const soloFile = join(dir, "vuln", "Dockerfile.standalone");
+  const hasSolo = existsSync(soloFile);
   const makefile = existsSync(join(dir, "Makefile"))
     ? readFileSync(join(dir, "Makefile"), "utf8")
     : "";
-  const soloMatch = makefile.match(
-    /docker run[^\n]*?-p 127\.0\.0\.1:\$\(PORT\):(\d+)/,
+  const soloExposed = hasSolo ? parseExposed(readFileSync(soloFile, "utf8")) : [];
+  const soloMakePorts = [
+    ...makefile
+      .replace(/\\\n/g, " ")
+      .matchAll(/-p 127\.0\.0\.1:\$\([A-Z_]+\):(\d+)/g),
+  ].map((m) => Number(m[1]));
+  const soloPorts = (soloExposed.length ? soloExposed : soloMakePorts).filter(
+    (p, i, a) => a.indexOf(p) === i,
   );
 
   const healthMatch = compose.match(/\/api\/_verify\/health[A-Za-z0-9._-]*/);
@@ -436,8 +549,10 @@ function loadApp(name: string): App {
     appService: appPort?.service ?? "app",
     appContainerPort: appPort?.container ?? 3000,
     ports,
-    soloInternalPort: soloMatch ? Number(soloMatch[1]) : 3000,
-    hasSolo: existsSync(join(dir, "vuln", "Dockerfile.standalone")),
+    soloInternalPort: soloPorts[0] ?? 3000,
+    soloPorts,
+    soloLimits: soloLimits(compose),
+    hasSolo,
     healthPath: healthMatch?.[0] ?? DEFAULT_HEALTH_PATH,
     pocCount: pocs.length,
     groundTruth: join(dir, "ground-truth", "VULNERABILITIES.yaml"),
@@ -907,6 +1022,7 @@ const startFlags = (args: Args) => ({
   build: !flagBool(args, "no-build"),
   timeout: Number(flagStr(args, "timeout") ?? HEALTH_TIMEOUT_S),
   takeover: !flagBool(args, "no-takeover"),
+  keepFailed: flagBool(args, "keep-failed"),
 });
 
 /** Run `fn` over every item, at most `limit` in flight. Results keep input order. */
@@ -1241,6 +1357,65 @@ async function planPorts(
   return plan;
 }
 
+/** Ports the solo image serves, app first. Never empty — the app port is the floor. */
+const soloPortsOf = (app: App): number[] =>
+  app.soloPorts.length ? app.soloPorts : [app.soloInternalPort];
+
+/**
+ * What the docker VM actually has. Read once: every caller wants the same
+ * answer and `docker info` is not free.
+ *
+ * Used to clamp solo limits (docker REFUSES `--cpus` above NCPU, so a summed
+ * ceiling that exceeds the VM would fail the run outright) and to warn before a
+ * batch asks for more than the machine has.
+ */
+const hostCapacity = memo(async (): Promise<{ cpus: number; memMb: number }> => {
+  const res = await docker(["info", "--format", "{{.NCPU}} {{.MemTotal}}"]);
+  const [ncpu, mem] = res.stdout.trim().split(/\s+/);
+  return {
+    cpus: Number(ncpu) > 0 ? Number(ncpu) : 0,
+    memMb: Number(mem) > 0 ? Math.round(Number(mem) / 1024 ** 2) : 0,
+  };
+});
+
+/**
+ * Containment for the standalone images.
+ *
+ * Compose is capped service by service, but `docker run` was not capped at all
+ * — and `start --all --solo` is what the CLI *recommends* when you ask for the
+ * whole fleet. An uncapped solo container hitting one of the deliberate
+ * resource-exhaustion bugs (gin's gzip bomb, graphql/websocket's CWE-770s) takes
+ * the docker VM with it, and every other app on the daemon dies too: that reads
+ * as "the benchmark is flaky" rather than "gin has a DoS". Capped, the same
+ * event is one container hitting its ceiling with OOMKilled=true naming it.
+ */
+async function soloRunFlags(app: App): Promise<string[]> {
+  const host = await hostCapacity();
+  const lim = app.soloLimits;
+  // Above the VM's own size a ceiling is not a ceiling. Leave headroom so the
+  // container is what gets killed, not the daemon.
+  const memMb = host.memMb ? Math.min(lim.memMb, Math.floor(host.memMb * 0.8)) : lim.memMb;
+  // docker errors ("Range of CPUs is from 0.01 to N.00") rather than clamping.
+  const cpus = host.cpus ? Math.min(lim.cpus, host.cpus) : lim.cpus;
+  return [
+    "--memory", `${memMb}m`,
+    "--cpus", String(cpus),
+    "--pids-limit", String(lim.pids),
+    // A solo entrypoint backgrounds postgres/redis/the app and `wait`s. Without
+    // an init those children are reparented to PID 1, which is a shell script
+    // that does not reap - one zombie per restart until pids_limit is hit.
+    "--init",
+    // An app that logs per request under a scanner fills the daemon's disk
+    // otherwise, and json-file has no default cap.
+    "--log-opt", "max-size=10m",
+    "--log-opt", "max-file=3",
+    // Same ownership evidence compose stamps on its containers, so `stop-all`
+    // and `clean` can tell a solo container of ours from a user's own image
+    // that happens to be named the same way.
+    "--label", `com.docker.compose.project.working_dir=${app.dir}`,
+  ];
+}
+
 /** Solo has no sidecars, so it just wants the app's own port — same URL as compose. */
 async function pickSoloPort(
   app: App,
@@ -1336,6 +1511,8 @@ async function startApp(
     build: boolean;
     timeout: number;
     takeover: boolean;
+    /** leave a stack that never went healthy up, for poking at */
+    keepFailed?: boolean;
     /** several apps coming up at once: no live build output, no spinner */
     quiet?: boolean;
     /** name the app on the success line — one URL among several needs its owner */
@@ -1361,17 +1538,20 @@ async function startApp(
     // One port map serves both the pick and the claim - nothing binds in between.
     const containers = await listContainers();
     const solo = await pickSoloPort(app, variant, containers, opts.port);
+    // Usually one publish. weirdproxy's standalone image serves nginx, Apache
+    // and Traefik, and 11 of its 16 PoCs live on the latter two, so every
+    // EXPOSEd port gets a slot in the app's own sidecar block - the same
+    // arbitration compose sidecars get, so a batch never collides.
+    const decls: PortDecl[] = soloPortsOf(app).map((container, i) => ({
+      service: i === 0 ? app.appService : `solo-${container}`,
+      envVar: null,
+      preferred: i === 0 ? solo : app.sidecarBase + i - 1,
+      container,
+      isApp: i === 0,
+    }));
     return planPorts(
       app,
-      [
-        {
-          service: app.appService,
-          envVar: null,
-          preferred: solo,
-          container: app.soloInternalPort,
-          isApp: true,
-        },
-      ],
+      decls,
       { variant, mode },
       // pickSoloPort has already arbitrated (and honoured --port) — planPorts is
       // only here to record the claim and stop a twin if it holds the port.
@@ -1408,8 +1588,11 @@ async function startApp(
         "run",
         "-d",
         "--rm",
-        "-p",
-        `127.0.0.1:${port}:${app.soloInternalPort}`,
+        ...(await soloRunFlags(app)),
+        ...plan.claimed.flatMap((host, i) => [
+          "-p",
+          `127.0.0.1:${host}:${soloPortsOf(app)[i]}`,
+        ]),
         "--name",
         img,
         img,
@@ -1425,7 +1608,16 @@ async function startApp(
   const target = `http://127.0.0.1:${port}`;
   const healthy = await waitHealthy(app, target, opts.timeout, !quiet);
   if (!healthy) {
+    // Diagnostics FIRST - they are the reason this stack is still worth having.
     await dumpDiagnostics(app, variant, mode);
+    // ...then take it down. A half-started stack that never answers is still
+    // holding its ports and its memory, and `start --count 10` used to leave one
+    // behind per failure: the next run relocated around them and the machine
+    // carried the whole failed batch. --keep-failed opts back into poking at it.
+    if (!opts.keepFailed) {
+      step(`rolling back ${app.name}/${variant} ${c.dim("(--keep-failed to leave it up)")}`);
+      await stopStack(app, variant, mode, { volumes: false }).catch(() => {});
+    }
     die(`${app.name}/${variant} did not answer ${app.healthPath} within ${opts.timeout}s`);
   }
 
@@ -1792,21 +1984,57 @@ async function cmdVulns(args: Args) {
   }
 }
 
+/**
+ * What a selection would be ALLOWED to use, against what the docker VM has.
+ *
+ * The old guard was syntactic: it refused the literal `start --all` in compose
+ * mode. `--count 19` and naming all nineteen apps went through untouched, and so
+ * did any handful of the heavy ones - the fleet declares ~57 GiB of ceilings
+ * across 86 services, so a 17 GiB VM is over budget long before "all". Counting
+ * the resolved selection is the check the flag name was only standing in for.
+ *
+ * Ceilings are not reservations, so being over budget is not automatically
+ * wrong - it is a warning with an override, not a refusal.
+ */
+async function admissionCheck(apps: App[], mode: Mode, args: Args) {
+  const host = await hostCapacity();
+  if (!host.memMb) return; // docker told us nothing; nothing to compare against
+  let memMb = 0, services = 0;
+  for (const app of apps) {
+    memMb += app.soloLimits.memMb;
+    services += mode === "solo" ? 1 : Math.max(1, app.ports.vuln.length);
+  }
+  const budgetMb = Math.floor(host.memMb * 0.9);
+  if (memMb <= budgetMb) return;
+  const over =
+    `${apps.length} app(s) in ${mode} mode declare ${Math.round(memMb / 1024)}GiB of memory ` +
+    `ceilings across ~${services} container(s); this docker VM has ${Math.round(host.memMb / 1024)}GiB`;
+  // Solo is the escape hatch the CLI itself recommends for the whole fleet -
+  // one container per app instead of every datastore it ships - so it says the
+  // number and gets out of the way. Compose is the case the suite has always
+  // refused: every app brings its own postgres/redis/mailpit, and that really
+  // does not fit. That refusal used to key off the literal `--all` flag, which
+  // `--count 19` walked straight past; it keys off the selection now.
+  if (mode === "solo" || flagBool(args, "force")) {
+    warn(`${over} — ceilings are not reservations, so this may still fit`);
+    return;
+  }
+  die(
+    `${over}.\n` +
+      "   every compose app ships its own datastores, which is more than a laptop wants.\n" +
+      "   use: --solo   (one container per app, auto-assigned ports)\n" +
+      "   or take fewer: dynast-bench start --count 5 --parallel\n" +
+      "   or override:   --force",
+  );
+}
+
 async function cmdStart(args: Args) {
   const mode = wantMode(args);
   const apps = startApps(args, mode);
-  if (flagBool(args, "all") && !flagStr(args, "count") && mode === "compose") {
-    die(
-      `booting all ${ALL_APPS.length} compose stacks at once means every datastore they ship, ` +
-        "which is more than a laptop wants.\n" +
-        "   use: dynast-bench start --all --solo   (one image per app, auto-assigned ports)\n" +
-        "   or take a few: dynast-bench start --count 5 --parallel\n" +
-        "   or name the apps you want: dynast-bench start nextjs golang",
-    );
-  }
   if (apps.length > 1 && flagStr(args, "port")) {
     die("--port names one host port, so it only makes sense for a single app", 2);
   }
+  await admissionCheck(apps, mode, args);
 
   const jobs = wantJobs(args, apps.length);
   const opts = { variant: wantVariant(args), mode, ...startFlags(args) };
@@ -2047,6 +2275,13 @@ async function publishedPortEnv(
   for (const stack of stacksOf(app, containers)) {
     if (stack.variant !== variant || stack.mode !== mode) continue;
     for (const ct of stack.containers) {
+      // A solo container is a plain `docker run`, so it carries no compose
+      // service label and there is no service name to key on. It publishes the
+      // image's EXPOSEd ports instead, so name them by container port - which is
+      // what an app's _lib.sh falls back to when DYNAST_PORT_<SERVICE>_<PORT> is
+      // unset (see weirdproxy, whose Apache and Traefik bugs are only reachable
+      // through the second and third publish).
+      for (const p of ct.ports) env[`DYNAST_SOLO_PORT_${p.container}`] = String(p.host);
       const service = (ct.service ?? "").toUpperCase().replace(/[^A-Z0-9]+/g, "_");
       if (!service) continue;
       for (const p of ct.ports) env[`DYNAST_PORT_${service}_${p.container}`] = String(p.host);
@@ -2165,6 +2400,12 @@ async function cmdValidate(args: Args) {
     );
 
     step(`validate ${app!.name}: safe twin → all fixed`);
+    // Fresh state on this leg too. `make verify` documents that PoCs run on
+    // fresh state, and several of them mutate it (nextjs's prototype-pollution
+    // and billing PoCs self-clean precisely because they cannot assume order);
+    // the vuln leg got a `down -v` and the safe leg did not, so a safe stack
+    // left over from an earlier run was validated against its old volumes.
+    await stopStack(app!, "safe", "compose", { volumes: true });
     const safeUp = await startApp(app!, { ...common, variant: "safe" });
     safeRes = await runVerify(
       app!, safeUp.target, "safe", await publishedPortEnv(app!, "safe", "compose"),
@@ -2450,9 +2691,24 @@ async function stressPhase(
 async function cmdStress(args: Args) {
   const [app] = resolveApps(args, { allowAll: false });
   const variant = wantVariant(args);
-  const duration = Number(flagStr(args, "duration") ?? 20);
-  const concurrency = Number(flagStr(args, "concurrency") ?? 20);
-  const recoverBudget = Number(flagStr(args, "recover") ?? 90);
+  // Bare Number() let `--concurrency abc` through as NaN (Array.from({length:
+  // NaN}) is empty, so the phase silently did nothing and still reported a pass)
+  // and `--concurrency 1e9` through as a billion-element worker array, which
+  // takes the CLI down before it ever reaches the app. The point of this command
+  // is to prove the suite contains a runaway - it must not be the runaway.
+  const num = (name: string, def: number, max: number, integral = true) => {
+    const raw = flagStr(args, name);
+    if (raw === undefined) return def;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0 || (integral && !Number.isInteger(n))) {
+      die(`--${name} must be a positive ${integral ? "integer" : "number"} (got: ${raw})`, 2);
+    }
+    if (n > max) die(`--${name} is capped at ${max} (got: ${raw})`, 2);
+    return n;
+  };
+  const duration = num("duration", 20, 3600);
+  const concurrency = num("concurrency", 20, 512);
+  const recoverBudget = num("recover", 90, 3600);
   const keep = flagBool(args, "keep");
 
   let containers = await listContainers();
@@ -2516,7 +2772,13 @@ async function cmdStress(args: Args) {
                 headers: { "content-type": "application/json" },
                 body: r.method === "GET" || r.method === "HEAD" ? undefined : stressBody(uniq),
                 signal: AbortSignal.timeout(10_000),
-              }).then((res) => res.arrayBuffer()).catch(() => {});
+              })
+                // Discard rather than arrayBuffer(): the bodies here are the
+                // point (gin's DOS-001 is an uncapped gzip bomb) and buffering
+                // 20 workers' worth of them made the CLI, not the app, the thing
+                // that ran out of memory. cancel() still drains the connection.
+                .then((res) => res.body?.cancel())
+                .catch(() => {});
             } catch { /* a refused/timed-out request is a data point, not a crash */ }
             n++;
           }
@@ -2602,12 +2864,18 @@ async function cmdStress(args: Args) {
       }
       await Bun.sleep(2000);
     }
-    if (!container) recoveredInS = 0; // nothing sampled, nothing to claim
+    // No container to sample means no evidence either way. That used to be
+    // written down as `recoveredInS = 0` - "recovered instantly" - which is the
+    // one thing it definitely is not. Same rule as the PoC runner: "the harness
+    // could not observe it" is never the same answer as "it passed".
+    const sampled = container !== null && lastSample !== null;
     const retainedMb = lastSample ? Math.round(lastSample.rssMb - baseRssMb) : 0;
     log(
-      recoveredInS !== null
-        ? `     idle again in ${recoveredInS}s ${c.dim(`(cpu ${lastSample?.cpu.toFixed(0) ?? "?"}%, heap retained +${retainedMb}MiB)`)}`
-        : c.red(`     still busy after ${recoverBudget}s: cpu ${lastSample?.cpu.toFixed(0) ?? "?"}% and rss ${Math.round(lastSample?.rssMb ?? 0)}MiB still climbing`),
+      !sampled
+        ? c.yellow(`     inconclusive: no container stats — recovery not measured`)
+        : recoveredInS !== null
+          ? `     idle again in ${recoveredInS}s ${c.dim(`(cpu ${lastSample?.cpu.toFixed(0) ?? "?"}%, heap retained +${retainedMb}MiB)`)}`
+          : c.red(`     still busy after ${recoverBudget}s: cpu ${lastSample?.cpu.toFixed(0) ?? "?"}% and rss ${Math.round(lastSample?.rssMb ?? 0)}MiB still climbing`),
     );
 
     const state = container ? await containerState(container) : null;
@@ -2634,10 +2902,29 @@ async function cmdStress(args: Args) {
           }
         : null;
 
-    const survived = crawl.okRate >= 0.95;
-    const contained = !state || (state.running && !state.oomKilled);
-    const recovered = recoveredInS !== null && healthAfter.ok;
-    const passed = survived && contained && recovered;
+    // Three-valued on purpose. `contained` used to be `!state || ...`, which
+    // read "docker told us nothing" as "the limits held" - so the one case where
+    // containment is most likely to have failed (the container is gone) was the
+    // case that passed. A check we could not make is neither a pass nor a fail;
+    // it is a result the run cannot support, and it fails the command because a
+    // stress run that proved nothing must not be recorded as a green one.
+    type Check = "pass" | "fail" | "inconclusive";
+    const survived: Check =
+      crawl.healthProbes === 0 ? "inconclusive" : crawl.okRate >= 0.95 ? "pass" : "fail";
+    const contained: Check = !state
+      ? "inconclusive"
+      : state.running && !state.oomKilled
+        ? "pass"
+        : "fail";
+    const recovered: Check = !sampled
+      ? "inconclusive"
+      : recoveredInS !== null && healthAfter.ok
+        ? "pass"
+        : "fail";
+    const checks = [survived, contained, recovered];
+    const passed = checks.every((v) => v === "pass");
+    const mark = (v: Check) =>
+      v === "pass" ? c.green("pass") : v === "fail" ? c.red("FAIL") : c.yellow("INCONCL");
 
     const result = {
       app: app!.name, variant, target, container,
@@ -2664,18 +2951,22 @@ async function cmdStress(args: Args) {
     log();
     table(
       [
-        ["survival", survived ? c.green("pass") : c.red("FAIL"),
-          `crawl health ${(crawl.okRate * 100).toFixed(0)}% ok (need 95%)`],
-        ["containment", contained ? c.green("pass") : c.red("FAIL"),
+        ["survival", mark(survived),
+          crawl.healthProbes === 0
+            ? "no health probe completed - nothing to grade"
+            : `crawl health ${(crawl.okRate * 100).toFixed(0)}% ok (need 95%)`],
+        ["containment", mark(contained),
           state
             ? (state.oomKilled
                 ? `OOM-killed in "${hottest.name}" - rss ${peakRssMb}/${state.memLimitMb}MiB (cap hit)`
                 : `peak rss ${peakRssMb}/${state.memLimitMb || "∞"}MiB · cpu ${peakCpu}% · running=${state.running}`)
-            : "not sampled"],
-        ["recovery", recovered ? c.green("pass") : c.red("FAIL"),
-          recoveredInS !== null
-            ? `idle again in ${recoveredInS}s (heap retained +${retainedMb}MiB)`
-            : `still working ${recoverBudget}s after the load stopped`],
+            : "no container state - the limits were never observed"],
+        ["recovery", mark(recovered),
+          !sampled
+            ? "no container stats - recovery was never measured"
+            : recoveredInS !== null
+              ? `idle again in ${recoveredInS}s (heap retained +${retainedMb}MiB)`
+              : `still working ${recoverBudget}s after the load stopped`],
         ["state growth", stateGrowth ? c.dim("report") : c.dim("n/a"),
           stateGrowth
             ? `+${stateGrowth.added} rows from ${totalReqs} anonymous reqs ` +
@@ -2687,7 +2978,9 @@ async function cmdStress(args: Args) {
     log(
       passed
         ? c.green(`ok   ${app!.name}: survives a crawl and returns to idle`)
-        : c.red(`FAIL ${app!.name}: see the failing check above`),
+        : checks.includes("fail")
+          ? c.red(`FAIL ${app!.name}: see the failing check above`)
+          : c.yellow(`INCONCLUSIVE ${app!.name}: the run could not observe the app`),
     );
     if (!passed) {
       if (JSON_MODE.on) process.exitCode = 1;
@@ -3259,13 +3552,21 @@ async function cmdRun(args: Args) {
     env.DYNAST_BENCH_VERIFY_TOKEN = VERIFY_TOKEN;
     log(c.dim("   --trusted: answer key + verify token exported (not a scoreable run)"));
   }
-  const code = await execInherit(args.passthrough, { env });
-
-  if (!flagBool(args, "keep")) {
-    step(`stopping ${app!.name}`);
-    await stopStack(app!, variant, mode, { volumes: flagBool(args, "volumes") });
-  } else {
-    log(c.dim(`   left running at ${started.target} (--keep)`));
+  // The scanner is somebody else's program: it can throw, be Ctrl-C'd, or exec a
+  // binary that does not exist. Without the finally, any of those left the stack
+  // up holding its ports - and `run` is the command most likely to be looped.
+  let code = 1;
+  try {
+    code = await execInherit(args.passthrough, { env });
+  } finally {
+    if (!flagBool(args, "keep")) {
+      step(`stopping ${app!.name}`);
+      await stopStack(app!, variant, mode, {
+        volumes: flagBool(args, "volumes"),
+      }).catch((err) => warn(`could not stop ${app!.name}: ${err}`));
+    } else {
+      log(c.dim(`   left running at ${started.target} (--keep)`));
+    }
   }
 
   emit({ ...started, command: args.passthrough, trusted, exit_code: code });
@@ -3287,7 +3588,47 @@ async function cmdDoctor(_args: Args) {
   add("repo", true, ROOT);
   add("apps", ALL_APPS.length > 0, `${ALL_APPS.length} found`);
 
+  // Capacity, because every "the benchmark is flaky" report so far has been the
+  // machine rather than an app: a VM too small for the selection, a disk full of
+  // build cache, or a container that was OOM-killed and is now missing from a
+  // stack that still looks half-up. Reported here so it is answerable before a
+  // run rather than diagnosed after one.
+  const cap = info.code === 0 ? await hostCapacity() : { cpus: 0, memMb: 0 };
+  const fleetMb = info.code === 0
+    ? ALL_APPS.map(loadApp).reduce((n, a) => n + a.soloLimits.memMb, 0)
+    : 0;
+  if (cap.memMb) {
+    add(
+      "docker vm",
+      cap.memMb >= 4096,
+      `${cap.cpus} cpu · ${(cap.memMb / 1024).toFixed(1)}GiB ram — ` +
+        `the whole fleet declares ${(fleetMb / 1024).toFixed(0)}GiB of ceilings ` +
+        `(fits ~${Math.max(1, Math.floor((cap.memMb * 0.9) / (fleetMb / ALL_APPS.length)))} apps at once)`,
+    );
+  }
+  // Host-wide, so it is a number to read rather than a thing to prune from here
+  // — `dynast-bench clean` stays scoped to this repo's own stacks.
+  const df = await exec(["docker", "system", "df", "--format", "{{.Type}}\t{{.Size}}"]);
+  if (df.code === 0) {
+    const rows = df.stdout.trim().split("\n").map((l) => l.split("\t"));
+    add("docker disk", true, rows.map((r) => `${r[0]?.toLowerCase()} ${r[1]}`).join(" · "));
+  }
+
   const containers = info.code === 0 ? await listContainers() : [];
+  // An OOM-killed bench container is the single most misleading state to be in:
+  // the stack is "up", the app is gone, and every PoC reads as fixed.
+  const dead = containers.filter(
+    (ct) => isBenchContainer(ct) && ct.state === "exited",
+  );
+  if (dead.length) {
+    add(
+      "bench containers",
+      false,
+      `${dead.length} exited but not removed: ${dead.slice(0, 4).map((ct) => ct.name).join(", ")}` +
+        (dead.length > 4 ? ` (+${dead.length - 4})` : "") +
+        " — dynast-bench clean",
+    );
+  }
   // One row per app: the port it owns, and whether anything is sitting on it.
   const apps = ALL_APPS.map(loadApp);
   const states = await Promise.all(

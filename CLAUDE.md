@@ -303,6 +303,13 @@ genuinely fixed bug looks like. So the runner keeps an independent oracle:
 | anything else **and the target still answers health** | cleanly rejected = fixed |
 | anything else **and it does not** | harness failure |
 
+**"answers health" means 2xx**, nothing looser. It used to mean "anything that
+was not empty, `000` or 5xx", so a 404 satisfied the oracle - and a wrong
+`POC_HEALTH`, a stale proxy, or some other service on the port could license
+every PoC's nonzero exit to be recorded as "cleanly rejected". Every app's own
+compose healthcheck already requires 2xx (`curl -sf`, `r.ok`, a JSON parse), so
+no app is on a non-2xx health route.
+
 A harness result fails **both** legs. "The suite could not run" must never be
 recorded as "the vulnerability is fixed". The runner health-probes before it
 starts (so a dead app fails once, not as N false "fixed" verdicts), applies a
@@ -334,6 +341,15 @@ browser "$TARGET/x" --click '#btn' --eval 'return document.title'
 - The runner builds it **once up front** when any PoC mentions `browser_`, for
   every app. A missing image fails as "the harness could not run", never as
   "NOT exploitable" - the latter is a wrong answer about the app.
+- **`drive.mjs`'s exit code is about the probe, never about the app.** `0` = the
+  page loaded and the JSON below it is real; `2` = the probe observed nothing
+  (chromium never started, or navigation threw). A *page*-level failure - a
+  `pageerror`, a selector that never appeared, an `--eval` that threw - still
+  exits `0` and lands in `errors`, because a PoC may be asserting on it. A failed
+  navigation used to exit `0` too: the helper then found no marker, returned 1,
+  and the runner - seeing a nonzero PoC against a host that still answers health
+  - wrote it down as "fixed". `browser()` collapses every nonzero (including
+  `docker run`'s own 125) to `2` for the same reason.
 - The settle waits are a ceiling, not the normal path: `browser_dialog` and
   `browser_requested` pass `--until` so the probe returns the moment its oracle
   fires. On the safe twin nothing fires and it waits the full budget, which is
@@ -414,6 +430,23 @@ container hitting its ceiling, with `OOMKilled=true` naming the culprit.
 Caps are ceilings, not reservations, so a generous number costs nothing until
 something runs away. `dynast-bench stress <app>` is what checks they hold.
 
+The same ceiling follows the app out of compose, derived rather than written
+twice:
+
+- **Solo** gets the **sum** of that app's compose limits, because one standalone
+  container does all the work the whole stack did - `dynast-bench/tools/solo-run.sh`
+  (for `make solo`) and `soloLimits()` (for the CLI) do the same arithmetic over
+  the same compose file. Both clamp to what the docker VM actually has: docker
+  *refuses* a `--cpus` above `NCPU`, and a `--memory` above the VM's RAM is not a
+  ceiling at all. Both also add `--init` (solo entrypoints background their
+  datastores and `wait`, so PID 1 has to reap) and bounded json-file logs.
+- **The browser container** is capped in `tools/browser/browser.sh`. It is the one
+  container that is *not* the app under test, and a DOM-XSS PoC feeds a renderer
+  a hostile page by design.
+- **`start`** refuses a compose selection whose ceilings exceed the VM (`--force`
+  overrides, `--solo` is the way out); `--solo` warns and proceeds. `doctor`
+  prints the VM's size, the fleet's total, and roughly how many apps fit.
+
 ## Verification API (harness-only, in every app)
 
 Guarded by header `X-Verify-Token: benchsecret`. Used by the compose healthcheck
@@ -441,6 +474,20 @@ Start the datastores locally (Postgres with trust auth, Redis), start
 `127.0.0.1:8025`), then the app. Runs as root so it can edit `/etc/hosts` and
 start services; Postgres runs under its own user via `su postgres`. See
 `vulnerable-apps/nextjs/vuln/{Dockerfile.standalone,entrypoint.standalone.sh,internal-sink.mjs}`.
+
+**`EXPOSE` is the contract.** Both `make solo` and `dynast-bench start --solo`
+read the standalone image's `EXPOSE` line to know what to publish - **first port
+is the app under test**, the rest get slots in the app's own sidecar block. So an
+image that serves more than one port must EXPOSE all of them (`weirdproxy` runs
+nginx/Apache/Traefik in the one image and 11 of its 16 PoCs live on the second
+and third). Nothing else declares this: there is no per-app metadata file, and
+inferring it from the Makefile is what used to silently publish the wrong port.
+
+A PoC that needs a non-app solo port reads `DYNAST_SOLO_PORT_<containerPort>`,
+which the CLI exports next to the compose-shaped `DYNAST_PORT_<SERVICE>_<PORT>`
+(a solo container is a plain `docker run`, so it carries no compose service label
+to name the publish after). See weirdproxy's `_lib.sh` for the three-layer
+fallback.
 
 ## Building a new app - recipe
 
@@ -483,9 +530,10 @@ start services; Postgres runs under its own user via `su postgres`. See
   run · score · coverage`. `vulns <app>`
   prints the answer key as a checklist (titles; `--full`/`--near`/`--ids`), which
   is how you check what a scan was supposed to find. It derives everything from
-  the apps themselves - compose ports + healthcheck path, the app `Makefile`'s standalone
-  port, and `VULNERABILITIES.yaml` - so **a new app appears automatically**; keep those
-  conventions intact and there's nothing to register. `--json` on every command.
+  the apps themselves - compose ports + healthcheck path + resource limits, the
+  standalone image's `EXPOSE` ports, and `VULNERABILITIES.yaml` - so **a new app
+  appears automatically**; keep those conventions intact and there's nothing to
+  register. `--json` on every command.
 - **`run <app> -- <cmd>` hands the command target metadata and nothing else.** The
   answer key path and the verify token are behind `--trusted`, because a scanner
   that can read the expected findings - or ask `/api/_verify/*` for the seeded ids
@@ -495,13 +543,28 @@ start services; Postgres runs under its own user via `su postgres`. See
   `vuln-api` project elsewhere on the machine is never a `stop-all` candidate.
 - **`validate` builds both twins first**, then starts each with no rebuild, and
   tears down in a `finally` unless `--keep`. Keeps the safe build off the critical
-  path and stops a heavy build running while race/rate-limit PoCs execute.
+  path and stops a heavy build running while race/rate-limit PoCs execute. **Both**
+  legs get a `down -v` first: PoCs are documented to run on fresh state, and a
+  safe stack left over from an earlier run was being validated against old volumes.
+- **A start that never goes healthy is rolled back** - diagnostics are dumped
+  first, then the stack comes down, because a half-started stack still holds its
+  ports and its memory and `--count 10` used to leave one behind per failure.
+  `--keep-failed` leaves it up to poke at.
+- **`run` tears down in a `finally`.** The command under it is somebody else's
+  program: it can throw, be Ctrl-C'd, or exec a binary that is not there.
 - **Starting a batch**: `start --count N` boots N apps (the ones named, else the
   first N of the catalog) and `--parallel[=M]` overlaps them - port planning is
   serialized behind a lock and a planned port stays reserved until docker binds
   it, so concurrent starts never pick the same one. A batch reports per app: the
   ports of the apps that came up in a summary table (`{started, failed}` in
-  `--json`), exit `1` if any failed.
+  `--json`), exit `1` if any failed. Before any of that it prices the **resolved
+  selection** against the docker VM (see "Resource limits") - the old guard only
+  refused the literal `--all`, which `--count 19` walked straight past.
+- **`stress` reports pass / FAIL / INCONCLUSIVE.** Containment and recovery are
+  read off `docker stats`; when there is nothing to sample that is not a pass, and
+  it used to be recorded as one - the same rule the PoC runner applies to a
+  harness failure. Its numeric flags are bounded too, since the command whose job
+  is to prove the suite contains a runaway must not be the runaway.
 - **Stopping**: `stop` with no app stops everything running (it prompts past one
   stack); `stop-all` (= `stop --all`) finds stacks from docker rather than from the
   apps directory, so it also reclaims one whose app was renamed or deleted out from
@@ -555,3 +618,10 @@ start services; Postgres runs under its own user via `su postgres`. See
   without them (see "Resource limits").
 - Don't invent new domain/seed/verification-API conventions - reuse the shared ones
   so cross-app scanner scores stay comparable.
+- **Don't leave a file the image builds from untracked.** A stock framework
+  `.gitignore` inside `vuln/` is a landmine: laravel's ignored `/.env` *is*
+  DEBUG-001 and `public/.env.backup` *is* SECRET-001, and rails' `bin/rails` (hit
+  by an unanchored `bin/` rule meant for .NET) is what `entrypoint.sh` boots. All
+  of it worked locally and none of it survived a clone. `dynast-bench/test/tracked.test.ts`
+  fails on anything present-but-ignored under `vuln/` or `safe/` that the image
+  does not itself regenerate - add a negation, don't reach for `git add -f`.

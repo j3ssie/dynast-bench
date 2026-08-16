@@ -53,7 +53,7 @@ validate:  ## full twin loop: reset vuln→all exploitable, then safe→all fixe
 solo:      ## build + run the standalone single-image (no compose) [VARIANT= PORT=]
 	docker build -f $(VARIANT)/Dockerfile.standalone -t $(SOLO_IMG) $(VARIANT)
 	-docker rm -f $(SOLO_IMG) 2>/dev/null
-	docker run -d --rm -p 127.0.0.1:$(PORT):3000 --name $(SOLO_IMG) $(SOLO_IMG)
+	@bash ../../dynast-bench/tools/solo-run.sh $(SOLO_IMG) $(VARIANT)/docker-compose.yml -p 127.0.0.1:$(PORT):3000
 	@bash ../../dynast-bench/tools/wait-healthy.sh $(SOLO_IMG) "http://127.0.0.1:$(PORT)$(SOLO_HEALTH)"
 
 solo-down: ## stop the standalone single-image container

@@ -141,6 +141,18 @@ describe("poc runner outcomes", () => {
     expect(code).not.toBe(0);
   });
 
+  test("a non-2xx health route is 'not up', not 'healthy'", async () => {
+    // The oracle used to accept anything that was not empty/000/5xx, so a 404
+    // satisfied it - and a wrong POC_HEALTH, a stale proxy, or some other
+    // service on the port could make every PoC's nonzero exit read as "cleanly
+    // rejected = fixed". Every app's own compose healthcheck requires 2xx, so
+    // nothing in the suite loses a legitimate health route to this.
+    const { code, out } = await run("expect-safe", { POC_HEALTH: "/not-a-health-route" });
+    expect(out).toContain("is not answering");
+    expect(out).not.toContain("(fixed)");
+    expect(code).toBe(2);
+  });
+
   test("rejects a mode it does not know", async () => {
     const { code, out } = await run("expect-something");
     expect(code).toBe(2);

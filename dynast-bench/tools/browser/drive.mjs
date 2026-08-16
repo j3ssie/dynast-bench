@@ -23,12 +23,20 @@
  *                  [--timeout <ms>]          navigation budget (default 20000)
  *
  * Output:
- *   { url, dialogs: [{type,message}], console: [string], requests: ["GET url"],
- *     result: <--eval return value>, errors: [string] }
+ *   { url, navigated, dialogs: [{type,message}], console: [string],
+ *     requests: ["GET url"], result: <--eval return value>, errors: [string] }
  *
- * Always exits 0 when the browser ran at all; a page-level failure is reported
- * in `errors` rather than as an exit code, because "the page threw" is data a
- * PoC may well be asserting on. Exit 1 means the browser itself never started.
+ * Exit codes are about THE PROBE, never about the app:
+ *   0  the page loaded and the observations below are real
+ *   2  the probe could not run - chromium never started, or navigation failed
+ *
+ * A page-level failure (a pageerror, a selector that never appeared, an --eval
+ * that threw) still exits 0 and lands in `errors`, because "the page threw" is
+ * data a PoC may well be asserting on. A NAVIGATION failure is different: it
+ * means nothing was ever observed. That used to exit 0 too, so the helper found
+ * no marker, returned 1, and poc-runner.sh - seeing a nonzero PoC against a host
+ * that still answers health - recorded it as "cleanly rejected = fixed". A dead
+ * browser must never be able to prove a bug is patched.
  */
 
 import puppeteer from "puppeteer-core";
@@ -64,7 +72,15 @@ if (!url) {
   process.exit(1);
 }
 
-const out = { url, dialogs: [], console: [], requests: [], result: null, errors: [] };
+const out = {
+  url,
+  navigated: false,
+  dialogs: [],
+  console: [],
+  requests: [],
+  result: null,
+  errors: [],
+};
 const note = (e) => out.errors.push(String(e && e.message ? e.message : e));
 
 // The settle waits below exist because the interesting thing usually happens
@@ -103,7 +119,7 @@ try {
   });
 } catch (e) {
   console.error(`drive.mjs: could not start chrome - ${e}`);
-  process.exit(1);
+  process.exit(2);
 }
 
 try {
@@ -125,7 +141,15 @@ try {
   if (cookies.length) await page.setCookie(...cookies).catch(note);
 
   const timeout = Number(one("timeout", "20000"));
-  await page.goto(url, { waitUntil: "networkidle2", timeout }).catch(note);
+  // A response - any response, including the 4xx/5xx a PoC may be probing for -
+  // means the page loaded and everything below is a real observation. A thrown
+  // goto (DNS, connection refused, navigation timeout) means it did not.
+  await page
+    .goto(url, { waitUntil: "networkidle2", timeout })
+    .then(() => {
+      out.navigated = true;
+    })
+    .catch((e) => note(`navigation: ${e && e.message ? e.message : e}`));
 
   const waitFor = one("wait-for");
   if (waitFor) await page.waitForSelector(waitFor, { timeout }).catch(note);
@@ -164,3 +188,10 @@ try {
 }
 
 process.stdout.write(JSON.stringify(out, null, 2) + "\n");
+
+// The observations are printed either way - a PoC author debugging a failure
+// wants to see them - but the status says whether they mean anything.
+if (!out.navigated) {
+  console.error(`drive.mjs: never loaded ${url} — the probe observed nothing`);
+  process.exit(2);
+}

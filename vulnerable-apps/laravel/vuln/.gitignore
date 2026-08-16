@@ -21,3 +21,11 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# --- DynAST-Bench ---
+# Stock Laravel ignores .env because it is a developer's local secret. Here it is
+# part of the app under test: /.env carries DEBUG-001 (APP_DEBUG=true) and a
+# committed APP_KEY, and public/.env.backup IS SECRET-001. Ignored, a fresh clone
+# shipped neither the bugs nor a working DB config.
+!/.env
+!/public/.env.backup

@@ -57,11 +57,10 @@ validate:  ## full twin loop: reset vuln→all exploitable, then safe→all fixe
 solo:      ## build + run the standalone single-image (no compose) [VARIANT= PORT=]
 	docker build -f $(VARIANT)/Dockerfile.standalone -t $(SOLO_IMG) $(VARIANT)
 	-docker rm -f $(SOLO_IMG) 2>/dev/null
-	docker run -d --rm \
+	@bash ../../dynast-bench/tools/solo-run.sh $(SOLO_IMG) $(VARIANT)/docker-compose.yml \
 	  -p 127.0.0.1:$(PORT):8080 \
 	  -p 127.0.0.1:$(SOLO_APACHE_PORT):8081 \
-	  -p 127.0.0.1:$(SOLO_TRAEFIK_PORT):8082 \
-	  --name $(SOLO_IMG) $(SOLO_IMG)
+	  -p 127.0.0.1:$(SOLO_TRAEFIK_PORT):8082
 	@echo ">> $(SOLO_IMG): nginx $(PORT) · apache $(SOLO_APACHE_PORT) · traefik $(SOLO_TRAEFIK_PORT)"
 	@bash ../../dynast-bench/tools/wait-healthy.sh $(SOLO_IMG) "http://127.0.0.1:$(PORT)$(SOLO_HEALTH)"
 

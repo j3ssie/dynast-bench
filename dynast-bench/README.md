@@ -101,7 +101,7 @@ Aliases: `ls`/`apps` → `list`, `up` → `start`, `down` → `stop`, `ps` → `
 | `--near` | also list the near-misses (`vulns`) |
 | `--ids` | bare ids, one per line, for a coverage diff (`vulns`, `surface`) |
 | `--all` | every app (`stop`/`clean`; `start` also needs `--solo`) |
-| `--force` | remove containers directly instead of a `compose down` per stack (`stop`) |
+| `--force` | remove containers directly instead of a `compose down` per stack (`stop`); start a selection whose resource ceilings exceed the docker VM (`start`) |
 | `--no-build` | skip the docker build (reuse the existing image) |
 | `--timeout S` | health-wait budget, default 300s (cold JVM/.NET builds are slow) |
 | `--no-takeover` | relocate rather than stop this app's other twin for its port |
@@ -109,6 +109,7 @@ Aliases: `ls`/`apps` → `list`, `up` → `start`, `down` → `stop`, `ps` → `
 | `--images` | also drop the images this repo built (`clean`) |
 | `--orphan-volumes` | also drop anonymous volumes left by earlier runs (`clean`) |
 | `--keep` | leave the app running (`run`, `validate`) |
+| `--keep-failed` | leave a stack that never went healthy up, instead of rolling it back (`start`, `run`, `validate`) |
 | `--json` | machine-readable output on stdout |
 | `--yes` | skip the confirmation prompt (`clean`) |
 | `--safe FILE` | findings from the patched twin (`score`) - all false alarms |
