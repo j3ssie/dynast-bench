@@ -39,6 +39,8 @@ export interface DiffFile {
   claimedBy: string[];
   /** near-miss ids that name this file - a near-miss must NOT differ */
   nearMisses: string[];
+  /** incidental ids that name this file - an incidental ships in both twins */
+  incidental: string[];
   /** the twins may legitimately differ here, but only in the ways INFRA_EXEMPT allows */
   infra: boolean;
   /** bug ids named in the changed lines themselves (VULN/FIXED comments) */
@@ -108,6 +110,12 @@ export async function twinDiff(
     const p = nm.path ?? nm.match?.file?.path;
     if (p) add(nmClaims, p, nm.id);
   }
+  const incClaims = new Map<string, Set<string>>();
+  for (const inc of gt.incidental ?? []) {
+    for (const p of [inc.variant_paths?.vuln, inc.match?.file?.path]) {
+      if (p && !p.startsWith("(")) add(incClaims, p, inc.id);
+    }
+  }
 
   return [...files.values()]
     .map((f) => {
@@ -124,6 +132,7 @@ export async function twinDiff(
         changed: f.changed,
         claimedBy: [...(claims.get(f.path) ?? [])].sort(),
         nearMisses: [...(nmClaims.get(f.path) ?? [])].sort(),
+        incidental: [...(incClaims.get(f.path) ?? [])].sort(),
         infra: INFRA_FILE.test(f.path),
         mentions: [...mentions].sort(),
         unexplained,
@@ -272,6 +281,20 @@ export async function checkApp(target: CheckTarget, run: Differ): Promise<CheckI
     }
   }
 
+  // An incidental is anchored like a bug and checked the same way. One that a
+  // scorer cannot tell from a planted bug would excuse that bug's patched-twin
+  // false positives, so it is an error rather than a warning.
+  for (const inc of gt.incidental ?? []) {
+    const f = inc.match?.file;
+    if (f?.path && !existsSync(join(target.dir, f.path))) {
+      add("error", `${inc.id}.match.file`, `path does not exist: ${f.path}`);
+    }
+    const twin = seen.get(anchorFingerprint(inc));
+    if (twin) {
+      add("error", `${inc.id}`, `same CWE and same anchors as ${twin.join(",")} - an incidental must be distinguishable from every planted bug`);
+    }
+  }
+
   // a near-miss in its own file with no route anchor can only ever be caught by a
   // source scanner, which quietly makes `discrimination` a SAST-only metric
   const bugFiles = new Set(
@@ -317,6 +340,11 @@ export async function checkApp(target: CheckTarget, run: Differ): Promise<CheckI
   for (const f of diff) {
     if (f.nearMisses.length && !f.claimedBy.length) {
       add("error", f.nearMisses.join(","), `near-miss file ${f.path} differs between twins`);
+    }
+    // an incidental is by definition the same in both twins; a difference in a
+    // file no bug claims means the safe twin may have fixed it
+    if (f.incidental.length && !f.claimedBy.length) {
+      add("error", f.incidental.join(","), `incidental file ${f.path} differs between twins`);
     }
     if (f.claimedBy.length) continue;
 

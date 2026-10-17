@@ -12,7 +12,7 @@ import { join } from "node:path";
 import { parseGroundTruthFile } from "../src/schema/ground-truth.ts";
 import { anchorFingerprint, gtAnchors, isSourceOnly } from "../src/scorer/anchors.ts";
 import { scoreApp } from "../src/scorer/score.ts";
-import { APPS_DIR, appNames, gtPath, loadGt, synthetic } from "./helpers.ts";
+import { APPS_DIR, appNames, envelope, gtPath, loadGt, synthetic } from "./helpers.ts";
 
 const apps = appNames();
 
@@ -105,6 +105,38 @@ describe.each(apps)("%s", (app) => {
       );
       expect(clash, `${nm.id} anchors on a bug's own route ${verb ?? "ANY"} ${p}`).toBeUndefined();
     }
+  });
+
+  // An incidental entry is a true finding in both twins. Reported at its own
+  // anchors with its own CWE, on either twin, it must score as neither a true
+  // nor a false positive - and must never be mistaken for a planted bug.
+  test("an incidental reported on either twin is neither a hit nor a false alarm", () => {
+    const incidental = gt.incidental ?? [];
+    if (!incidental.length) return;
+    const bugPrints = new Set(gt.vulnerabilities.map(anchorFingerprint));
+    const findings = incidental.map((inc, i) => {
+      expect(bugPrints.has(anchorFingerprint(inc)), `${inc.id} is indistinguishable from a bug`).toBe(false);
+      const a = gtAnchors(inc);
+      const h = a.http[0];
+      const f = a.file[0];
+      return {
+        id: `inc-${i}`,
+        cwe: inc.cwe,
+        severity: "low",
+        location: {
+          ...(h ? { http: { method: h.method ?? undefined, path: h.path!, ...(h.params[0] ? { param: h.params[0] } : {}) } } : {}),
+          ...(f ? { file: { path: f.path, ...(f.symbol ? { symbol: f.symbol } : {}) } } : {}),
+        },
+      };
+    });
+    const r = scoreApp({
+      app,
+      groundTruth: gt,
+      runs: [envelope(app, findings as any), envelope(app, findings as any, "safe")],
+    });
+    expect(r.counts.tp).toBe(0);
+    expect(r.counts.fp).toBe(0);
+    expect(r.counts.incidental).toBe(2 * incidental.length);
   });
 
   // Several apps plant resource-exhaustion bugs on purpose, and more spawn a

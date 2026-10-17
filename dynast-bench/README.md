@@ -518,8 +518,8 @@ Every metric is `0.0`–`1.0`. The arrow is which direction is good:
 
 ```
 ↑ precision        tp / (tp + fp)      of what was reported, how much was real
-                                       (duplicates, unclassified and closed-port
-                                       reports excluded)
+                                       (duplicates, unclassified, incidental and
+                                       closed-port reports excluded)
 ↑ recall           tp / planted bugs   of what was planted, how much was found
 ↑ f1               2PR / (P + R)       harmonic mean - only high when both are
 ↑ recall_reachable tp / bugs reachable over http or net (source-only bugs excluded)
@@ -700,6 +700,14 @@ Three kinds, counted separately because they mean different things:
 | `near-miss` | flagged safe code planted next to a bug - the discrimination test |
 | `fixed-bug` | flagged a bug on the **patched twin**, where it is fixed |
 | `other` | flagged something that is not in the answer key at all |
+
+A finding on an **incidental** entry is none of these. `incidental:` in
+`VULNERABILITIES.yaml` records a real defect that ships in both twins and was not
+planted (nextjs `INC-ERRMSG-001`: the download handler's 404 leaks the absolute
+upload path on both twins). Reporting it is correct on either twin, so it is
+counted under `incidental` and left out of precision and recall. The match is
+always CWE-gated, so a finding of the planted bug that shares the route is still
+a true positive on `vuln` and a `fixed-bug` false positive on `safe`.
 
 A near-miss only counts when the finding pins it by route, symbol or line. A
 file-level finding that could be either sibling is treated as noise against the

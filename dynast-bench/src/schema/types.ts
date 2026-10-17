@@ -268,12 +268,36 @@ export interface GtNearMiss {
   [k: string]: unknown;
 }
 
+/**
+ * A real finding that ships in BOTH twins and was not planted: a defect the app
+ * carries incidentally, on code the fix for a planted bug does not touch. A tool
+ * that reports it is right on either twin, so the scorer neither counts it toward
+ * recall (it is not part of the product) nor charges it as a false positive
+ * (it is true). Anchored like a vulnerability; the CWE is required because it is
+ * usually the only thing that tells the entry apart from a planted bug sharing
+ * its route.
+ */
+export interface GtIncidental {
+  id: string;
+  variant_paths?: { vuln?: string; safe?: string };
+  symbol?: string;
+  route?: string;
+  cwe?: string;
+  severity?: Severity;
+  reachability?: string;
+  notes?: string;
+  match?: GtMatch;
+  [k: string]: unknown;
+}
+
 export interface GroundTruth {
   app?: string;
   entry?: string;
   seed_notes?: string;
   vulnerabilities: GtVulnerability[];
   near_misses: GtNearMiss[];
+  /** true findings present in both twins - see GtIncidental */
+  incidental?: GtIncidental[];
 }
 
 // ------------------------------------------------------ attack surface (v1) ---

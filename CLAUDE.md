@@ -152,7 +152,36 @@ near_misses:
     of: SQLI-001
     match: { file: { path: vuln/..., symbol: <safe sibling>, lines: [19, 25] } }
     notes: "why this is safe"
+incidental:                            # optional - see "Incidental findings"
+  - id: INC-ERRMSG-001
+    variant_paths: { vuln: vuln/..., safe: safe/... }
+    symbol: GET
+    route: "GET /api/attachments/download?name="
+    cwe: CWE-209                       # required: it separates the entry from a
+    severity: low                      # planted bug on the same route
+    reachability: pre-auth
+    match: { ... }                     # generated, never a line range
+    notes: "what is wrong and why it ships in both twins"
 ```
+
+### Incidental findings (`incidental:`)
+
+A twin pair differs only at its planted bugs, so anything else wrong with the app
+ships in **both** twins. When a scanner reports such a defect, it is right on
+either twin - charging it a false positive on `safe/` punishes a correct answer,
+and making it a bug would cost every tool recall for something nobody planted.
+Record it under `incidental:` instead:
+
+- **Scoring.** A finding that matches an incidental entry, on either twin, is
+  counted under `incidental` and left out of precision and recall. It never takes
+  a planted bug's credit: on `vuln/` a bug match wins, and the match is always
+  CWE-gated (even under `--lenient-cwe`), because the entry usually shares its
+  route and file with a planted bug and the CWE is what tells them apart.
+- **Don't fix it in `safe/`.** That would make it a planted bug, which needs the
+  full five things above. `check` errors if an incidental's file differs between
+  twins with no bug claiming it, or if the entry is indistinguishable from a bug.
+- **No PoC and no line range.** It is not part of the product and not in the
+  vuln↔safe diff; `derive-match` emits its http/file anchors without `lines:`.
 
 ### Business-logic bugs (`logic:` / `actors:` / `steps:`)
 

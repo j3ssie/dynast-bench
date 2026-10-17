@@ -590,6 +590,7 @@ interface GroundTruth {
   seed_notes?: string;
   vulnerabilities?: Record<string, any>[];
   near_misses?: Record<string, any>[];
+  incidental?: Record<string, any>[];
 }
 
 function groundTruth(app: App): GroundTruth {
@@ -1920,6 +1921,16 @@ async function cmdVulns(args: Args) {
         path: n.path ?? "",
         notes: oneLine(n.notes),
       })),
+      // true in both twins, not planted: reporting one is neither a hit nor a
+      // false positive, so it belongs next to the near-misses, not the checklist
+      incidental: (gt.incidental ?? []).map((x) => ({
+        id: x.id ?? "",
+        cwe: x.cwe ?? "",
+        severity: x.severity ?? "",
+        title: titleOf(x),
+        route: x.route ?? "",
+        notes: oneLine(x.notes),
+      })),
     };
   });
 
@@ -1930,7 +1941,7 @@ async function cmdVulns(args: Args) {
   if (flagBool(args, "ids")) {
     for (const a of payload) {
       for (const v of a.vulnerabilities) console.log(v.id);
-      if (withNear) for (const n of a.near_misses) console.log(n.id);
+      if (withNear) for (const n of [...a.near_misses, ...a.incidental]) console.log(n.id);
     }
     return;
   }
@@ -1986,13 +1997,21 @@ async function cmdVulns(args: Args) {
         ["ID", "OF", "WHY IT IS SAFE"],
       );
     }
+    if (withNear && a.incidental.length) {
+      log();
+      log(c.dim(`  incidental — real in both twins, not planted; reporting one is neither a hit nor a false positive`));
+      table(
+        a.incidental.map((x) => [x.id, String(x.cwe), fit(x.title, Math.max(24, width - 40))]),
+        ["ID", "CWE", "WHAT"],
+      );
+    }
   }
 
   if (!full) {
     log();
     log(
       c.dim(
-        `  --full for route + PoC · --near for the near-misses · --ids for a bare list`,
+        `  --full for route + PoC · --near for near-misses + incidental · --ids for a bare list`,
       ),
     );
   }
@@ -3997,7 +4016,7 @@ ${c.bold("FLAGS")}
   --findings FILE          a scan to cross-reference, for the discovery-vs-analysis
                            miss split (coverage)
   --format F               force an input format (score): ${FORMATS.join(" ")}
-  --near                   also list the near-misses (vulns)
+  --near                   also list the near-misses and incidental findings (vulns)
   --ids                    bare ids, one per line, for a coverage diff (vulns/surface)
   --full                   every match/miss/false-positive row (score/diff/check)
                            · route + PoC + full notes (vulns)

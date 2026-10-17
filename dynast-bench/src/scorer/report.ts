@@ -149,6 +149,10 @@ export function renderReport(r: ScoreReport, opts: RenderOpts = {}): string[] {
   if (c.informational) {
     out.push(`  informational:   ${c.informational}  (closed/filtered ports - not scored)`);
   }
+  if (c.incidental) {
+    const ids = [...new Set(r.incidental.map((x) => x.id))].join(", ");
+    out.push(`  incidental:      ${c.incidental}  (${ids}: true in both twins, not planted - not scored)`);
+  }
 
   out.push("");
   out.push(...bucketLines("recall by difficulty", r.by_difficulty));

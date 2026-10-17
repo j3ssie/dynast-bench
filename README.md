@@ -276,6 +276,11 @@ what is **wrong** in the app; `SURFACE.yaml` says what is **there** at all.
   poc: ground-truth/verify/sqli_001.sh
 ```
 
+A real defect that ships in **both** twins without being planted goes under
+`incidental:` instead (same anchors, a required `cwe`, no PoC). Reporting one is
+correct on either twin, so the scorer counts it as neither a hit nor a false
+positive - see [CLAUDE.md](CLAUDE.md#incidental-findings-incidental).
+
 `SURFACE.yaml` records one entry per **operation the app exposes**, vulnerable
 and benign alike - it is the denominator for [endpoint
 coverage](#endpoint-coverage):

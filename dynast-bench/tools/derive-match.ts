@@ -26,6 +26,11 @@
  *     MAX_BODY_SPAN. Bounding on the next NEAR-MISS matters most - a range that
  *     swallowed its safe sibling would score a false positive as a true one.
  *
+ * `incidental:` entries (true in both twins, never planted) get the same http,
+ * file, marker and cwe_family anchors but never a line range: they are not in
+ * the vuln↔safe diff, they usually sit inside a planted bug's body, and the CWE
+ * is what tells the two apart.
+ *
  * Two anchors in one file may never overlap; when they would, the later one gets
  * no `lines:` at all and the matcher falls back to its symbol. A wrong range would
  * mis-score every tool forever, so none is better.
@@ -330,6 +335,7 @@ function deriveOne(
   bugCount: Map<string, number>,
   claimed: Map<string, [number, number, string][]>,
   boundaries: Map<string, number[]>,
+  opts: { lines: boolean } = { lines: true },
 ): Derived {
   const body: string[] = [];
   const route = String(v.route ?? "");
@@ -393,7 +399,7 @@ function deriveOne(
 
     let range: [number, number] | null = null;
 
-    const anchor = anchorLine(appDir, v, vulnPath);
+    const anchor = opts.lines ? anchorLine(appDir, v, vulnPath) : null;
     if (anchor) {
       // A tool reports the SINK, which is inside the bug's body - not the comment
       // above it and not necessarily the diff hunk. So the range runs from the
@@ -405,7 +411,7 @@ function deriveOne(
       lineSource = anchor.source;
     }
 
-    if (!range && hunks.length) {
+    if (opts.lines && !range && hunks.length) {
       if (bugCount.get(vulnPath) === 1) {
         range = [Math.min(...hunks.map((h) => h.start)), Math.max(...hunks.map((h) => h.end))];
         lineSource = "only-bug";
@@ -653,6 +659,10 @@ for (const app of apps) {
       nmBody.unshift(`  http: ${flowMap(hp)}`);
     }
     blocks.set(String(nm.id), ["    match:", ...nmBody.map((l) => "    " + l)]);
+  }
+
+  for (const inc of (doc?.incidental ?? []) as any[]) {
+    blocks.set(String(inc.id), deriveOne(appDir, inc, bugCount, claimed, boundaries, { lines: false }).lines);
   }
 
   const res = spliceMatchBlocks(raw, blocks);

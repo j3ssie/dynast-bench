@@ -18,6 +18,7 @@ import {
   SEVERITIES,
   TAINTS,
   type GroundTruth,
+  type GtIncidental,
   type GtMatch,
   type GtNearMiss,
   type GtVulnerability,
@@ -256,6 +257,48 @@ export function validateGroundTruth(doc: unknown): ValidationResult<GroundTruth>
     });
   }
 
+  // Incidental findings: true in both twins, never planted (see GtIncidental).
+  // One id space with the bugs and near-misses, so a report row names exactly one
+  // entry.
+  const rawInc = Array.isArray(doc.incidental) ? doc.incidental : [];
+  if (doc.incidental !== undefined && !Array.isArray(doc.incidental)) {
+    errors.push({ at: "incidental", msg: "not a list" });
+  }
+  const incidental: GtIncidental[] = [];
+  for (let i = 0; i < rawInc.length; i++) {
+    const at = `incidental[${i}]`;
+    const raw = rawInc[i];
+    if (!isObj(raw)) {
+      errors.push({ at, msg: "not a mapping" });
+      continue;
+    }
+    const id = str(raw.id);
+    if (!id) {
+      errors.push({ at, msg: "id is required" });
+      continue;
+    }
+    if (ids.has(id) || nmIds.has(id) || incidental.some((x) => x.id === id)) {
+      errors.push({ at: `${at}.id`, msg: `duplicate id "${id}"` });
+    }
+    // the CWE is what separates an incidental from a planted bug on the same
+    // route, so without one the entry could swallow that bug's findings
+    const cwe = normalizeCwe(raw.cwe);
+    if (!cwe) errors.push({ at: `${at}.cwe`, msg: `missing or unparseable cwe (${raw.cwe})` });
+    const sev = str(raw.severity)?.toLowerCase();
+    if (!sev || !SEVERITIES.includes(sev as any)) {
+      errors.push({ at: `${at}.severity`, msg: `must be one of ${SEVERITIES.join("|")}` });
+    }
+    if (!isObj(raw.variant_paths) && !str(raw.route)) {
+      errors.push({ at, msg: "needs variant_paths or route - nothing to anchor a finding to" });
+    }
+    incidental.push({
+      ...(raw as any),
+      id,
+      cwe: cwe ?? undefined,
+      match: validateMatch(raw.match, `${at}.match`, errors),
+    });
+  }
+
   // every near_miss: reference on a vulnerability must resolve
   for (const v of vulnerabilities) {
     const ref = str(v.near_miss);
@@ -277,6 +320,7 @@ export function validateGroundTruth(doc: unknown): ValidationResult<GroundTruth>
       seed_notes: str(doc.seed_notes),
       vulnerabilities,
       near_misses,
+      incidental,
     },
   };
 }

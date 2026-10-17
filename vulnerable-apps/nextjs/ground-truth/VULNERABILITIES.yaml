@@ -1062,8 +1062,29 @@ near_misses:
       content change below editor drops the post back to draft, so an approval
       only ever covers the reviewed text.
 
+# True findings present in BOTH twins and not planted. Reporting one is correct
+# on either twin: it is neither counted toward recall nor charged as a false
+# positive (see CLAUDE.md, "Incidental findings").
+incidental:
+  - id: INC-ERRMSG-001
+    variant_paths: { vuln: vuln/src/app/api/attachments/download/route.ts, safe: safe/src/app/api/attachments/download/route.ts }
+    symbol: GET
+    route: "GET /api/attachments/download?name="
+    cwe: CWE-209
+    severity: low
+    reachability: pre-auth
+    match:
+      http: { method: GET, path: "/api/attachments/download", params: [name] }
+      file: { path: vuln/src/app/api/attachments/download/route.ts, symbol: GET }
+    notes: >
+      The download handler's catch returns `String(e)`, so a missing file answers
+      404 with `ENOENT: no such file or directory, open '/app/uploads/<name>'` -
+      the absolute upload path, to an anonymous caller. The line ships unchanged
+      in both twins; TRAVERSAL-001's fix does not touch it.
+
 # Catalog items from benchmark-plans/nextjs.md deferred in v1 (not yet planted):
 #   next/image SSRF, upload SVG XSS, second-order SQLi, reset token, verbose-error
-#   leak, dependency CVE, CSRF on server actions.
+#   leak (an unplanted one is recorded under incidental: above), dependency CVE,
+#   CSRF on server actions.
 # Planted since v1: SESSION-001 (predictable session id, now with a dynamic PoC),
 #   SIGNUP-TOKEN-001 (predictable verification token, the "reset token" class).

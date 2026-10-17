@@ -802,6 +802,130 @@ describe("classification (nextjs answer key)", () => {
   });
 });
 
+// ------------------------------------------------------- incidental findings --
+
+describe("incidental findings (nextjs answer key)", () => {
+  // INC-ERRMSG-001: the attachment download handler returns String(e), leaking
+  // /app/uploads/<name> in a 404 - in BOTH twins. It shares its route and file
+  // with TRAVERSAL-001 (CWE-22); the CWE is what tells them apart.
+  const gt = loadGt("nextjs");
+  const score = (vuln: any[], safe: any[] = [], lenientCwe = false) =>
+    scoreApp({
+      app: "nextjs",
+      groundTruth: gt,
+      lenientCwe,
+      runs: [
+        envelope("nextjs", vuln),
+        ...(safe.length ? [envelope("nextjs", safe, "safe")] : []),
+      ],
+    });
+  const leak = (id: string, extra: any = {}) => ({
+    id,
+    title: "Attachment download handler leaks absolute server paths in 404 error bodies",
+    cwe: "CWE-200",
+    severity: "low",
+    location: { http: { method: "GET", path: "/api/attachments/download", param: "name" } },
+    ...extra,
+  });
+  const traversal = (id: string) => ({
+    id,
+    cwe: "CWE-22",
+    severity: "high",
+    location: { http: { method: "GET", path: "/api/attachments/download", param: "name" } },
+  });
+
+  test("the key carries the entry", () => {
+    expect((gt.incidental ?? []).map((x) => x.id)).toContain("INC-ERRMSG-001");
+  });
+
+  test("reported on the safe twin, it is not a false positive", () => {
+    const r = score([], [leak("s1"), leak("s2", { location: { http: { path: "/api/attachments/download" } } })]);
+    expect(r.counts.fp).toBe(0);
+    expect(r.counts.incidental).toBe(2);
+    expect(r.incidental.map((x) => [x.finding_id, x.id, x.variant])).toEqual([
+      ["s1", "INC-ERRMSG-001", "safe"],
+      ["s2", "INC-ERRMSG-001", "safe"],
+    ]);
+  });
+
+  test("reported on the vuln twin, it is neither a true positive nor a false one", () => {
+    const r = score([leak("v1")]);
+    expect(r.counts.tp).toBe(0);
+    expect(r.counts.fp).toBe(0);
+    expect(r.counts.incidental).toBe(1);
+    expect(r.metrics.recall).toBe(0);
+    // recall's denominator is the planted bugs only
+    expect(r.counts.gt_total).toBe(gt.vulnerabilities.length);
+  });
+
+  test("it stays out of precision", () => {
+    const r = score([traversal("t1"), leak("v1")], [leak("s1")]);
+    expect(r.matches.map((m) => m.gt_id)).toEqual(["TRAVERSAL-001"]);
+    expect(r.counts.incidental).toBe(2);
+    expect(r.metrics.precision).toBe(1);
+  });
+
+  test("it does not take the planted bug that shares its route", () => {
+    const r = score([traversal("t1")]);
+    expect(r.matches.map((m) => [m.gt_id, m.finding_id])).toEqual([["TRAVERSAL-001", "t1"]]);
+    expect(r.counts.incidental).toBe(0);
+  });
+
+  test("it does not excuse the fixed bug on the patched twin, even with --lenient-cwe", () => {
+    for (const lenient of [false, true]) {
+      const r = score([], [traversal("s1")], lenient);
+      expect(r.counts.incidental).toBe(0);
+      expect(r.counts.fp_fixed_bug).toBe(1);
+      expect(r.false_positives[0]!.hit).toBe("TRAVERSAL-001");
+    }
+  });
+
+  test("a finding that names no claim on the route is not credited to it", () => {
+    const vague = { id: "u1", title: "Interesting response", location: { http: { method: "GET", path: "/api/attachments/download", param: "name" } } };
+    const r = score([vague]);
+    expect(r.counts.incidental).toBe(0);
+    expect(r.unclassified.map((x) => x.gt_id)).toEqual(["TRAVERSAL-001"]);
+  });
+
+  test("the same claim on another route is still a false positive", () => {
+    const r = score([], [leak("s1", { location: { http: { method: "GET", path: "/api/exports" } } })]);
+    expect(r.counts.incidental).toBe(0);
+    expect(r.counts.fp).toBe(1);
+  });
+});
+
+describe("incidental validation", () => {
+  const bug = { id: "X-001", cwe: "CWE-22", severity: "high", difficulty: "E", route: "GET /x?f=" };
+  const inc = { id: "INC-X-001", cwe: "CWE-209", severity: "low", route: "GET /x?f=" };
+
+  test("a well-formed entry validates and is carried through", () => {
+    const res = validateGroundTruth({ app: "t", vulnerabilities: [bug], incidental: [inc] });
+    expect(res.errors).toEqual([]);
+    expect(res.value!.incidental!.map((x) => x.id)).toEqual(["INC-X-001"]);
+  });
+
+  test("a key with no incidental: section has none", () => {
+    expect(validateGroundTruth({ app: "t", vulnerabilities: [bug] }).value!.incidental).toEqual([]);
+  });
+
+  test("the CWE is required - it is what separates an incidental from the bug on its route", () => {
+    const res = validateGroundTruth({ app: "t", vulnerabilities: [bug], incidental: [{ ...inc, cwe: undefined }] });
+    expect(res.errors.some((e) => e.at === "incidental[0].cwe")).toBe(true);
+  });
+
+  test("ids are one space with the bugs", () => {
+    const res = validateGroundTruth({ app: "t", vulnerabilities: [bug], incidental: [{ ...inc, id: "X-001" }] });
+    expect(res.errors.some((e) => e.msg.includes('duplicate id "X-001"'))).toBe(true);
+  });
+
+  test("an entry with nothing to anchor to, or a non-list section, is an error", () => {
+    const bare = validateGroundTruth({ app: "t", vulnerabilities: [bug], incidental: [{ id: "INC-1", cwe: "CWE-209", severity: "low" }] });
+    expect(bare.errors.some((e) => e.msg.includes("nothing to anchor"))).toBe(true);
+    const notList = validateGroundTruth({ app: "t", vulnerabilities: [bug], incidental: { id: "INC-1" } });
+    expect(notList.errors.some((e) => e.at === "incidental")).toBe(true);
+  });
+});
+
 
 // ------------------------------------------------- claim compatibility ----
 

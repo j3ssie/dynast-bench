@@ -66,7 +66,9 @@ Six findings, six true positives. Read them for the rules they exercise:
 ### `findings-safe.json` - the false-positive run
 
 Pair a scan of the patched twin with the vuln scan. Every finding on `safe/` is
-wrong by construction, which is what makes precision mean something:
+wrong by construction, which is what makes precision mean something. The one
+exception is a finding on an `incidental:` entry - a real defect that ships in
+both twins - which is counted as neither a hit nor a false positive:
 
 ```bash
 dynast-bench score nextjs examples/findings.json --safe examples/findings-safe.json --full

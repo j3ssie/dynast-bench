@@ -6,18 +6,29 @@
  *   1. pins a near-miss precisely AND has no better claim than `weak` on a real
  *      bug                        -> false positive (the discrimination test)
  *   2. matched a bug              -> true positive
- *   3. admissible against a bug
+ *   3. matched an incidental entry
+ *      (true in both twins, not
+ *      planted)                   -> incidental (neither: right, but not part
+ *                                    of the product - on either twin)
+ *   4. admissible against a bug
  *      someone else already won   -> duplicate (noise, not a false alarm)
- *   4. on a bug's route, but claims
+ *   5. on a bug's route, but claims
  *      nothing nameable           -> unclassified (neither: it located the
  *                                    route, not the bug - see match.ts)
- *   5. anything else              -> false positive
+ *   6. anything else              -> false positive
  *
  * (1) outranks (2) because a near-miss sits in the same FILE as its vulnerable
  * sibling: without the veto, a tool could flag the safe function and still be
  * paid for the bug next door. It only fires when the finding pins the near-miss
  * by route, symbol or line - a file-level finding that could be either sibling is
  * treated as noise against the real bug instead.
+ *
+ * An incidental match outranks a near-miss only when it pins the finding at least
+ * as precisely, and it is always CWE-gated (even under `lenientCwe`): it usually
+ * shares a route and a file with a planted bug, and its CWE is the only thing
+ * that tells the two apart. On the patched twin it is checked before the
+ * fixed-bug charge, because there the incidental is the one true thing the
+ * finding can be.
  *
  * Two near-misses cannot be told apart from their sibling at all when they share
  * the route AND the file AND no line is reported (nextjs NM-SQL-001 is one); those
@@ -94,6 +105,15 @@ export interface DupRow {
   variant: Variant;
 }
 
+/** A finding that matched an incidental entry: true, not planted, not scored. */
+export interface IncidentalRow {
+  finding_id: string;
+  /** the incidental entry it matched */
+  id: string;
+  variant: Variant;
+  where: string;
+}
+
 /** A finding on a bug's route that claims nothing the scorer can name. */
 export interface UnclassifiedRow {
   finding_id: string;
@@ -132,6 +152,11 @@ export interface ScoreReport {
     unclassified: number;
     /** negative observations (a port reported closed) - excluded from precision */
     informational: number;
+    /**
+     * findings on an incidental entry - a true finding present in both twins
+     * that was not planted; excluded from precision and from recall
+     */
+    incidental: number;
   };
   metrics: {
     precision: number | null;
@@ -165,6 +190,7 @@ export interface ScoreReport {
   false_positives: FpRow[];
   duplicates: DupRow[];
   unclassified: UnclassifiedRow[];
+  incidental: IncidentalRow[];
   warnings: string[];
 }
 
@@ -234,11 +260,13 @@ export function scoreApp(input: ScoreInput): ScoreReport {
   const vulns = gt.vulnerabilities;
   const anchors: GtAnchors[] = vulns.map(gtAnchors);
   const nmAnchors = gt.near_misses.map(nearMissAnchors);
+  const incidentals = gt.incidental ?? [];
+  const incAnchors: GtAnchors[] = incidentals.map(gtAnchors);
   // The app's route table, which a placeholder in any anchor yields to: every path
-  // the answer key names (bug or near-miss) plus the SURFACE catalog when given.
-  // One table for all three matcher calls below, so a finding at a static route
+  // the answer key names (bug, near-miss or incidental) plus the SURFACE catalog
+  // when given. One table for every matcher call below, so a finding at a static route
   // is that route whichever list is being matched.
-  const routes = [...new Set([...anchorRoutes([...anchors, ...nmAnchors]), ...surfaceRoutes(input.surface)])];
+  const routes = [...new Set([...anchorRoutes([...anchors, ...nmAnchors, ...incAnchors]), ...surfaceRoutes(input.surface)])];
 
   const all: Tagged[] = [];
   for (const run of input.runs) {
@@ -282,6 +310,22 @@ export function scoreApp(input: ScoreInput): ScoreReport {
         spec: c.spec,
         why: c.why.join(", "),
       });
+    }
+  }
+
+  // --- incidental entries: true on both twins, never planted -----------------
+  // Always CWE-gated, whatever `lenientCwe` says: the CWE is what separates an
+  // incidental from the planted bug that usually shares its route. A finding
+  // that claims nothing nameable stays with the bug's `unclassified` handling.
+  const incByFinding = new Map<number, { id: string; spec: number }>();
+  if (incAnchors.length) {
+    for (const c of candidatesFor(
+      all.map((t) => t.finding),
+      incAnchors,
+      { lenientCwe: false, routes },
+    )) {
+      if (c.unclassified || incByFinding.has(c.findingIndex)) continue;
+      incByFinding.set(c.findingIndex, { id: incAnchors[c.gtIndex]!.id, spec: c.spec });
     }
   }
 
@@ -348,8 +392,8 @@ export function scoreApp(input: ScoreInput): ScoreReport {
   const falsePositives: FpRow[] = [];
   const duplicates: DupRow[] = [];
   const unclassified: UnclassifiedRow[] = [];
+  const incidentalRows: IncidentalRow[] = [];
   const nmHit = new Set<string>();
-
 
   let informational = 0;
 
@@ -363,16 +407,25 @@ export function scoreApp(input: ScoreInput): ScoreReport {
     hit,
   });
 
-  /** Port-state observation, or a near-miss the finding pinned. True = handled. */
+  /**
+   * Port-state observation, a near-miss the finding pinned, or an incidental
+   * entry it matched. True = handled.
+   */
   const preClassify = (t: Tagged): boolean => {
     if (isPortState(t.finding)) {
       informational++;
       return true;
     }
     const nm = nmHitsByFinding.get(t.index);
-    if (nm?.specific) {
+    const inc = incByFinding.get(t.index);
+    // the near-miss wins only when it pins the finding more precisely
+    if (nm?.specific && !(inc && inc.spec >= nm.spec)) {
       nmHit.add(nm.id);
       falsePositives.push(fpRow(t, "near-miss", nm.id));
+      return true;
+    }
+    if (inc) {
+      incidentalRows.push({ finding_id: t.finding.id, id: inc.id, variant: t.variant, where: where(t.finding) });
       return true;
     }
     return false;
@@ -399,7 +452,8 @@ export function scoreApp(input: ScoreInput): ScoreReport {
     falsePositives.push(fpRow(t, "other"));
   });
 
-  // Every finding against the patched twin is a false alarm by construction.
+  // Every finding against the patched twin is a false alarm by construction,
+  // except one on an incidental entry, which ships in both twins.
   if (safeRun.length) {
     const safeCands = candidatesFor(
       safeRun.map((t) => t.finding),
@@ -487,6 +541,7 @@ export function scoreApp(input: ScoreInput): ScoreReport {
       duplicates: duplicates.length,
       unclassified: unclassified.length,
       informational,
+      incidental: incidentalRows.length,
     },
     metrics: {
       precision,
@@ -550,6 +605,7 @@ export function scoreApp(input: ScoreInput): ScoreReport {
     false_positives: falsePositives,
     duplicates,
     unclassified,
+    incidental: incidentalRows,
     warnings,
   };
 
