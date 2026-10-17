@@ -91,14 +91,19 @@ describe.each(apps)("%s", (app) => {
     expect(untiered, "recall by tier would cover only the labelled subset").toEqual([]);
   });
 
+  // Same path, different verb is a different operation: PATCH /api/comments/{id}
+  // (the bug) and DELETE /api/comments/{id} (its near-miss) are told apart by
+  // the method on both anchors. Same path with either verb missing is not.
   test("near-miss anchors never collide with a bug's route", () => {
-    const bugPaths = new Set(
-      gt.vulnerabilities.flatMap((v) => gtAnchors(v).http.map((h) => h.path)),
-    );
+    const bugHttp = gt.vulnerabilities.flatMap((v) => gtAnchors(v).http);
     for (const nm of gt.near_misses) {
       const p = nm.match?.http?.path;
       if (!p) continue;
-      expect(bugPaths.has(p), `${nm.id} anchors on a bug's own route ${p}`).toBe(false);
+      const verb = nm.match?.http?.method ?? null;
+      const clash = bugHttp.find(
+        (h) => h.path === p && (!verb || !h.method || h.method === verb),
+      );
+      expect(clash, `${nm.id} anchors on a bug's own route ${verb ?? "ANY"} ${p}`).toBeUndefined();
     }
   });
 

@@ -4,23 +4,26 @@
  * Most scanners hand over a title and little else, so `guessCwe` maps issue
  * names onto CWEs by keyword. It is a fallback: a tool's own CWE id always wins.
  * Order matters - the first pattern that hits wins, so put the specific phrases
- * above the general ones.
+ * above the general ones. A short acronym is anchored at both ends (`\brce\b`):
+ * unanchored, "source" reads as RCE and "retrieval" as eval. A phrase a tool's
+ * class slug spells with hyphens ("source-map-exposure", "workflow-bypass")
+ * accepts a hyphen where the space goes.
  */
 
 import { CWE_ID_RE, normalizeCwe } from "../schema/cwe.ts";
 
 const RULES: [RegExp, string][] = [
-  [/blind\s+sql|sql\s*injection|sqli\b|sql\s+syntax/i, "CWE-89"],
+  [/blind\s+sql|sql\s*injection|\bsqli\b|sql\s+syntax/i, "CWE-89"],
   [/nosql|mongo\s*injection/i, "CWE-943"],
-  [/os\s*command|command\s*injection|shell\s*injection|rce\b|remote\s+code\s+exec/i, "CWE-78"],
-  [/template\s*injection|ssti\b|spel|ognl/i, "CWE-1336"],
+  [/os\s*command|command\s*injection|shell\s*injection|\brce\b|remote\s+code\s+exec/i, "CWE-78"],
+  [/template\s*injection|\bssti\b|\bspel\b|\bognl\b/i, "CWE-1336"],
   [/expression\s*language/i, "CWE-917"],
-  [/code\s*injection|eval\b/i, "CWE-94"],
+  [/code\s*injection|\beval\b/i, "CWE-94"],
   [/deserializ|pickle|unmarshal|gadget\s*chain/i, "CWE-502"],
   [/prototype\s*pollution/i, "CWE-1321"],
   [/mass\s*assign/i, "CWE-915"],
   [/stored\s+xss|reflected\s+xss|cross[- ]site\s+script|\bxss\b/i, "CWE-79"],
-  [/xxe\b|xml\s+external\s+entity/i, "CWE-611"],
+  [/\bxxe\b|xml\s+external\s+entity/i, "CWE-611"],
   [/path\s*travers|directory\s*travers|\blfi\b|local\s+file\s+inclusion|zip\s*slip/i, "CWE-22"],
   [/remote\s+file\s+inclusion|\brfi\b/i, "CWE-98"],
   [/\bssrf\b|server[- ]side\s+request/i, "CWE-918"],
@@ -45,7 +48,7 @@ const RULES: [RegExp, string][] = [
   [/default\s+credential|weak\s+credential|admin\s*[:\/]\s*admin/i, "CWE-1392"],
   [/insufficiently\s+protected\s+credential|cleartext\s+password/i, "CWE-522"],
   [/private\s+key|crypto\s+key\s+hard/i, "CWE-321"],
-  [/source\s*map|source\s+code\s+disclos/i, "CWE-540"],
+  [/source[\s-]*map|source\s+code\s+disclos/i, "CWE-540"],
   [/directory\s+listing|directory\s+brows/i, "CWE-548"],
   [/backup\s+file|\.bak\b|env\s+file|configuration\s+file\s+expos/i, "CWE-538"],
   [/stack\s+trace|verbose\s+error|error\s+message\s+(?:leak|disclos)|debug\s+(?:info|page)/i, "CWE-209"],
@@ -64,6 +67,8 @@ const RULES: [RegExp, string][] = [
   [/(?:denial\s+of\s+service|\bdos\b|resource\s+exhaust|unbounded)/i, "CWE-400"],
   [/(?:query\s+)?(?:depth|complexity|cost)\s+limit|no\s+pagination/i, "CWE-770"],
   [/recursion/i, "CWE-674"],
+  // a multi-step flow whose later step runs without the earlier one
+  [/workflow[\s-]*bypass|step[\s-]*skip|skip(?:s|ped|ping)?\s+(?:the\s+|a\s+)?(?:[\w-]+\s+)?step\b/i, "CWE-841"],
   [/business\s+logic|negative\s+(?:quantity|amount|price)/i, "CWE-840"],
   [/prompt\s*injection|jailbreak|indirect\s+injection/i, "CWE-1427"],
   [/excessive\s+agency|unrestricted\s+tool/i, "CWE-78"],

@@ -6,9 +6,22 @@
  * "something is wrong at /api/posts/search" with an unrelated CWE is a miss, not
  * a hit.
  *
+ * A route match also has to be the same CLAIM, because one route carries
+ * several unrelated defects (a login takes default credentials, trusts a
+ * client-sent tenant and mints static cookies). So the route tier requires:
+ *
+ *   - a claim compatible with the bug: the reported CWE, or - when the finding
+ *     reports none - the CWE its title and tags name (`guessCwe`, the same table
+ *     the adapters use). A finding that claims nothing nameable is
+ *     `unclassified`: it is never a true positive, and score.ts keeps it out of
+ *     precision rather than calling silence a false alarm.
+ *   - every request header the bug is reached through (`match.http.headers`),
+ *     named by the finding - an ordinary access-control finding on
+ *     /api/admin/users is not the x-middleware-subrequest bypass on it.
+ *
  *   proof   a seed marker from the answer key appears in the finding's evidence
  *           and no anchor contradicts it            -> CWE-independent
- *   route   path (+ required query pairs, param, port, verb) line up
+ *   route   path (+ required query pairs and headers, param, port, verb) line up
  *   net     host + port + proto line up
  *   api     graphql op / ws transport+event / llm tool+channel line up
  *   source  file matches and (symbol matches or the line sits in the bug's hunk)
@@ -20,11 +33,12 @@
  * lost to a greedy first choice.
  */
 
+import { guessCwe } from "../normalize/guess.ts";
 import { bestCweCredit, type CweCredit } from "../schema/cwe.ts";
 import {
   fileMatches,
   isOpenState,
-  pathGlobMatches,
+  routedPathMatch,
   symbolMatches,
   type HttpKey,
   type NetKey,
@@ -60,6 +74,12 @@ export interface Candidate {
   spec: number;
   /** short human trace of what lined up, e.g. "path+param q, marker" */
   why: string[];
+  /**
+   * A route-tier pair whose finding claims nothing the scorer can name (no CWE,
+   * and none in its title or tags). It locates the bug's route but not the bug,
+   * so it is never assigned as a true positive (see score.ts).
+   */
+  unclassified: boolean;
 }
 
 // --------------------------------------------------------------- comparisons --
@@ -73,19 +93,77 @@ interface Verdict {
   why: string[];
 }
 
-/** Does a found HTTP anchor satisfy a ground-truth HTTP anchor? */
-function httpHit(gt: HttpKey, got: HttpKey): Verdict | null {
+/** The `why` tags of a path that lined up only through a key placeholder. */
+const PARAM_PATH = "path{}";
+const LOOSE_PARAM_PATH = "path~{}";
+const isParamPath = (why: string): boolean => why === PARAM_PATH || why === LOOSE_PARAM_PATH;
+
+/**
+ * How much a placeholder-only path match gives up against a literal one, in both
+ * the assignment score and the anchor specificity. Half a step: enough that a
+ * near-miss anchored on the literal segment outranks a bug anchored on `{param}`
+ * for the same finding (the veto in score.ts), small enough that it never moves a
+ * pair across a tier.
+ */
+const PARAM_PATH_PENALTY = 0.5;
+
+/**
+ * Does `text` (lowercased) name `header` as a whole token? A header name is a
+ * protocol token (RFC 9110 §5.1), so this is an exact, case-insensitive
+ * comparison, not an interpretation of the prose around it.
+ */
+function namesHeader(text: string, header: string): boolean {
+  let at = text.indexOf(header);
+  while (at !== -1) {
+    const before = at === 0 ? "" : text[at - 1]!;
+    const after = text[at + header.length] ?? "";
+    if (!/[a-z0-9_-]/.test(before) && !/[a-z0-9_-]/.test(after)) return true;
+    at = text.indexOf(header, at + 1);
+  }
+  return false;
+}
+
+/** Everything a finding says about its own request, lowercased - where a header it sent is named. */
+const requestText = (f: Finding): string =>
+  [
+    f.title,
+    f.location.http?.param,
+    f.evidence?.request,
+    f.evidence?.note,
+    ...(f.tags ?? []),
+  ]
+    .filter(Boolean)
+    .join("\n")
+    .toLowerCase();
+
+/**
+ * Does a found HTTP anchor satisfy a ground-truth HTTP anchor? `routes` is the
+ * route table a placeholder yields to (see `routedPathMatch`). `said` is the
+ * finding's own request text ({@link requestText}); without it the key's
+ * required headers are not checked - silence about a header contradicts nothing,
+ * which is what the proof gate needs.
+ */
+function httpHit(
+  gt: HttpKey,
+  got: HttpKey,
+  routes: readonly string[],
+  said?: string,
+): Verdict | null {
   const why: string[] = [];
   if (!gt.path || !got.path) return null;
 
   let loose = false;
-  if (pathGlobMatches(gt.path, got.path, false)) {
-    why.push("path");
-  } else if (pathGlobMatches(gt.path, got.path, true)) {
-    loose = true;
-    why.push("path~"); // case- or slash-folded: weirdproxy plants those as distinct bugs
+  // `path{}` marks a hit that needed a placeholder in the key to stand in for a
+  // concrete non-id segment - real, but less precise than a literal (see weigh)
+  const strict = routedPathMatch(gt.path, got.path, false, routes);
+  if (strict) {
+    why.push(strict === "param" ? PARAM_PATH : "path");
   } else {
-    return null;
+    const folded = routedPathMatch(gt.path, got.path, true, routes);
+    if (!folded) return null;
+    loose = true;
+    // case- or slash-folded: weirdproxy plants those as distinct bugs
+    why.push(folded === "param" ? LOOSE_PARAM_PATH : "path~");
   }
 
   // a sidecar bug names its own port; a finding on a different port is elsewhere
@@ -98,6 +176,15 @@ function httpHit(gt: HttpKey, got: HttpKey): Verdict | null {
     // the name alone, with no value, is not enough to tell two actions apart
     if (seen === undefined || seen !== v) return null;
     why.push(`${k}=${v}`);
+  }
+
+  // a bug reached through a request header is only that bug when the finding
+  // names the header it sent; the same route without it is another claim
+  if (said !== undefined) {
+    for (const h of gt.headers ?? []) {
+      if (!got.params.some((p) => p.toLowerCase() === h) && !namesHeader(said, h)) return null;
+      why.push(`header ${h}`);
+    }
   }
 
   // the injectable parameter, when the key names one and the finding names one
@@ -216,9 +303,9 @@ function sourceHit(gt: GtAnchors, got: Anchors): Verdict | null {
 }
 
 /** Would either side's anchors flatly contradict the other? Used to gate proof. */
-function contradicts(gt: GtAnchors, got: Anchors): boolean {
+function contradicts(gt: GtAnchors, got: Anchors, routes: readonly string[]): boolean {
   if (gt.http.length && got.http.length) {
-    if (!gt.http.some((g) => got.http.some((f) => httpHit(g, f)))) return true;
+    if (!gt.http.some((g) => got.http.some((f) => httpHit(g, f, routes)))) return true;
   }
   if (gt.net.length && got.net.length) {
     if (!gt.net.some((g) => got.net.some((f) => netHit(g, f)))) return true;
@@ -235,7 +322,19 @@ function contradicts(gt: GtAnchors, got: Anchors): boolean {
 export interface CandidateOpts {
   /** admit route/source matches whose CWE earns nothing (default false) */
   lenientCwe?: boolean;
+  /**
+   * The app's route table: every path a key placeholder must yield to (see
+   * `routedPathMatch`). Defaults to the http anchors of the `gt` list itself; the
+   * scorer passes the whole answer key - bugs, near-misses and the SURFACE
+   * catalog - because each `candidatesFor` call sees only one of those lists.
+   */
+  routes?: readonly string[];
 }
+
+/** Every http anchor path a set of anchors names - a route table. */
+export const anchorRoutes = (anchors: readonly Anchors[]): string[] => [
+  ...new Set(anchors.flatMap((a) => a.http.map((h) => h.path).filter((p): p is string => !!p))),
+];
 
 /** Every admissible (finding, bug) pair, with its tier and CWE credit. */
 export function candidatesFor(
@@ -245,10 +344,11 @@ export function candidatesFor(
 ): Candidate[] {
   const out: Candidate[] = [];
   const anchors = findings.map(findingAnchors);
+  const routes = opts.routes ?? anchorRoutes(gt);
 
   for (let fi = 0; fi < findings.length; fi++) {
     for (let gi = 0; gi < gt.length; gi++) {
-      const c = pairFor(fi, findings[fi]!, anchors[fi]!, gi, gt[gi]!, opts);
+      const c = pairFor(fi, findings[fi]!, anchors[fi]!, gi, gt[gi]!, opts, routes);
       if (c) out.push(c);
     }
   }
@@ -279,6 +379,7 @@ function pairFor(
   gi: number,
   g: GtAnchors,
   opts: CandidateOpts,
+  routes: readonly string[],
 ): Candidate | null {
   const why: string[] = [];
   let tier: Tier | null = null;
@@ -288,17 +389,23 @@ function pairFor(
   const sharedMarkers = g.markers.filter((m) =>
     got.markers.some((x) => x.includes(m) || m.includes(x)),
   );
-  if (sharedMarkers.length && !contradicts(g, got)) {
+  if (sharedMarkers.length && !contradicts(g, got, routes)) {
     tier = "proof";
     why.push(`marker ${sharedMarkers[0]}`);
   }
 
   if (!tier) {
+    // the most precise http hit wins: route over weak, a literal path over one that
+    // needed a key placeholder
+    let best = -1;
+    const said = g.http.some((h) => h.headers?.length) ? requestText(f) : undefined;
     for (const gh of g.http) {
       for (const fh of got.http) {
-        const v = httpHit(gh, fh);
+        const v = httpHit(gh, fh, routes, said);
         if (!v) continue;
-        if (!tier || TIER_WEIGHT[tier] < TIER_WEIGHT.route) {
+        const rank = (v.loose ? 0 : 2) + (v.why.some(isParamPath) ? 0 : 1);
+        if (rank > best) {
+          best = rank;
           tier = v.loose ? "weak" : "route";
           loose = v.loose;
           why.length = 0;
@@ -348,14 +455,26 @@ function pairFor(
     expectedFamily: g.family,
   });
 
+  let unclassified = false;
   if (tier !== "proof" && !opts.lenientCwe) {
     // A wrong claim is a wrong answer: "crypto failure at /goto" is not the
     // open redirect. But SILENCE is not a wrong answer - plenty of DAST tools
-    // map CWEs poorly - so an unclassified finding still earns the bug when it
+    // map CWEs poorly - so a finding with no CWE still earns the bug when it
     // pins the anchor precisely, and simply earns no classification credit.
     const claimed = reported.some(Boolean);
     if (claimed && cwe.weight === 0) return null;
     if (!claimed && (tier === "weak" || (tier === "source" && loose))) return null;
+    if (!claimed && tier === "route") {
+      // ...except that a route is not precise about WHICH bug: it carries every
+      // defect of its handler. So the claim comes from the finding's own words
+      // instead, and a claim of another family is as wrong as a reported one.
+      // The credit stays zero - the tool did not classify it.
+      const inferred = guessCwe(f.title, ...(f.tags ?? []));
+      if (!inferred) unclassified = true;
+      else if (bestCweCredit([inferred], g.cwe, { aliases: g.cweAliases, expectedFamily: g.family }).weight === 0) {
+        return null;
+      } else why.push(`claim ${inferred}`);
+    }
   }
 
   return {
@@ -364,6 +483,7 @@ function pairFor(
     tier,
     cwe,
     why,
+    unclassified,
     ...weigh({
       tier,
       cwe,
@@ -394,6 +514,7 @@ function weigh(x: {
 }): { score: number; spec: number } {
   const has = (prefix: string) => x.why.some((w) => w.startsWith(prefix));
   const exactLine = x.why.some((w) => /^line \d+$/.test(w));
+  const placeholder = x.why.some(isParamPath) ? PARAM_PATH_PENALTY : 0;
   const base = TIER_WEIGHT[x.tier];
 
   const bonus =
@@ -406,14 +527,15 @@ function weigh(x: {
     (x.sourceExact ? 0.25 : 0);
 
   return {
-    score: base + x.cwe.weight * 2 + bonus - (x.loose ? 0.5 : 0),
+    score: base + x.cwe.weight * 2 + bonus - (x.loose ? 0.5 : 0) - placeholder,
     spec:
       base +
       (exactLine ? 1 : 0) +
       (has("symbol ") ? 0.5 : 0) +
       (has("param ") ? 0.5 : 0) +
       (x.marker ? 1 : 0) -
-      (x.loose ? 1 : 0),
+      (x.loose ? 1 : 0) -
+      placeholder,
   };
 }
 

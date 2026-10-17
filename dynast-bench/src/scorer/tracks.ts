@@ -99,7 +99,8 @@ export function discoveryTrack(
 /**
  * Recall split by the stack-specific key an app happens to carry:
  * `injection_channel` and `tool` (llmagent/llmchat), `documented` (swagger),
- * `segment` (network), `transport` (websocket). Only keys present are reported.
+ * `segment` (network), `transport` (websocket), and `logic`/`actors`/`steps`
+ * on business-logic bugs. Only keys present are reported.
  */
 export function extraBreakdowns(
   vulns: GtVulnerability[],
@@ -111,6 +112,10 @@ export function extraBreakdowns(
     ["by_documented", (v) => (v.documented === undefined ? null : v.documented ? "documented" : "shadow")],
     ["by_segment", (v) => (v.segment ? String(v.segment) : null)],
     ["by_transport", (v) => (v.transport ? String(v.transport) : null)],
+    // business-logic bugs only: the entries that carry logic/actors/steps
+    ["by_logic", (v) => (v.logic ? String(v.logic) : null)],
+    ["by_actors", (v) => (v.actors ? (Number(v.actors) === 1 ? "1 actor" : `${v.actors} actors`) : null)],
+    ["by_steps", (v) => (v.steps ? (Number(v.steps) === 1 ? "single request" : "multi-step") : null)],
   ];
 
   const out: Record<string, Record<string, Bucket>> = {};

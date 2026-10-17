@@ -8,7 +8,10 @@
  *   2. matched a bug              -> true positive
  *   3. admissible against a bug
  *      someone else already won   -> duplicate (noise, not a false alarm)
- *   4. anything else              -> false positive
+ *   4. on a bug's route, but claims
+ *      nothing nameable           -> unclassified (neither: it located the
+ *                                    route, not the bug - see match.ts)
+ *   5. anything else              -> false positive
  *
  * (1) outranks (2) because a near-miss sits in the same FILE as its vulnerable
  * sibling: without the veto, a tool could flag the safe function and still be
@@ -32,7 +35,8 @@ import type {
 } from "../schema/types.ts";
 import { gtAnchors, isSourceOnly, nearMissAnchors, type GtAnchors } from "./anchors.ts";
 import { coverageTrack, type CoverageTrack, type EvidenceSource } from "./coverage.ts";
-import { assign, candidatesFor, type Candidate, type Tier } from "./match.ts";
+import { anchorRoutes, assign, candidatesFor, type Candidate, type Tier } from "./match.ts";
+import { surfaceRoutes } from "../schema/operations.ts";
 import {
   bucketize,
   DIFFICULTY_ORDER,
@@ -90,6 +94,15 @@ export interface DupRow {
   variant: Variant;
 }
 
+/** A finding on a bug's route that claims nothing the scorer can name. */
+export interface UnclassifiedRow {
+  finding_id: string;
+  /** the bug whose route it sits on */
+  gt_id: string;
+  where: string;
+  why: string;
+}
+
 export interface ScoreReport {
   app: string;
   tool: { name: string; version?: string; mode?: string };
@@ -112,6 +125,11 @@ export interface ScoreReport {
     fp_fixed_bug: number;
     fp_other: number;
     duplicates: number;
+    /**
+     * findings on a bug's route with no nameable claim - neither a true nor a
+     * false positive, so excluded from precision
+     */
+    unclassified: number;
     /** negative observations (a port reported closed) - excluded from precision */
     informational: number;
   };
@@ -146,6 +164,7 @@ export interface ScoreReport {
   misses: MissRow[];
   false_positives: FpRow[];
   duplicates: DupRow[];
+  unclassified: UnclassifiedRow[];
   warnings: string[];
 }
 
@@ -156,8 +175,11 @@ export interface ScoreInput {
   runs: FindingsFile[];
   lenientCwe?: boolean;
   /**
-   * The app's endpoint catalog. Absent = no coverage track at all, which is the
-   * point: a missing trace must read as "not measured", never as "reached 0%".
+   * The app's endpoint catalog. It is the route table an answer-key placeholder
+   * yields to (a finding at a static route the catalog lists is never credited
+   * to a `{param}` sibling), and with `endpoints` it is the coverage track. No
+   * trace = no coverage track at all, which is the point: a missing trace must
+   * read as "not measured", never as "reached 0%".
    */
   surface?: Surface;
   /** what the tool says it discovered */
@@ -212,6 +234,11 @@ export function scoreApp(input: ScoreInput): ScoreReport {
   const vulns = gt.vulnerabilities;
   const anchors: GtAnchors[] = vulns.map(gtAnchors);
   const nmAnchors = gt.near_misses.map(nearMissAnchors);
+  // The app's route table, which a placeholder in any anchor yields to: every path
+  // the answer key names (bug or near-miss) plus the SURFACE catalog when given.
+  // One table for all three matcher calls below, so a finding at a static route
+  // is that route whichever list is being matched.
+  const routes = [...new Set([...anchorRoutes([...anchors, ...nmAnchors]), ...surfaceRoutes(input.surface)])];
 
   const all: Tagged[] = [];
   for (const run of input.runs) {
@@ -239,7 +266,7 @@ export function scoreApp(input: ScoreInput): ScoreReport {
     const nmCands = candidatesFor(
       all.map((t) => t.finding),
       nmAsGt,
-      { lenientCwe: true },
+      { lenientCwe: true, routes },
     );
     for (const c of nmCands) {
       if (nmHitsByFinding.has(c.findingIndex)) continue;
@@ -262,7 +289,7 @@ export function scoreApp(input: ScoreInput): ScoreReport {
   const allCands = candidatesFor(
     vulnRun.map((t) => t.finding),
     anchors,
-    { lenientCwe: input.lenientCwe },
+    { lenientCwe: input.lenientCwe, routes },
   );
   /**
    * The near-miss veto. A finding whose anchors fit a near-miss MORE precisely
@@ -282,8 +309,14 @@ export function scoreApp(input: ScoreInput): ScoreReport {
     if (!nm?.specific) continue;
     if (nm.spec > (bestSpecPerFinding.get(fi) ?? -Infinity)) vetoed.add(fi);
   }
-  const cands = allCands.filter((c) => !vetoed.has(c.findingIndex));
+  const unvetoed = allCands.filter((c) => !vetoed.has(c.findingIndex));
+  // an unclassified pair locates a route, not a bug: never a true positive
+  const cands = unvetoed.filter((c) => !c.unclassified);
   const asg = assign(cands, vulnRun.length);
+  const unclassifiedBy = new Map<number, Candidate>();
+  for (const c of unvetoed) {
+    if (c.unclassified && !unclassifiedBy.has(c.findingIndex)) unclassifiedBy.set(c.findingIndex, c);
+  }
 
   const matches: MatchRow[] = [];
   const matchedGt = new Set<number>();
@@ -314,6 +347,7 @@ export function scoreApp(input: ScoreInput): ScoreReport {
   // --- classify every finding -------------------------------------------------
   const falsePositives: FpRow[] = [];
   const duplicates: DupRow[] = [];
+  const unclassified: UnclassifiedRow[] = [];
   const nmHit = new Set<string>();
 
 
@@ -352,6 +386,16 @@ export function scoreApp(input: ScoreInput): ScoreReport {
       duplicates.push({ finding_id: t.finding.id, gt_id: vulns[dup.gtIndex]!.id, variant: "vuln" });
       return;
     }
+    const vague = unclassifiedBy.get(localIndex);
+    if (vague) {
+      unclassified.push({
+        finding_id: t.finding.id,
+        gt_id: vulns[vague.gtIndex]!.id,
+        where: where(t.finding),
+        why: vague.why.join(", "),
+      });
+      return;
+    }
     falsePositives.push(fpRow(t, "other"));
   });
 
@@ -360,7 +404,7 @@ export function scoreApp(input: ScoreInput): ScoreReport {
     const safeCands = candidatesFor(
       safeRun.map((t) => t.finding),
       anchors,
-      { lenientCwe: input.lenientCwe },
+      { lenientCwe: input.lenientCwe, routes },
     );
     const onFixedBug = new Map<number, string>();
     for (const c of safeCands) {
@@ -375,14 +419,16 @@ export function scoreApp(input: ScoreInput): ScoreReport {
 
   // --- misses, with a diagnosis where one is available ------------------------
   const closestFor = (gi: number) => {
-    const near = cands.find((c) => c.gtIndex === gi);
+    // an unclassified pair is the most useful diagnosis there is: "found the
+    // route, never said what was wrong with it"
+    const near = unvetoed.find((c) => c.gtIndex === gi);
     if (!near) return undefined;
     const t = vulnRun[near.findingIndex]!;
     return {
       finding_id: t.finding.id,
       tier: near.tier,
       cwe_reported: t.finding.cwe ?? null,
-      why: near.why.join(", "),
+      why: [...near.why, ...(near.unclassified ? ["unclassified"] : [])].join(", "),
     };
   };
   const misses: MissRow[] = [];
@@ -439,6 +485,7 @@ export function scoreApp(input: ScoreInput): ScoreReport {
       fp_fixed_bug: fpByKind["fixed-bug"],
       fp_other: fpByKind.other,
       duplicates: duplicates.length,
+      unclassified: unclassified.length,
       informational,
     },
     metrics: {
@@ -502,6 +549,7 @@ export function scoreApp(input: ScoreInput): ScoreReport {
     misses,
     false_positives: falsePositives,
     duplicates,
+    unclassified,
     warnings,
   };
 

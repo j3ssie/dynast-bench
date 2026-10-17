@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import PostFilter from "../_components/PostFilter";
+import NewDraft from "../_components/NewDraft";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,7 @@ export default async function PostsPage() {
     <main>
       <h1>Posts</h1>
       <PostFilter count={posts.length} />
+      <NewDraft />
       {posts.map((p) => (
         <div key={p.id} className="card">
           <a href={`/posts/${p.id}`}><strong>{p.title}</strong></a>

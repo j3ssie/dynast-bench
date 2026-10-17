@@ -73,10 +73,14 @@ export function synthetic(app: string, gt: GroundTruth, mode: SyntheticMode): Fi
         const qs = Object.entries(h.query)
           .map(([k, val], j) => `${j ? "&" : "?"}${k}=${val}`)
           .join("");
+        // a bug reached through a header is reported through it - the header a
+        // black-box tool sent is what it can see
+        const header = h.params.length ? undefined : h.headers?.[0];
         location.http = {
           method: h.method ?? "GET",
           path: h.path ?? undefined,
-          param: h.params[0],
+          param: h.params[0] ?? header,
+          ...(header ? { param_in: "header" } : {}),
           url: `http://127.0.0.1:${h.port ?? 13311}${h.path}${qs}`,
         };
       }

@@ -155,7 +155,7 @@ describe("endpoints.json", () => {
   test("splits the misses the way the README reports", () => {
     const t = track("endpoints.json", "nextjs", true);
     expect(t.detection_given_touch).toBe(0.25);
-    expect(t.discovery_misses.length).toBe(11);
+    expect(t.discovery_misses.length).toBe(16);
     expect(t.analysis_misses.length).toBe(18);
     expect(t.unmapped_vulns).toEqual([]);
   });

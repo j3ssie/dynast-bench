@@ -36,10 +36,24 @@ export const ROUTES = {
   signupComplete: ["signup", "complete"],
   signupResend: ["signup", "resend"],
   signupDraft: ["signup", "draft"],
+  posts: ["posts"],
+  post: ["posts", "{id}"],
+  postSubmit: ["posts", "{id}", "submit"],
+  postApprove: ["posts", "{id}", "approve"],
+  postPublish: ["posts", "{id}", "publish"],
+  comment: ["comments", "{id}"],
+  memberRole: ["org", "members", "{id}", "role"],
+  myOrgs: ["me", "orgs"],
+  joinRequests: ["orgs", "{slug}", "join-requests"],
+  joinApprove: ["orgs", "{slug}", "join-requests", "{id}", "approve"],
+  switchOrg: ["session", "org"],
 } satisfies Record<string, string[]>;
 
 export type RouteName = keyof typeof ROUTES;
 
+/** Build a route's URL: `{placeholder}` segments take `extra` in order, any rest is appended. */
 export function api(name: RouteName, ...extra: (string | number)[]): string {
-  return [API_BASE, ...ROUTES[name], ...extra.map(String)].join("/");
+  const rest = extra.map(String);
+  const segs = ROUTES[name].map((s) => (s.startsWith("{") ? (rest.shift() ?? s) : s));
+  return [API_BASE, ...segs, ...rest].join("/");
 }

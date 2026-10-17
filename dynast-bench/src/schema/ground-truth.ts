@@ -7,11 +7,13 @@
 
 import { readFileSync } from "node:fs";
 
-import { isObj, str } from "./coerce.ts";
+import { isObj, num, str } from "./coerce.ts";
 import { normalizeCwe } from "./cwe.ts";
+import { splitAlt } from "./keys.ts";
 import {
   DIFFICULTIES,
   DISCOVERY_TIERS,
+  LOGIC_KINDS,
   REACHABILITIES,
   SEVERITIES,
   TAINTS,
@@ -41,6 +43,10 @@ function validateMatch(raw: unknown, at: string, errors: ValidationIssue[]): GtM
       if (params !== undefined && !Array.isArray(params)) {
         errors.push({ at: `${at}.http.params`, msg: "must be a list of parameter names" });
       }
+      const headers = raw.http.headers;
+      if (headers !== undefined && !Array.isArray(headers)) {
+        errors.push({ at: `${at}.http.headers`, msg: "must be a list of header names" });
+      }
       const port = raw.http.port === undefined ? undefined : Number(raw.http.port);
       if (port !== undefined && !Number.isFinite(port)) {
         errors.push({ at: `${at}.http.port`, msg: "must be a number" });
@@ -52,6 +58,10 @@ function validateMatch(raw: unknown, at: string, errors: ValidationIssue[]): GtM
           ? Object.fromEntries(Object.entries(q).map(([k, v]) => [k, String(v)]))
           : undefined,
         params: Array.isArray(params) ? params.map((p) => String(p)) : undefined,
+        // header names are case-insensitive (RFC 9110 §5.1); stored lowercased
+        headers: Array.isArray(headers)
+          ? headers.map((h) => String(h).trim().toLowerCase()).filter(Boolean)
+          : undefined,
         port: Number.isFinite(port as number) ? (port as number) : undefined,
       };
       if (!m.http.path) errors.push({ at: `${at}.http`, msg: "path is required" });
@@ -61,8 +71,8 @@ function validateMatch(raw: unknown, at: string, errors: ValidationIssue[]): GtM
     const arr = Array.isArray(raw.http_alt) ? raw.http_alt : [raw.http_alt];
     const alts = arr.map((x) => String(x).trim()).filter(Boolean);
     for (const p of alts) {
-      if (!p.startsWith("/")) {
-        errors.push({ at: `${at}.http_alt`, msg: `"${p}" must be a path starting with /` });
+      if (!splitAlt(p).path.startsWith("/")) {
+        errors.push({ at: `${at}.http_alt`, msg: `"${p}" must be a path starting with /, optionally after a verb` });
       }
     }
     // an alternate with no primary would score as an anchor nobody declared
@@ -180,6 +190,23 @@ export function validateGroundTruth(doc: unknown): ValidationResult<GroundTruth>
     const reach = str(raw.reachability);
     if (reach && !REACHABILITIES.includes(reach)) {
       warnings.push({ at: `${at}.reachability`, msg: `unusual reachability "${reach}"` });
+    }
+    // Business-logic extras travel together: a breakdown by actor count over
+    // entries that forgot to say what kind of logic bug they are (or the other
+    // way round) would quietly report recall over a different subset per axis.
+    const logicKeys = (["logic", "actors", "steps"] as const).filter((k) => raw[k] !== undefined);
+    if (logicKeys.length && logicKeys.length < 3) {
+      errors.push({ at, msg: `logic:, actors: and steps: go together (only ${logicKeys.join(", ")} set)` });
+    }
+    if (raw.logic !== undefined && !LOGIC_KINDS.includes(String(raw.logic))) {
+      errors.push({ at: `${at}.logic`, msg: `must be one of ${LOGIC_KINDS.join("|")} (got "${raw.logic}")` });
+    }
+    for (const k of ["actors", "steps"] as const) {
+      if (raw[k] === undefined) continue;
+      const n = num(raw[k]);
+      if (n === undefined || !Number.isInteger(n) || n < 1 || n > 20) {
+        errors.push({ at: `${at}.${k}`, msg: `must be a whole number 1-20 (got "${raw[k]}")` });
+      }
     }
     if (!isObj(raw.variant_paths) && !str(raw.route)) {
       errors.push({ at, msg: "needs variant_paths or route - nothing to anchor a finding to" });

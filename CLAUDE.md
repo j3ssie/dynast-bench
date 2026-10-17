@@ -45,7 +45,7 @@ image.
 
 ## Reference implementation
 
-**`vulnerable-apps/nextjs/` is fully built and validated (35 vulns + 15 near-misses,
+**`vulnerable-apps/nextjs/` is fully built and validated (40 vulns + 19 near-misses,
 tiered by `discovery:` and using the browser PoC harness).**
 Copy its patterns. `vulnerable-apps/_template/` is the empty skeleton to clone. Each app's
 vulnerability catalog and design notes live in
@@ -119,7 +119,8 @@ vulnerabilities:
   - id: SQLI-001                       # CLASS-NNN, unique
     variant_paths: { vuln: vuln/..., safe: safe/... }
     symbol: <function/route/method>
-    route: "GET /api/posts/search?q="  # or "" for source-only
+    route: "GET /api/posts/search?q="  # or "" for source-only; a bug reached
+                                       # through a header says so: "GET /x (header: x-y)"
     cwe: CWE-89
     owasp: "A03:2021-Injection"
     severity: high                     # info|low|medium|high|critical
@@ -132,12 +133,18 @@ vulnerabilities:
       http: { method: GET, path: "/api/posts/search", params: [q] }
       http_alt: ["/api/docs/"]         # other paths reaching the same sink, when
                                        # `route:` names more than one. Reporting
-                                       # ANY of them is the correct answer.
+                                       # ANY of them is the correct answer. A
+                                       # "POST /x" entry pins its own verb (a
+                                       # later step of a chain); bare inherits.
       file: { path: vuln/..., symbol: <symbol>, lines: [19, 33] }
       markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
     poc: ground-truth/verify/sqli_001.sh
     notes: >
       one-line description of the sink and how to reach it
+    # business-logic bugs only - all three or none (see below):
+    # logic: state                     # authz-missing|authz-wrong|state|invariant|binding
+    # actors: 2                        # sessions the exploit needs
+    # steps: 3                         # requests in the shortest exploit
 near_misses:
   - id: NM-SQL-001
     path: vuln/...
@@ -146,6 +153,33 @@ near_misses:
     match: { file: { path: vuln/..., symbol: <safe sibling>, lines: [19, 25] } }
     notes: "why this is safe"
 ```
+
+### Business-logic bugs (`logic:` / `actors:` / `steps:`)
+
+Access-control and workflow bugs are the class where no single request looks
+wrong, so they get three extra keys - set all three or none, `check` errors on a
+partial set:
+
+| key | means |
+|---|---|
+| `logic` | `authz-missing` (no check), `authz-wrong` (a check asking the wrong question: no ceiling, the wrong id source), `state` (ignores a record's lifecycle: pending vs active, running vs done, a stale session), `invariant` (a rule one write path forgets), `binding` (a client field bound into a privileged decision) |
+| `actors` | sessions the exploit needs - `2` means an attacker plus a victim/approver/admin |
+| `steps` | requests in the shortest exploit, setup included |
+
+`score` reports recall by logic class and by sessions needed. The pattern that
+makes a good one (see nextjs `MEMBERSHIP-STATE-001`, gin `CART-COUPON-001`):
+
+- **The bug lives in one step.** The safe twin changes one predicate there; that
+  step is the primary `match.http`. The step where the impact shows goes in
+  `route:` after `then`, and derive-match emits it as a verb-pinned `http_alt`
+  (`"POST /api/billing/checkout"`) - not every setup step.
+- **The near-miss is the same shape guarded, at its own route** (`DELETE` beside a
+  bug on `PATCH` is fine - anchors compare verb + path).
+- **PoCs hold one cookie jar per actor** (`new_jar` / `login_as` in nextjs and gin
+  `_lib.sh`), verify the state change through `/api/_verify/*`, and restore every
+  role, row and plan they touch.
+- `dynast-bench run` exports the seed accounts as `DYNAST_BENCH_ACCOUNTS`, so a
+  tool can hold two sessions without hardcoding passwords.
 
 ### `discovery:` - how far a tool has to crawl to find it
 
@@ -580,7 +614,8 @@ fallback.
   standalone image's `EXPOSE` ports, and `VULNERABILITIES.yaml` - so **a new app
   appears automatically**; keep those conventions intact and there's nothing to
   register. `--json` on every command.
-- **`run <app> -- <cmd>` hands the command target metadata and nothing else.** The
+- **`run <app> -- <cmd>` hands the command target metadata and the seed accounts
+  (`DYNAST_BENCH_ACCOUNTS`, JSON) and nothing else.** The
   answer key path and the verify token are behind `--trusted`, because a scanner
   that can read the expected findings - or ask `/api/_verify/*` for the seeded ids
   instead of discovering them - is not a scanner you can score.

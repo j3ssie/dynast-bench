@@ -45,6 +45,23 @@ export const DISCOVERY_TIERS = [
   "flow",
 ];
 
+/**
+ * What kind of business-logic flaw a bug is - the axis that says whether a tool
+ * can reason about rules, not just recognise sinks. Set on logic bugs only,
+ * together with `actors:` and `steps:`.
+ *
+ *   authz-missing   no check at all on the path that matters
+ *   authz-wrong     a check exists and asks the wrong question (no ceiling,
+ *                   the wrong id source, the wrong field)
+ *   state           the decision depends on, or ignores, where a record is in
+ *                   its lifecycle (pending vs active, running vs done, stale)
+ *   invariant       a business rule one write path forgets (re-validate, reset
+ *                   approval, keep a total sane)
+ *   binding         a client-controlled field is bound into a privileged
+ *                   decision (mass assignment, requested permission)
+ */
+export const LOGIC_KINDS = ["authz-missing", "authz-wrong", "state", "invariant", "binding"];
+
 // ------------------------------------------------------------- findings/v1 ---
 
 export interface HttpLocation {
@@ -166,6 +183,11 @@ export interface GtMatch {
     query?: Record<string, string>;
     /** injectable parameter names */
     params?: string[];
+    /**
+     * request headers the bug is reached through ("(header: x)" in `route:`); a
+     * route-tier match must name every one - see `httpHit` in scorer/match.ts
+     */
+    headers?: string[];
     /** set only for sidecar bugs (Jenkins, phpMyAdmin) that are not on the app port */
     port?: number;
   };
@@ -226,6 +248,12 @@ export interface GtVulnerability {
   injection_channel?: string;
   documented?: boolean;
   api_version?: string;
+  // business-logic extras - set all three or none (see LOGIC_KINDS)
+  /** distinct sessions the exploit needs: 1 = one account, 2 = attacker + a victim/approver */
+  actors?: number;
+  /** requests in the shortest exploit, setup included */
+  steps?: number;
+  logic?: string;
   [k: string]: unknown;
 }
 

@@ -17,6 +17,7 @@ model Organization {
   users       User[]
   posts       Post[]
   invitations Invitation[]
+  memberships Membership[]
 }
 
 model User {
@@ -31,9 +32,30 @@ model User {
   org          Organization @relation(fields: [orgId], references: [id])
   resetToken   String?
   resetExpires DateTime?
+  /// Bumped whenever the user's role or memberships change; a session minted
+  /// under an older value is meant to be dead.
+  sessionVersion Int     @default(0)
   posts        Post[]
   comments     Comment[]
+  memberships  Membership[]
   createdAt    DateTime  @default(now())
+}
+
+/// A user's seat in a workspace. A user's home org (User.orgId) has an active
+/// row; asking to join another org creates a pending one that an admin of that
+/// org approves. The session carries whichever org the user switched into.
+model Membership {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id])
+  orgId     String
+  org       Organization @relation(fields: [orgId], references: [id])
+  role      String       @default("user")
+  /// pending | active
+  status    String       @default("pending")
+  createdAt DateTime     @default(now())
+
+  @@unique([userId, orgId])
 }
 
 model Post {
@@ -41,6 +63,8 @@ model Post {
   title     String
   slug      String    @unique
   body      String
+  /// draft -> in_review -> approved -> published. Only an editor who is not the
+  /// author can move a post from in_review to approved.
   status    String    @default("draft")
   authorId  String
   author    User      @relation(fields: [authorId], references: [id])
@@ -81,6 +105,7 @@ model Invitation {
   orgId     String
   org       Organization @relation(fields: [orgId], references: [id])
   email     String
+  role      String   @default("user")
   token     String
   createdAt DateTime @default(now())
 }

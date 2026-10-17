@@ -11,6 +11,7 @@ export default async function PostPage({ params }: { params: Promise<{ id: strin
     <main>
       <h1>{post.title}</h1>
       <p>{post.body}</p>
+      <p><a href={`/posts/${post.id}/edit`}>Edit</a></p>
       <h2>Comments</h2>
       {post.comments.map((c) => (
         // FIXED XSS-STORED-001: comment body rendered as escaped text, not raw HTML.

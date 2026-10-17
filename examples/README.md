@@ -47,8 +47,8 @@ dynast-bench score nextjs examples/findings.json
 
 ```
 precision   100.0%   6 tp / 0 fp
-recall       17.1%   6 of 35 planted
-discrim.    100.0%   0/15 near-misses flagged
+recall       15.0%   6 of 40 planted
+discrim.    100.0%   0/19 near-misses flagged
 proven       83.3%   of true positives carried proof
 ```
 
@@ -74,7 +74,7 @@ dynast-bench score nextjs examples/findings.json --safe examples/findings-safe.j
 
 ```
 precision    75.0%   6 tp / 2 fp      (was 100% without the safe run)
-discrim.     93.3%   1/15 near-misses flagged
+discrim.     94.7%   1/19 near-misses flagged
 false positives: 2  (near-miss 1 · patched-twin 1 · other 0)
 ```
 
@@ -91,20 +91,20 @@ dynast-bench coverage nextjs examples/endpoints.json --findings examples/finding
 ```
 
 ```
-operations   62.5%   25 of 40
+operations   42.4%   25 of 59
 precision    96.2%   26 reported · 1 matched no cataloged operation
 detection    25.0%   of the bugs on operations it reached
-misses:      11 never reached the operation · 18 reached it and did not report
+misses:      16 never reached the operation · 18 reached it and did not report
 
   static-html    6/6   100.0%
   js-static      5/5   100.0%
-  js-runtime    11/19   57.9%
-  interaction    3/5    60.0%
-  flow           0/5     0.0%
+  js-runtime    11/30   36.7%
+  interaction    3/6    50.0%
+  flow           0/12    0.0%
 ```
 
 That bottom block is the point. This tool reads HTML and runs JS, but never
-completes a multi-step flow - so the 5 `flow` operations are unreachable to it,
+completes a multi-step flow - so the 12 `flow` operations are unreachable to it,
 and the bugs there are **discovery misses**, not analysis failures. The 18
 analysis misses are the opposite: it stood on the endpoint and did not notice.
 

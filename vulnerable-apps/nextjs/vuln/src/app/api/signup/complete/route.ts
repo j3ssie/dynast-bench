@@ -32,6 +32,7 @@ export async function POST(req: Request) {
       orgId: org.id,
     },
   });
+  await prisma.membership.create({ data: { userId: user.id, orgId: org.id, role: user.role, status: "active" } });
   await prisma.signupDraft.update({ where: { id: draft.id }, data: { completed: true } });
   return NextResponse.json({ ok: true, id: user.id, email: user.email, role: user.role });
 }

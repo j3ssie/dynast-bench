@@ -10,7 +10,7 @@
 
 import { str } from "../schema/coerce.ts";
 import { cweFamily } from "../schema/cwe.ts";
-import { httpKeyFromUrl, parseRoute, routePaths, type HttpKey, type NetKey } from "../schema/keys.ts";
+import { httpKeyFromUrl, parseRoute, routeSteps, splitAlt, type HttpKey, type NetKey } from "../schema/keys.ts";
 import type { Finding, GtMatch, GtNearMiss, GtVulnerability } from "../schema/types.ts";
 
 export interface FileAnchor {
@@ -57,7 +57,7 @@ export const anchorFingerprint = (v: GtVulnerability): string => {
   const a = gtAnchors(v);
   return JSON.stringify([
     a.cwe,
-    a.http.map((h) => [h.method, h.path, h.query, h.params]),
+    a.http.map((h) => [h.method, h.path, h.query, h.params, h.headers ?? []]),
     a.file.map((f) => [f.path, f.symbol, f.lines]),
     a.net,
     a.graphql,
@@ -85,13 +85,16 @@ function fromMatch(m: GtMatch): Anchors {
       path: m.http.path,
       query: m.http.query ?? {},
       params: m.http.params ?? [],
+      ...(m.http.headers?.length ? { headers: m.http.headers } : {}),
       port: m.http.port ?? null,
     });
   }
-  // a route naming two endpoints anchors on both - reporting either is correct
+  // a route naming two endpoints anchors on both - reporting either is correct.
+  // A bare alternate shares the primary's verb; "POST /x" pins its own.
   for (const alt of m.http_alt ?? []) {
-    const key = httpKeyFromUrl(alt, m.http?.method ?? undefined);
-    if (!a.http.some((h) => h.path === key.path)) a.http.push(key);
+    const { method, path } = splitAlt(alt);
+    const key = httpKeyFromUrl(path, method ?? m.http?.method ?? undefined);
+    if (!a.http.some((h) => h.path === key.path && h.method === key.method)) a.http.push(key);
   }
   if (m.file?.path) {
     a.file.push({ path: m.file.path, symbol: m.file.symbol, lines: m.file.lines });
@@ -128,10 +131,11 @@ function inferred(v: GtVulnerability): Anchors {
 
   const parsed = parseRoute(route);
   if (parsed.http?.path) a.http.push(parsed.http);
-  // a route naming two endpoints ("/api/schema/ and /api/docs/") anchors on both
-  for (const p of routePaths(route)) {
-    const extra = httpKeyFromUrl(p, parsed.http?.method ?? undefined);
-    if (!a.http.some((h) => h.path === extra.path)) a.http.push(extra);
+  // a route naming two endpoints ("/api/schema/ and /api/docs/") anchors on both;
+  // "GET /a then POST /b" keeps each step's own verb
+  for (const step of routeSteps(route)) {
+    const extra = httpKeyFromUrl(step.path, step.method ?? parsed.http?.method ?? undefined);
+    if (!a.http.some((h) => h.path === extra.path && h.method === extra.method)) a.http.push(extra);
   }
 
   if (parsed.net) {

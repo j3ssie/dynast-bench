@@ -110,6 +110,7 @@ func main() {
 	r.GET("/api/_verify/health", verifyHealth)
 	r.GET("/api/_verify/user", verifyUser)
 	r.GET("/api/_verify/post", verifyPost)
+	r.GET("/api/_verify/org", verifyOrg)
 	r.POST("/api/_verify/reset", verifyReset)
 	r.GET("/api/_verify/ssrf-beacon", ssrfBeacon)
 	r.GET("/api/_verify/ssrf-check", ssrfCheck)
@@ -136,6 +137,26 @@ func main() {
 	r.GET("/goto", gotoNext)                            // [REDIRECT-001] sink
 	r.GET("/search", searchPage)                        // [XSS-REFLECT-001] sink
 	r.GET("/notes/preview", notesPreview)               // [XSS-DOMPURIFY-001] sink
+
+	// Business-logic surface: workspaces, share links, billing, exports.
+	registerWorkspaceRoutes(r)                      // [GROUP-ORDER-001] [TENANT-SRC-001]
+	r.POST("/api/posts/:id/share", createShare)     // [SHARE-ESCALATE-001] step 1
+	r.GET("/api/share/:token", sharePreview)        // near-miss of SHARE-ESCALATE-001
+	r.POST("/api/share/:token/redeem", redeemShare) // [SHARE-ESCALATE-001] sink
+	r.DELETE("/api/share/:token", revokeShare)
+	r.GET("/api/shared/posts/:id", readShared)
+	r.PUT("/api/shared/posts/:id", editShared) // [SHARE-ESCALATE-001] impact
+	r.GET("/api/billing/cart", getCart)
+	r.POST("/api/billing/cart", startCart)          // [CART-COUPON-001] step 1
+	r.POST("/api/billing/cart/coupon", applyCoupon) // [CART-COUPON-001] step 2
+	r.PUT("/api/billing/cart/seats", changeSeats)   // near-miss of CART-COUPON-001
+	r.PUT("/api/billing/cart/plan", changePlan)     // [CART-COUPON-001] sink
+	r.POST("/api/billing/checkout", checkout)       // [CART-COUPON-001] impact
+	r.POST("/api/billing/cancel", cancelPlan)
+	r.POST("/api/exports", startExport)                // [EXPORT-STATE-001] step 1
+	r.GET("/api/exports/:id", exportStatus)            // near-miss of EXPORT-STATE-001
+	r.GET("/api/exports/:id/download", downloadExport) // [EXPORT-STATE-001] sink
+	r.DELETE("/api/exports/:id", deleteExport)
 	r.StaticFile("/static/purify.min.js", "/app/static/purify.min.js")
 
 	log.Printf("Gin benchmark app (vuln) listening on :3000")
@@ -164,11 +185,15 @@ func index(c *gin.Context) {
 
 func seedDB(ctx context.Context) error {
 	for _, stmt := range []string{
-		`DROP TABLE IF EXISTS grants, posts, users, organizations CASCADE`,
-		`CREATE TABLE organizations(id SERIAL PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL)`,
+		`DROP TABLE IF EXISTS exports, carts, collaborators, shares, grants, posts, users, organizations CASCADE`,
+		`CREATE TABLE organizations(id SERIAL PRIMARY KEY, name TEXT NOT NULL, slug TEXT UNIQUE NOT NULL, plan TEXT NOT NULL DEFAULT 'free', paid_cents INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE users(id SERIAL PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL, is_admin BOOLEAN NOT NULL, verified BOOLEAN NOT NULL, org_id INTEGER NOT NULL REFERENCES organizations(id), display_name TEXT NOT NULL DEFAULT '')`,
 		`CREATE TABLE posts(id SERIAL PRIMARY KEY, slug TEXT UNIQUE NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL, status TEXT NOT NULL, org_id INTEGER NOT NULL REFERENCES organizations(id), author_id INTEGER NOT NULL REFERENCES users(id))`,
 		`CREATE TABLE grants(id SERIAL PRIMARY KEY, post_id INTEGER NOT NULL REFERENCES posts(id), requester_id INTEGER NOT NULL REFERENCES users(id), token TEXT UNIQUE NOT NULL)`,
+		`CREATE TABLE shares(id SERIAL PRIMARY KEY, post_id INTEGER NOT NULL REFERENCES posts(id), created_by INTEGER NOT NULL REFERENCES users(id), token TEXT UNIQUE NOT NULL, permission TEXT NOT NULL)`,
+		`CREATE TABLE collaborators(id SERIAL PRIMARY KEY, share_id INTEGER NOT NULL REFERENCES shares(id) ON DELETE CASCADE, post_id INTEGER NOT NULL REFERENCES posts(id), user_id INTEGER NOT NULL REFERENCES users(id), permission TEXT NOT NULL, UNIQUE(post_id, user_id))`,
+		`CREATE TABLE carts(org_id INTEGER PRIMARY KEY REFERENCES organizations(id), plan TEXT NOT NULL, seats INTEGER NOT NULL, coupon TEXT NOT NULL DEFAULT '', price_cents INTEGER NOT NULL)`,
+		`CREATE TABLE exports(id SERIAL PRIMARY KEY, org_id INTEGER NOT NULL REFERENCES organizations(id), requester_id INTEGER NOT NULL REFERENCES users(id), status TEXT NOT NULL, payload TEXT NOT NULL DEFAULT '', created_at TIMESTAMPTZ NOT NULL DEFAULT now())`,
 	} {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {
 			return err
@@ -179,7 +204,7 @@ func seedDB(ctx context.Context) error {
 	if err := db.QueryRowContext(ctx, `INSERT INTO organizations(name,slug) VALUES('Acme','acme') RETURNING id`).Scan(&acme); err != nil {
 		return err
 	}
-	if err := db.QueryRowContext(ctx, `INSERT INTO organizations(name,slug) VALUES('Globex','globex') RETURNING id`).Scan(&globex); err != nil {
+	if err := db.QueryRowContext(ctx, `INSERT INTO organizations(name,slug,plan) VALUES('Globex','globex','team') RETURNING id`).Scan(&globex); err != nil {
 		return err
 	}
 	insertUser := func(email, pass, role string, admin bool, orgID int) (int, error) {
@@ -223,6 +248,10 @@ func seedDB(ctx context.Context) error {
 		if _, err := db.ExecContext(ctx, `INSERT INTO posts(slug,title,body,status,org_id,author_id) VALUES($1,$2,$3,$4,$5,$6)`, p.slug, p.title, p.body, p.status, p.orgID, p.authorID); err != nil {
 			return err
 		}
+	}
+	// Globex ran an export of its workspace earlier; the file is ready.
+	if _, err := db.ExecContext(ctx, `INSERT INTO exports(org_id,requester_id,status,payload) VALUES($1,$2,'done',$3)`, globex, user2ID, buildExport(ctx, globex)); err != nil {
+		return err
 	}
 	return nil
 }
@@ -270,7 +299,21 @@ func verifyPost(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"exists": false})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"exists": true, "id": p.ID, "slug": p.Slug, "status": p.Status, "authorEmail": authorEmail, "orgSlug": orgSlug, "body": p.Body})
+	c.JSON(http.StatusOK, gin.H{"exists": true, "id": p.ID, "slug": p.Slug, "title": p.Title, "status": p.Status, "authorEmail": authorEmail, "orgSlug": orgSlug, "body": p.Body})
+}
+
+func verifyOrg(c *gin.Context) {
+	if !requireVerify(c) {
+		return
+	}
+	var id, paid int
+	var plan string
+	_ = db.QueryRowContext(c.Request.Context(), `SELECT id,plan,paid_cents FROM organizations WHERE slug=$1`, c.Query("slug")).Scan(&id, &plan, &paid)
+	if id == 0 {
+		c.JSON(http.StatusOK, gin.H{"exists": false})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"exists": true, "id": id, "plan": plan, "paidCents": paid})
 }
 
 // verifyReset restores state the mutating PoCs touch, so PoCs stay order-independent.
@@ -281,6 +324,11 @@ func verifyReset(c *gin.Context) {
 	ctx := c.Request.Context()
 	_, _ = db.ExecContext(ctx, `UPDATE users SET role='user', is_admin=false, display_name='user1@bench.local' WHERE email='user1@bench.local'`)
 	_, _ = db.ExecContext(ctx, `DELETE FROM grants`)
+	_, _ = db.ExecContext(ctx, `DELETE FROM shares`)
+	_, _ = db.ExecContext(ctx, `DELETE FROM carts`)
+	_, _ = db.ExecContext(ctx, `UPDATE organizations SET plan = CASE slug WHEN 'globex' THEN 'team' ELSE 'free' END, paid_cents = 0`)
+	// every export but the seeded Globex one (the oldest row)
+	_, _ = db.ExecContext(ctx, `DELETE FROM exports WHERE id <> (SELECT min(id) FROM exports)`)
 	beaconMu.Lock()
 	beaconHits = map[string]bool{}
 	beaconMu.Unlock()

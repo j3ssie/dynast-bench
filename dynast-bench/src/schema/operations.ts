@@ -20,8 +20,8 @@
  *     and an agent-run endpoint vs the tools the agent can call.
  */
 
-import { httpKeyFromUrl, normalizeMethod, pathGlobMatches, templatePath } from "./keys.ts";
-import type { OperationKind, OperationRef, SurfaceOperation } from "./types.ts";
+import { httpKeyFromUrl, normalizeMethod, routedPathMatch, templatePath } from "./keys.ts";
+import type { OperationKind, OperationRef, Surface, SurfaceOperation } from "./types.ts";
 
 export type MatchPass = "strict" | "loose";
 
@@ -113,9 +113,30 @@ export function opKey(ref: OperationRef): string {
   }
 }
 
-/** Path match, falling back to the case/slash-folding pass. */
-const pathPass = (want: string, got: string): MatchPass | null =>
-  pathGlobMatches(want, got) ? "strict" : pathGlobMatches(want, got, true) ? "loose" : null;
+/**
+ * Path match, falling back to the case/slash-folding pass. `routes` is the
+ * route table a catalog placeholder yields to (see `routedPathMatch`).
+ */
+const pathPass = (want: string, got: string, routes: readonly string[]): MatchPass | null =>
+  routedPathMatch(want, got, false, routes)
+    ? "strict"
+    : routedPathMatch(want, got, true, routes)
+      ? "loose"
+      : null;
+
+/**
+ * The catalog's http paths - the app's route table, which a placeholder in the
+ * catalog or in the answer key yields to: `/api/posts/list` is its own operation,
+ * never `/api/posts/{id}` with id=list.
+ */
+export const surfaceRoutes = (surface: Surface | undefined): string[] => [
+  ...new Set(
+    (surface?.operations ?? [])
+      .filter((op) => op.kind === "http")
+      .map((op) => refPath(op))
+      .filter((p): p is string => !!p),
+  ),
+];
 
 /**
  * Name match where the exact spelling is the strict answer and a folded one
@@ -151,7 +172,11 @@ const weakest = (...passes: (MatchPass | null)[]): MatchPass | null =>
  * but the report says so, because on weirdproxy a loose hit may be the wrong
  * endpoint entirely.
  */
-export function opMatches(want: SurfaceOperation, got: OperationRef): MatchPass | null {
+export function opMatches(
+  want: SurfaceOperation,
+  got: OperationRef,
+  routes: readonly string[] = [],
+): MatchPass | null {
   const kind = want.kind;
   if (refKind(got) !== kind) return null;
 
@@ -182,7 +207,7 @@ export function opMatches(want: SurfaceOperation, got: OperationRef): MatchPass 
         portPass = "loose";
       }
 
-      return weakest(pathPass(wantPath, gotPath), methodPass, portPass);
+      return weakest(pathPass(wantPath, gotPath, routes), methodPass, portPass);
     }
 
     case "graphql": {
@@ -200,7 +225,7 @@ export function opMatches(want: SurfaceOperation, got: OperationRef): MatchPass 
       // endpoint named on the catalog side but left implicit in the report is a
       // loose hit; neither side naming one is fine
       const epPass: MatchPass | null =
-        wantEp && gotEp ? pathPass(wantEp, gotEp) : wantEp ? "loose" : "strict";
+        wantEp && gotEp ? pathPass(wantEp, gotEp, []) : wantEp ? "loose" : "strict";
       if (!epPass) return null;
       if (want.namespace && lower(got.namespace ?? "/") !== lower(want.namespace)) return null;
       if (!agrees(want.channel, got.channel) || (want.channel && !got.channel)) return null;

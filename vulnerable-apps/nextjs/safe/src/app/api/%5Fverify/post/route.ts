@@ -13,7 +13,7 @@ export async function GET(req: Request) {
   const p = await prisma.post.findUnique({ where: { slug }, include: { author: true, org: true, comments: true } });
   if (!p) return NextResponse.json({ exists: false });
   return NextResponse.json({
-    exists: true, id: p.id, status: p.status, title: p.title,
+    exists: true, id: p.id, status: p.status, title: p.title, body: p.body,
     authorEmail: p.author.email, orgSlug: p.org.slug, commentCount: p.comments.length,
   });
 }

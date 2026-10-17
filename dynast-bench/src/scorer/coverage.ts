@@ -22,7 +22,7 @@
  * one.
  */
 
-import { opKey, opMatches, refKind, type MatchPass } from "../schema/operations.ts";
+import { opKey, opMatches, refKind, surfaceRoutes, type MatchPass } from "../schema/operations.ts";
 import type {
   GtVulnerability,
   ReportedEndpoint,
@@ -113,6 +113,9 @@ export function coverageTrack(input: CoverageInput): CoverageTrack {
     (o) => (o.variant ?? "both") === "both" || o.variant === variant,
   );
 
+  // a reported static route reaches that route only, never a placeholder sibling
+  const routes = surfaceRoutes(input.surface);
+
   // keyed by operation id: presence IS "touched", the value is which pass paid
   const passById = new Map<string, MatchPass>();
   const unknown: string[] = [];
@@ -122,7 +125,7 @@ export function coverageTrack(input: CoverageInput): CoverageTrack {
     if (!refKind(got)) continue;
     let any = false;
     for (const want of expected) {
-      const pass = opMatches(want, got);
+      const pass = opMatches(want, got, routes);
       if (!pass) continue;
       any = true;
       // strict wins if anything ever matched strictly

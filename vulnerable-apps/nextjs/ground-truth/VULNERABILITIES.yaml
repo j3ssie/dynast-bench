@@ -36,7 +36,7 @@ vulnerabilities:
     reachability: pre-auth
     near_miss: null
     match:
-      http: { method: GET, path: "/api/admin/users" }
+      http: { method: GET, path: "/api/admin/users", headers: [x-middleware-subrequest] }
       file: { path: vuln/src/middleware.ts, symbol: middleware, lines: [19, 39] }
     poc: ground-truth/verify/mw_bypass_001.sh
     notes: >
@@ -111,10 +111,13 @@ vulnerabilities:
     discovery: js-runtime
     taint: in-file
     reachability: user
+    logic: authz-missing
+    actors: 1
+    steps: 1
     near_miss: null
     match:
       http: { method: GET, path: "/api/posts/{id}" }
-      file: { path: "vuln/src/app/api/posts/[id]/route.ts", symbol: GET, lines: [8, 21] }
+      file: { path: "vuln/src/app/api/posts/[id]/route.ts", symbol: GET, lines: [48, 61] }
       markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
     poc: ground-truth/verify/idor_001.sh
     notes: "No org/membership check; any authed user reads any post across tenants."
@@ -130,6 +133,9 @@ vulnerabilities:
     discovery: js-runtime
     taint: in-file
     reachability: user
+    logic: binding
+    actors: 1
+    steps: 1
     near_miss: null
     match:
       http: { method: PATCH, path: "/api/users/me" }
@@ -148,6 +154,9 @@ vulnerabilities:
     discovery: js-runtime
     taint: in-file
     reachability: user
+    logic: authz-missing
+    actors: 1
+    steps: 1
     near_miss: null
     match:
       http: { method: POST, path: "/api/users/{id}/promote" }
@@ -187,7 +196,7 @@ vulnerabilities:
     near_miss: NM-XSS-001
     match:
       http: { method: GET, path: "/posts/{id}" }
-      file: { path: "vuln/src/app/posts/[id]/page.tsx", symbol: PostPage, lines: [18, 24] }
+      file: { path: "vuln/src/app/posts/[id]/page.tsx", symbol: PostPage, lines: [19, 25] }
     poc: ground-truth/verify/xss_stored_001.sh
     notes: "Comment body rendered via dangerouslySetInnerHTML; title (text) is the near-miss."
 
@@ -316,7 +325,7 @@ vulnerabilities:
     near_miss: NM-TOKEN-001
     match:
       http: { method: GET, path: "/integrations" }
-      http_alt: ["/api/integrations/sync"]
+      http_alt: ["POST /api/integrations/sync"]
       file: { path: vuln/src/lib/integrations.ts, symbol: SYNC_BASIC_AUTH, lines: [17, 27] }
     poc: ground-truth/verify/creds_bundle_001.sh
     notes: >
@@ -444,7 +453,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { method: POST, path: "/api/auth/login" }
-      file: { path: vuln/src/lib/session.ts, symbol: newSessionId, lines: [8, 56] }
+      file: { path: vuln/src/lib/session.ts, symbol: newSessionId, lines: [13, 59] }
     poc: ground-truth/verify/session_001.sh
     notes: >
       Session id is two Math.random().toString(36) draws — low entropy and
@@ -463,6 +472,9 @@ vulnerabilities:
     discovery: js-runtime
     taint: in-file
     reachability: user
+    logic: invariant
+    actors: 1
+    steps: 1
     near_miss: null
     match:
       http: { method: POST, path: "/api/billing/seats" }
@@ -484,7 +496,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { method: POST, path: "/api/invites" }
-      file: { path: vuln/src/app/api/invites/route.ts, symbol: POST, lines: [8, 27] }
+      file: { path: vuln/src/app/api/invites/route.ts, symbol: POST, lines: [16, 38] }
     poc: ground-truth/verify/race_001.sh
     notes: "Non-atomic seat check-then-act; concurrent invites exceed the limit. Needs fresh seed."
 
@@ -670,6 +682,9 @@ vulnerabilities:
     discovery: flow
     taint: in-file
     reachability: pre-auth
+    logic: binding
+    actors: 1
+    steps: 3
     near_miss: null
     match:
       http: { method: POST, path: "/api/signup/profile" }
@@ -691,10 +706,13 @@ vulnerabilities:
     discovery: flow
     taint: in-file
     reachability: pre-auth
+    logic: state
+    actors: 1
+    steps: 2
     near_miss: null
     match:
       http: { method: POST, path: "/api/signup/complete" }
-      file: { path: vuln/src/app/api/signup/complete/route.ts, symbol: POST, lines: [8, 38] }
+      file: { path: vuln/src/app/api/signup/complete/route.ts, symbol: POST, lines: [8, 39] }
     poc: ground-truth/verify/signup_stepskip_001.sh
     notes: >
       The final step never checks the draft reached the verified state, so posting
@@ -711,6 +729,9 @@ vulnerabilities:
     discovery: flow
     taint: in-file
     reachability: pre-auth
+    logic: authz-missing
+    actors: 1
+    steps: 2
     near_miss: null
     match:
       http: { method: GET, path: "/api/signup/draft/{id}" }
@@ -720,6 +741,144 @@ vulnerabilities:
       Any draft is readable by its autoincrement id, unauthenticated, and the row
       carries the email AND the verification code emailed to it — counting down
       from your own id walks every registration in progress.
+
+  # ---- business logic: authorization that exists but asks the wrong question,
+  # ---- state that one check ignores, and invariants one write path forgets.
+  # ---- Tagged logic/actors/steps; `actors` counts the sessions the exploit needs.
+  - id: BOLA-WRITE-001
+    variant_paths: { vuln: "vuln/src/app/api/comments/[id]/route.ts", safe: "safe/src/app/api/comments/[id]/route.ts" }
+    symbol: PATCH
+    route: "PATCH /api/comments/{id}"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    discovery: js-runtime
+    taint: in-file
+    reachability: user
+    logic: authz-missing
+    actors: 2
+    steps: 2
+    near_miss: NM-BOLA-WRITE-001
+    match:
+      http: { method: PATCH, path: "/api/comments/{id}" }
+      file: { path: "vuln/src/app/api/comments/[id]/route.ts", symbol: PATCH, lines: [20, 34] }
+    poc: ground-truth/verify/bola_write_001.sh
+    notes: >
+      Comment edit updates by id alone - no author check, no org check - so a
+      Globex user rewrites an Acme editor's comment (and the post page renders
+      comment bodies as HTML). The read-side IDOR-001 has a write-side twin here;
+      comment ids are cuids that never appear in a page, so testing it takes a
+      second account's comment.
+
+  - id: ROLE-CEIL-001
+    variant_paths: { vuln: "vuln/src/app/api/org/members/[id]/role/route.ts", safe: "safe/src/app/api/org/members/[id]/role/route.ts" }
+    symbol: POST
+    route: "POST /api/org/members/{id}/role"
+    cwe: CWE-269
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    discovery: js-runtime
+    taint: in-file
+    reachability: user
+    logic: authz-wrong
+    actors: 1
+    steps: 1
+    near_miss: NM-ROLE-CEIL-001
+    match:
+      http: { method: POST, path: "/api/org/members/{id}/role" }
+      file: { path: "vuln/src/app/api/org/members/[id]/role/route.ts", symbol: POST, lines: [27, 45] }
+    poc: ground-truth/verify/role_ceil_001.sh
+    notes: >
+      Editors may manage member roles and the handler checks exactly that, but
+      never caps the role handed out (or the one taken away) at the caller's own -
+      an editor makes anyone, themselves included, an admin. Unlike AUTHZ-001 a
+      check is present; it is the wrong check. POST /api/invites carries the
+      correct ceiling.
+
+  - id: STALE-PRIV-001
+    variant_paths: { vuln: vuln/src/lib/session.ts, safe: safe/src/lib/session.ts }
+    symbol: getIdentity
+    route: "POST /api/org/members/{id}/role (session minted before the caller was demoted)"
+    cwe: CWE-613
+    owasp: "A07:2021-Identification and Authentication Failures"
+    severity: high
+    difficulty: H
+    discovery: flow
+    taint: cross-file
+    reachability: user
+    logic: state
+    actors: 2
+    steps: 3
+    near_miss: null
+    match:
+      http: { method: POST, path: "/api/org/members/{id}/role" }
+      file: { path: vuln/src/lib/session.ts, symbol: getIdentity, lines: [60, 91] }
+    poc: ground-truth/verify/stale_priv_001.sh
+    notes: >
+      getIdentity returns the role/org snapshotted into the Redis session (or JWT)
+      at login. A role change bumps the user's sessionVersion but nothing compares
+      it, so the editor signs in, an admin demotes them to user, and the old
+      session still manages member roles. Every route reads identity this way;
+      the role endpoint is where the PoC observes it.
+
+  - id: MEMBERSHIP-STATE-001
+    variant_paths: { vuln: vuln/src/app/api/session/org/route.ts, safe: safe/src/app/api/session/org/route.ts }
+    symbol: POST
+    route: "POST /api/session/org then GET /api/posts?status=draft"
+    cwe: CWE-863
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: H
+    discovery: flow
+    taint: cross-file
+    reachability: user
+    logic: state
+    actors: 1
+    steps: 3
+    near_miss: NM-MEMBERSHIP-001
+    match:
+      http: { method: POST, path: "/api/session/org" }
+      http_alt: ["GET /api/posts"]
+      file: { path: vuln/src/app/api/session/org/route.ts, symbol: POST, lines: [17, 31] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/membership_state_001.sh
+    notes: >
+      Asking to join a workspace (POST /api/orgs/{slug}/join-requests) creates a
+      pending membership row; the workspace switch looks for a row and never
+      checks its status, so an unapproved request switches the session into
+      Globex. From there the ordinary, correctly org-scoped GET /api/posts hands
+      over Globex's drafts. No handler on the path looks wrong except one
+      missing predicate; the alternate anchor is where the leak shows.
+
+  - id: APPROVAL-BYPASS-001
+    variant_paths: { vuln: "vuln/src/app/posts/[id]/edit/actions.ts", safe: "safe/src/app/posts/[id]/edit/actions.ts" }
+    symbol: autosaveDraft
+    route: "POST /posts/{id}/edit (Next-Action: autosaveDraft) then POST /api/posts/{id}/publish"
+    cwe: CWE-841
+    owasp: "A04:2021-Insecure Design"
+    severity: medium
+    difficulty: H
+    discovery: flow
+    taint: cross-file
+    reachability: user
+    logic: invariant
+    actors: 2
+    steps: 5
+    near_miss: NM-APPROVAL-001
+    match:
+      http: { method: POST, path: "/posts/{id}/edit" }
+      http_alt: ["/api/posts/{id}/publish"]
+      file: { path: "vuln/src/app/posts/[id]/edit/actions.ts", symbol: autosaveDraft, lines: [18, 29] }
+    poc: ground-truth/verify/approval_bypass_001.sh
+    notes: >
+      Maker-checker publishing: draft -> in_review -> approved (by another
+      editor) -> published. The editor page's autosave Server Action is
+      correctly author- and org-scoped but writes the body without dropping the
+      post back to draft, so the author edits after approval and publishes text
+      nobody reviewed. The action has no route of its own - it is a POST to the
+      page with a Next-Action id taken from the client chunk.
 
 near_misses:
   # Safe code planted next to a vulnerable sibling. Flagging any of these is a
@@ -777,7 +936,7 @@ near_misses:
     symbol: "PostPage (title render)"
     of: XSS-STORED-001
     match:
-      file: { path: "vuln/src/app/posts/[id]/page.tsx", symbol: "PostPage (title render)", lines: [5, 17] }
+      file: { path: "vuln/src/app/posts/[id]/page.tsx", symbol: "PostPage (title render)", lines: [5, 18] }
     notes: "post.title rendered as escaped text via JSX interpolation."
   - id: NM-B64-001
     path: vuln/src/lib/integrations.ts
@@ -858,6 +1017,50 @@ near_misses:
     notes: >
       Same "mint a secret the user must present back" job one function down, done
       with 32 bytes from the CSPRNG and unrelated to the clock.
+
+  - id: NM-BOLA-WRITE-001
+    path: "vuln/src/app/api/comments/[id]/route.ts"
+    symbol: DELETE
+    of: BOLA-WRITE-001
+    route: "DELETE /api/comments/{id}"
+    match:
+      http: { method: DELETE, path: "/api/comments/{id}" }
+      file: { path: "vuln/src/app/api/comments/[id]/route.ts", symbol: DELETE }
+    notes: >
+      The same by-id write on the same resource, one verb over, scoped to the
+      caller's own comments inside the query - a foreign id deletes nothing.
+  - id: NM-ROLE-CEIL-001
+    path: vuln/src/app/api/invites/route.ts
+    symbol: inviteRoleAllowed
+    of: ROLE-CEIL-001
+    match:
+      file: { path: vuln/src/app/api/invites/route.ts, symbol: inviteRoleAllowed, lines: [12, 15] }
+    notes: >
+      An invite carries the role the invitee gets, and this helper caps it at the
+      inviter's own rank - the ceiling the member-role endpoint leaves out.
+  - id: NM-MEMBERSHIP-001
+    path: vuln/src/app/api/me/orgs/route.ts
+    symbol: GET
+    of: MEMBERSHIP-STATE-001
+    route: "GET /api/me/orgs"
+    match:
+      http: { method: GET, path: "/api/me/orgs" }
+      file: { path: vuln/src/app/api/me/orgs/route.ts, symbol: GET }
+    notes: >
+      The workspace switcher's list asks the same "which orgs is this user in"
+      question and filters on status: active, so a pending request never shows.
+  - id: NM-APPROVAL-001
+    path: "vuln/src/app/api/posts/[id]/route.ts"
+    symbol: PATCH
+    of: APPROVAL-BYPASS-001
+    route: "PATCH /api/posts/{id}"
+    match:
+      http: { method: PATCH, path: "/api/posts/{id}" }
+      file: { path: "vuln/src/app/api/posts/[id]/route.ts", symbol: PATCH }
+    notes: >
+      The API edit path for the same post: org-scoped, author-or-editor, and a
+      content change below editor drops the post back to draft, so an approval
+      only ever covers the reviewed text.
 
 # Catalog items from benchmark-plans/nextjs.md deferred in v1 (not yet planted):
 #   next/image SSRF, upload SVG XSS, second-order SQLi, reset token, verbose-error

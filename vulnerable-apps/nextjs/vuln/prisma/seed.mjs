@@ -39,6 +39,12 @@ async function main() {
         isAdmin: u.isAdmin, verified: true, orgId: u.org, displayName: u.name,
       },
     });
+    // Every seed user is an active member of their home org, in their own role.
+    await prisma.membership.upsert({
+      where: { userId_orgId: { userId: byEmail[u.email].id, orgId: u.org } },
+      update: {},
+      create: { userId: byEmail[u.email].id, orgId: u.org, role: u.role, status: "active" },
+    });
   }
 
   const posts = [

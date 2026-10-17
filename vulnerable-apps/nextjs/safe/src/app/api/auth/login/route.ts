@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db";
-import { createSession } from "@/lib/session";
+import { createSession, identityFromUserRow } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -18,6 +18,6 @@ export async function POST(req: Request) {
   if (!user || !ok) {
     return NextResponse.json({ error: "invalid email or password" }, { status: 401 });
   }
-  await createSession({ userId: user.id, role: user.role, orgId: user.orgId, email: user.email });
+  await createSession(await identityFromUserRow(user));
   return NextResponse.json({ ok: true, role: user.role, email: user.email });
 }

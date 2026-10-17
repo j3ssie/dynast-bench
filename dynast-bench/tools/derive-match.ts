@@ -40,7 +40,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync, statSync } from "
 import { join } from "node:path";
 
 import { cweFamily } from "../src/schema/cwe.ts";
-import { fileKey, httpKeyFromUrl, parseRoute, routePaths, templatePath } from "../src/schema/keys.ts";
+import { fileKey, httpKeyFromUrl, parseRoute, routeSteps, templatePath } from "../src/schema/keys.ts";
 import { appsDir, listApps, repoRoot, vulnTagsIn } from "../src/repo.ts";
 import { flowMap, flowSeq, q } from "./yaml-emit.ts";
 import { parseUnifiedDiff, type Hunk } from "../src/twin-diff.ts";
@@ -349,13 +349,19 @@ function deriveOne(
       ]);
     }
     if (h.params.length) pairs.push(["params", flowSeq(h.params.map((p) => q(p)))]);
+    if (h.headers?.length) pairs.push(["headers", flowSeq(h.headers.map((x) => q(x)))]);
     if (h.port !== null) pairs.push(["port", String(h.port)]);
     body.push(`  http: ${flowMap(pairs)}`);
     hasHttp = true;
 
-    // a route naming a second endpoint keeps it as an alternate path
-    const extras = routePaths(route)
-      .map((p) => httpKeyFromUrl(p).path!)
+    // a route naming a second endpoint keeps it as an alternate path - pinned to
+    // its own verb when the route writes a different one in front of it ("GET /a
+    // then POST /b"), since inheriting the primary's would anchor a 405
+    const extras = routeSteps(route)
+      .map((s) => {
+        const path = httpKeyFromUrl(s.path).path!;
+        return s.method && s.method !== h.method ? `${s.method} ${path}` : path;
+      })
       .filter((p) => p !== h.path);
     if (extras.length) {
       body.push(`  http_alt: ${flowSeq([...new Set(extras)].map((p) => q(p)))}`);

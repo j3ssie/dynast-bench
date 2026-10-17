@@ -30,7 +30,7 @@ import { join } from "node:path";
 
 import { appsDir, groundTruthPath, listApps, repoRoot } from "../src/repo.ts";
 import { parseGroundTruthFile } from "../src/schema/ground-truth.ts";
-import { isHarnessPath, parseRoute, routePaths, templatePath } from "../src/schema/keys.ts";
+import { isHarnessPath, parseRoute, routePaths, splitAlt, templatePath } from "../src/schema/keys.ts";
 import { opKey } from "../src/schema/operations.ts";
 import { parseSurfaceFile } from "../src/schema/surface.ts";
 import { flowMap, flowSeq, q } from "./yaml-emit.ts";
@@ -60,6 +60,11 @@ interface StackRule {
   files: RegExp;
   /** [regex, methodGroup | literal method, pathGroup] */
   patterns: [RegExp, string | number, number][];
+  /**
+   * Route-prefix declarations: (receiver, parent receiver, prefix). A pattern
+   * hit called on a declared receiver gets that receiver's full prefix.
+   */
+  prefixes?: RegExp;
 }
 
 const RULES: Record<string, StackRule> = {
@@ -86,6 +91,8 @@ const RULES: Record<string, StackRule> = {
       [/\.(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|Any)\(\s*"([^"]+)"/g, 1, 2],
       [/\.(?:HandleFunc|Handle)\(\s*"(\/[^"]*)"/g, "ANY", 1],
     ],
+    // `orgs := r.Group("/api/orgs/:org")` - every orgs.GET(...) sits under it
+    prefixes: /\b(\w+)\s*:?=\s*(\w+)\.Group\(\s*"([^"]*)"/g,
   },
   // Spring Boot is handled by springRoutes() - a method-level @GetMapping is
   // only half a path, and the class-level @RequestMapping that completes it is
@@ -159,15 +166,13 @@ function publishedContexts(variantDir: string): { roots: string[]; exclude: stri
 }
 
 /**
- * Rewrite a framework's typed path converter into something a real request can
- * match.
+ * Rewrite a framework's typed path converter into the catalog's own syntax.
  *
- * `templatePath` folds `{anything}` to `{id}`, and `{id}` only matches segments
- * that LOOK like an identifier - a number, a UUID, a CUID. FastAPI's
- * `/uploads/avatars/{name:path}` carries a filename, so the cataloged entry
- * would never match the `/uploads/avatars/user1.png` a tool actually reports:
- * an endpoint nobody can reach, permanently capping coverage. A glob matches
- * whatever the segment really holds.
+ * A bare placeholder (`{name}`, `:name`) matches any one concrete segment, so it
+ * stays as written. A typed converter (FastAPI's `/uploads/avatars/{name:path}`)
+ * is framework syntax no client sends and the catalog check refuses it, so it is
+ * written as the glob that says the same thing: whatever the segment holds,
+ * `user1.png` included.
  */
 const normalizePath = (path: string): string => path.replace(/\{[^}]*:[^}]*\}/g, "*");
 
@@ -283,11 +288,19 @@ function scanSource(app: string, root: string): RouteHit[] {
         continue;
       }
       const rel = file.slice(root.length + 1).replace(/\\/g, "/");
+      const groups = new Map<string, string>();
+      for (const g of rule.prefixes ? src.matchAll(rule.prefixes) : []) {
+        groups.set(g[1]!, (groups.get(g[2]!) ?? "") + g[3]!);
+      }
       for (const [re, methodAt, pathAt] of rule.patterns) {
         re.lastIndex = 0;
         for (const m of src.matchAll(re)) {
-          const path = m[pathAt];
+          let path = m[pathAt];
           if (!path || !path.startsWith("/")) continue;
+          if (groups.size) {
+            const receiver = src.slice(Math.max(0, m.index! - 64), m.index).match(/(\w+)$/)?.[1];
+            if (receiver && groups.has(receiver)) path = groups.get(receiver)! + path;
+          }
           const method =
             typeof methodAt === "string" ? methodAt : (m[methodAt] ?? "GET").toUpperCase();
           hits.push({ method, path: normalizePath(path), from: rel });
@@ -299,6 +312,10 @@ function scanSource(app: string, root: string): RouteHit[] {
 }
 
 // -------------------------------------------------------- answer-key seeds ---
+
+/** Catalog id of an http operation: `http.<path-slug>[.<verb>]`. */
+const httpOpId = (path: string, method?: string | null) =>
+  `http.${slug(path)}${method && method !== "ANY" ? "." + method.toLowerCase() : ""}`;
 
 const slug = (s: string) =>
   s.toLowerCase().replace(/\{[^}]*\}/g, "id").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") ||
@@ -385,7 +402,7 @@ function seedsFromGroundTruth(gt: GroundTruth): SurfaceOperation[] {
     if (isHarnessPath(http.path)) continue;
     const method = (m.http?.method ?? http.method ?? undefined) as string | undefined;
     push({
-      id: `http.${slug(http.path)}${method ? "." + method.toLowerCase() : ""}`,
+      id: httpOpId(http.path, method),
       kind: "http",
       method,
       path: http.path,
@@ -404,19 +421,28 @@ function seedsFromGroundTruth(gt: GroundTruth): SurfaceOperation[] {
     // reaches the sink", never that it takes the same verb. nextjs's
     // CREDS-BUNDLE-001 is `GET /integrations (-> chunk) then POST
     // /api/integrations/sync`, so inheriting GET produced a catalog entry the
-    // app answers with 405: unreachable, and a permanent cap on coverage.
+    // app answers with 405: unreachable, and a permanent cap on coverage. An
+    // alternate that pins its own verb ("POST /x") is the one exception.
     for (const alt of m.http_alt ?? []) {
-      push({ id: `http.${slug(alt)}`, kind: "http", path: alt, ...common });
+      const { method: altMethod, path } = splitAlt(alt);
+      push({
+        id: httpOpId(path, altMethod),
+        kind: "http",
+        ...(altMethod ? { method: altMethod } : {}),
+        path,
+        ...common,
+      });
     }
-    // A second path in a prose `route:` is usually a SEQUENCE, not an alias:
-    // "GET /integrations (-> chunk) then POST /api/integrations/sync" names two
-    // steps with two different verbs. Inheriting the first verb invented a
-    // `GET /api/integrations/sync` that 405s - a cataloged endpoint no tool can
-    // ever reach, capping coverage below 100% forever. Emit these method-less
-    // and let collapseMethodless fold them onto the real handler.
-    for (const p of routePaths(v.route ?? "").slice(1)) {
-      if (p === http.path) continue;
-      push({ id: `http.${slug(p)}`, kind: "http", path: p, ...common });
+    // An entry with no `match:` has no alternates yet, so read the later steps
+    // off the prose `route:` - method-less, for collapseMethodless to fold onto
+    // the real handler ("GET /integrations then POST /api/integrations/sync"
+    // must not invent a GET that 405s). With a `match:`, derive-match already
+    // turned those steps into `http_alt`, verb-pinned and normalised.
+    if (!v.match) {
+      for (const p of routePaths(v.route ?? "").slice(1)) {
+        if (p === http.path) continue;
+        push({ id: httpOpId(p), kind: "http", path: p, ...common });
+      }
     }
   }
 
@@ -562,6 +588,17 @@ const TIER_REVIEW: [string, string | null, string, string, string][] = [
   ["nextjs", "POST", "/api/signup/resend", "flow", "only reachable mid-signup"],
   ["nextjs", "GET", "/api/cache-scoped", "js-runtime", "NM-CACHE endpoint, unlinked sibling of /api/cache"],
   ["nextjs", "GET", "/api/preview-internal", "js-runtime", "NM-FETCH endpoint, unlinked sibling of /api/preview"],
+  ["nextjs", "GET", "/orgs", "js-runtime", "only appears in the /api/nav response, signed in"],
+  ["nextjs", "GET", "/api/me/orgs", "js-runtime", "fetched as api(\"myOrgs\") by /orgs"],
+  ["nextjs", "POST", "/api/posts", "js-runtime", "in the lib/routes.ts registry (New draft on /posts)"],
+  ["nextjs", "PATCH", "/api/posts/{id}", "js-runtime", "in the lib/routes.ts registry"],
+  ["nextjs", "DELETE", "/api/posts/{id}", "js-runtime", "in the lib/routes.ts registry"],
+  ["nextjs", "POST", "/api/posts/{id}/submit", "flow", "editor button shown only while the post is a draft"],
+  ["nextjs", "POST", "/api/posts/{id}/approve", "flow", "editor button shown only while the post is in review"],
+  ["nextjs", "POST", "/api/orgs/{id}/join-requests", "interaction", "the Ask to join form on /orgs"],
+  ["nextjs", "DELETE", "/api/orgs/{id}/join-requests", "js-runtime", "in the lib/routes.ts registry"],
+  ["nextjs", "GET", "/api/orgs/{id}/join-requests", "js-runtime", "in the lib/routes.ts registry"],
+  ["nextjs", "POST", "/api/orgs/{id}/join-requests/{id}/approve", "js-runtime", "in the lib/routes.ts registry"],
 
   // laravel - same shape: home.blade.php fetches /nav with a literal URL, and
   // the nav response is what reveals the rest.
@@ -757,7 +794,7 @@ function deriveApp(app: string, opts: { write?: boolean }): Result | null {
   for (const hit of scanSource(app, join(dir, "vuln"))) {
     if (isExcluded(hit.path)) continue;
     const op: SurfaceOperation = {
-      id: `http.${slug(hit.path)}${hit.method && hit.method !== "ANY" ? "." + hit.method.toLowerCase() : ""}`,
+      id: httpOpId(hit.path, hit.method),
       kind: "http",
       method: hit.method === "ANY" ? undefined : hit.method,
       path: hit.path,

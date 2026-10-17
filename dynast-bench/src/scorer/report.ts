@@ -15,6 +15,12 @@ const bar = (v: number | null, width = 20): string => {
   return "█".repeat(n) + "·".repeat(width - n);
 };
 
+/** Extra breakdowns promoted out of `--full` into every report, with their titles. */
+const HEADLINE_EXTRAS = new Map([
+  ["by_logic", "recall by logic class (business-logic bugs)"],
+  ["by_actors", "recall by sessions needed (business-logic bugs)"],
+]);
+
 function bucketLines(title: string, buckets: Record<string, Bucket>, indent = "  "): string[] {
   const keys = Object.keys(buckets);
   if (!keys.length) return [];
@@ -137,6 +143,9 @@ export function renderReport(r: ScoreReport, opts: RenderOpts = {}): string[] {
   out.push(
     `  false positives: ${c.fp}  (near-miss ${c.fp_near_miss} · patched-twin ${c.fp_fixed_bug} · other ${c.fp_other})`,
   );
+  if (c.unclassified) {
+    out.push(`  unclassified:    ${c.unclassified}  (on a bug's route, no nameable claim - not scored)`);
+  }
   if (c.informational) {
     out.push(`  informational:   ${c.informational}  (closed/filtered ports - not scored)`);
   }
@@ -153,12 +162,21 @@ export function renderReport(r: ScoreReport, opts: RenderOpts = {}): string[] {
     out.push("");
     out.push(...bucketLines("recall by discovery tier", r.by_discovery));
   }
+  // Business-logic bugs: whether a tool reasons about rules and sessions, not
+  // just sinks. Silent for a key that tags none.
+  for (const [name, title] of HEADLINE_EXTRAS) {
+    if (r.extra[name] && Object.keys(r.extra[name]).length) {
+      out.push("");
+      out.push(...bucketLines(title, r.extra[name]));
+    }
+  }
   if (opts.full) {
     out.push("");
     out.push(...bucketLines("recall by taint", r.by_taint));
     out.push("");
     out.push(...bucketLines("recall by cwe family", r.by_family));
     for (const [name, buckets] of Object.entries(r.extra)) {
+      if (HEADLINE_EXTRAS.has(name)) continue; // printed above
       out.push("");
       out.push(...bucketLines(name.replace(/_/g, " "), buckets));
     }
@@ -210,6 +228,12 @@ export function renderReport(r: ScoreReport, opts: RenderOpts = {}): string[] {
     r.false_positives,
     (x) =>
       `    ${x.finding_id.padEnd(16)} ${x.variant.padEnd(4)} ${x.kind.padEnd(10)} ${(x.cwe ?? "-").padEnd(9)} ${x.where}${x.hit ? `  -> ${x.hit}` : ""}`,
+  );
+
+  section(
+    "unclassified",
+    r.unclassified,
+    (x) => `    ${x.finding_id.padEnd(16)} ${x.where}  ~ ${x.gt_id}`,
   );
 
   section("duplicates", r.duplicates, (x) => `    ${x.finding_id.padEnd(16)} -> ${x.gt_id}`, true);

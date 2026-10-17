@@ -8,7 +8,9 @@ entry: http://127.0.0.1:13311
 seed_notes: >
   Orgs Acme + Globex (tenants). user2@bench.local is in Globex for cross-tenant
   IDOR. A Globex DRAFT ("globex-internal") carries GLOBEX-CONFIDENTIAL-MARKER-7f3a,
-  reachable only via the multi-step IDOR grant flow or the second-order SQLi. The
+  reachable only via the multi-step IDOR grant flow, the second-order SQLi, or
+  the business-logic bugs (GROUP-ORDER, TENANT-SRC, EXPORT-STATE - Globex has a
+  finished workspace export seeded for the last one). The
   vulnerable variant also seeds a weak default service credential admin/admin and
   leaks APP_SECRET=GIN-DEBUG-SECRET-9c2e via the debug endpoint.
 
@@ -27,7 +29,7 @@ vulnerabilities:
     near_miss: NM-INFO-001
     match:
       http: { method: GET, path: "/api/debug/info" }
-      file: { path: vuln/main.go, symbol: debugInfo, lines: [405, 415] }
+      file: { path: vuln/main.go, symbol: debugInfo, lines: [453, 463] }
       markers: [GIN-DEBUG-SECRET-9c2e]
     poc: ground-truth/verify/info_001.sh
     notes: >
@@ -48,7 +50,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { method: POST, path: "/api/auth/login" }
-      file: { path: vuln/main.go, symbol: seedDB, lines: [206, 266] }
+      file: { path: vuln/main.go, symbol: seedDB, lines: [231, 291] }
     poc: ground-truth/verify/default_creds_001.sh
     notes: "Seeded service account uses the weak default credential admin/admin."
 
@@ -63,11 +65,14 @@ vulnerabilities:
     discovery: static-html
     taint: in-file
     reachability: user
+    logic: authz-missing
+    actors: 1
+    steps: 2
     near_miss: NM-IDOR-001
     match:
       http: { method: GET, path: "/api/grants/" }
       http_alt: ["/api/grants/{token}"]
-      file: { path: vuln/main.go, symbol: readGrant, lines: [453, 463] }
+      file: { path: vuln/main.go, symbol: readGrant, lines: [501, 511] }
       markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
     poc: ground-truth/verify/idor_001.sh
     notes: >
@@ -86,10 +91,13 @@ vulnerabilities:
     discovery: static-html
     taint: in-file
     reachability: user
+    logic: binding
+    actors: 1
+    steps: 1
     near_miss: null
     match:
       http: { method: PATCH, path: "/api/users/me" }
-      file: { path: vuln/main.go, symbol: updateMe, lines: [503, 525] }
+      file: { path: vuln/main.go, symbol: updateMe, lines: [551, 573] }
     poc: ground-truth/verify/massassign_001.sh
     notes: "Profile update binds role/isAdmin from the request body (ShouldBindJSON)."
 
@@ -107,7 +115,7 @@ vulnerabilities:
     near_miss: NM-SQL-001
     match:
       http: { method: GET, path: "/api/reports/timeline" }
-      file: { path: vuln/main.go, symbol: reportTimeline, lines: [526, 545] }
+      file: { path: vuln/main.go, symbol: reportTimeline, lines: [574, 593] }
       markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
     poc: ground-truth/verify/second_sqli_001.sh
     notes: >
@@ -128,7 +136,7 @@ vulnerabilities:
     near_miss: NM-RCE-001
     match:
       http: { method: POST, path: "/api/images/thumbnail" }
-      file: { path: vuln/main.go, symbol: thumbnail, lines: [577, 585] }
+      file: { path: vuln/main.go, symbol: thumbnail, lines: [625, 633] }
     poc: ground-truth/verify/imagemagick_rce_001.sh
     notes: >
       The thumbnail geometry is concatenated into sh -c "convert ...", so it is
@@ -148,7 +156,7 @@ vulnerabilities:
     near_miss: NM-SSRF-001
     match:
       http: { method: POST, path: "/api/render/pdf" }
-      file: { path: vuln/main.go, symbol: renderPDF, lines: [623, 643] }
+      file: { path: vuln/main.go, symbol: renderPDF, lines: [671, 691] }
     poc: ground-truth/verify/ssrf_pdf_001.sh
     notes: >
       A user-supplied URL is rendered to PDF by server-side headless chromium with
@@ -168,7 +176,7 @@ vulnerabilities:
     near_miss: NM-DOS-001
     match:
       http: { method: POST, path: "/api/import/preview" }
-      file: { path: vuln/main.go, symbol: importPreview, lines: [693, 699] }
+      file: { path: vuln/main.go, symbol: importPreview, lines: [741, 747] }
     poc: ground-truth/verify/dos_001.sh
     notes: >
       A gzip body is decompressed with no size cap (decompression bomb -> DoS).
@@ -185,10 +193,13 @@ vulnerabilities:
     discovery: static-html
     taint: in-file
     reachability: user
+    logic: authz-missing
+    actors: 1
+    steps: 1
     near_miss: null
     match:
       http: { method: GET, path: "/api/admin/users" }
-      file: { path: vuln/main.go, symbol: adminUsers, lines: [720, 742] }
+      file: { path: vuln/main.go, symbol: adminUsers, lines: [768, 790] }
     poc: ground-truth/verify/authz_001.sh
     notes: "Admin user listing only requires authentication, not the admin role."
 
@@ -206,7 +217,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { method: GET, path: "/goto", params: [next] }
-      file: { path: vuln/main.go, symbol: gotoNext, lines: [743, 754] }
+      file: { path: vuln/main.go, symbol: gotoNext, lines: [791, 802] }
     poc: ground-truth/verify/redirect_001.sh
     notes: "The /goto redirect trusts an absolute external next URL."
 
@@ -224,7 +235,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { method: GET, path: "/search", params: [q] }
-      file: { path: vuln/main.go, symbol: searchPage, lines: [755, 766] }
+      file: { path: vuln/main.go, symbol: searchPage, lines: [803, 814] }
     poc: ground-truth/verify/xss_reflect_001.sh
     notes: "The search page reflects q into HTML without escaping."
 
@@ -242,7 +253,7 @@ vulnerabilities:
     near_miss: NM-DOMPURIFY-001
     match:
       http: { method: GET, path: "/notes/preview", params: [q] }
-      file: { path: vuln/main.go, symbol: notesPreview, lines: [781, 797] }
+      file: { path: vuln/main.go, symbol: notesPreview, lines: [829, 845] }
     poc: ground-truth/verify/xss_dompurify_001.sh
     notes: >
       The note preview sanitises the reflected query with real DOMPurify and
@@ -254,6 +265,143 @@ vulnerabilities:
       exists once the page's JS runs, so the PoC drives a browser. Safe twin
       assigns the tooltip as text.
 
+  # ---- business logic: route-group ordering, two sources for one tenant id,
+  # ---- a permission bound from the request, a coupon checked once, and an
+  # ---- ownership check that only holds in one state. `actors` counts sessions.
+  - id: GROUP-ORDER-001
+    variant_paths: { vuln: vuln/workspace.go, safe: safe/workspace.go }
+    symbol: registerWorkspaceRoutes
+    route: "GET /api/orgs/{org}/drafts"
+    cwe: CWE-862
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: E-M
+    discovery: static-html
+    taint: in-file
+    reachability: pre-auth
+    logic: authz-missing
+    actors: 1
+    steps: 1
+    near_miss: NM-GROUP-ORDER-001
+    match:
+      http: { method: GET, path: "/api/orgs/{org}/drafts" }
+      file: { path: vuln/workspace.go, symbol: registerWorkspaceRoutes, lines: [65, 73] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/group_order_001.sh
+    notes: >
+      The workspace route group registers /drafts one line before
+      group.Use(requireOrgMember), and Gin applies Use() only to routes added after
+      it - so the membership check never runs and anyone, unauthenticated, reads
+      any workspace's drafts. The handler is fine; the bug is the order.
+
+  - id: TENANT-SRC-001
+    variant_paths: { vuln: vuln/workspace.go, safe: safe/workspace.go }
+    symbol: orgPosts
+    route: "GET /api/orgs/{org}/posts?org_id="
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: M
+    discovery: static-html
+    taint: in-file
+    reachability: user
+    logic: authz-wrong
+    actors: 1
+    steps: 1
+    near_miss: NM-TENANT-SRC-001
+    match:
+      http: { method: GET, path: "/api/orgs/{org}/posts", params: [org_id] }
+      file: { path: vuln/workspace.go, symbol: orgPosts, lines: [126, 154] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/tenant_src_001.sh
+    notes: >
+      requireOrgMember authorizes the workspace named in the path; the listing
+      binds an org_id from the query string and queries that one when present.
+      An Acme member asks for /api/orgs/acme/posts?org_id=<globex> and gets
+      Globex's drafts. Authorization and data access read the tenant from two
+      different places.
+
+  - id: SHARE-ESCALATE-001
+    variant_paths: { vuln: vuln/sharing.go, safe: safe/sharing.go }
+    symbol: redeemShare
+    route: "POST /api/share/{token}/redeem then PUT /api/shared/posts/{id}"
+    cwe: CWE-269
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: H
+    discovery: static-html
+    taint: in-file
+    reachability: user
+    logic: binding
+    actors: 2
+    steps: 3
+    near_miss: NM-SHARE-001
+    match:
+      http: { method: POST, path: "/api/share/{token}/redeem" }
+      http_alt: ["PUT /api/shared/posts/{id}"]
+      file: { path: vuln/sharing.go, symbol: redeemShare, lines: [103, 163] }
+    poc: ground-truth/verify/share_escalate_001.sh
+    notes: >
+      An Acme editor mints a read-only share link; redeeming it binds a
+      "permission" from the request body (meant to let a holder open a link
+      read-only) and takes it as given, so a Globex user redeems with
+      {"permission":"edit"} and then rewrites the Acme post through
+      PUT /api/shared/posts/{id}. Each request is ordinary product use.
+
+  - id: CART-COUPON-001
+    variant_paths: { vuln: vuln/billing.go, safe: safe/billing.go }
+    symbol: changePlan
+    route: "PUT /api/billing/cart/plan then POST /api/billing/checkout"
+    cwe: CWE-840
+    owasp: "A04:2021-Insecure Design"
+    severity: high
+    difficulty: H
+    discovery: static-html
+    taint: in-file
+    reachability: admin
+    logic: invariant
+    actors: 1
+    steps: 4
+    near_miss: NM-CART-001
+    match:
+      http: { method: PUT, path: "/api/billing/cart/plan" }
+      http_alt: ["POST /api/billing/checkout"]
+      file: { path: vuln/billing.go, symbol: changePlan, lines: [191, 223] }
+    poc: ground-truth/verify/cart_coupon_001.sh
+    notes: >
+      WELCOME100 (100% off, starter plan only) is validated when applied. Changing
+      the cart's plan afterwards re-prices by hand and keeps the discount without
+      re-checking it, so start starter -> apply WELCOME100 -> switch to
+      enterprise -> checkout charges 0 for enterprise. A workspace admin cheating
+      their own vendor: no authorization is broken, a business rule is.
+
+  - id: EXPORT-STATE-001
+    variant_paths: { vuln: vuln/exports.go, safe: safe/exports.go }
+    symbol: downloadExport
+    route: "GET /api/exports/{id}/download"
+    cwe: CWE-639
+    owasp: "A01:2021-Broken Access Control"
+    severity: high
+    difficulty: H
+    discovery: static-html
+    taint: in-file
+    reachability: user
+    logic: state
+    actors: 1
+    steps: 3
+    near_miss: NM-EXPORT-001
+    match:
+      http: { method: GET, path: "/api/exports/{id}/download" }
+      file: { path: vuln/exports.go, symbol: downloadExport, lines: [95, 121] }
+      markers: [GLOBEX-CONFIDENTIAL-MARKER-7f3a]
+    poc: ground-truth/verify/export_state_001.sh
+    notes: >
+      Exports are async jobs with sequential ids. The download checks ownership
+      only inside the "still running" branch, so a finished export is served to
+      anyone who names its id. Start your own export to learn the counter, then
+      count down to Globex's (seeded, done) export. A tool that probes once,
+      while a job is pending, sees 404 and moves on.
+
 near_misses:
   - id: NM-DOMPURIFY-001
     path: vuln/main.go
@@ -264,7 +412,7 @@ near_misses:
     # anchoring it on /notes/preview would make reporting the BUG read as a
     # false positive.
     match:
-      file: { path: vuln/main.go, symbol: notePreviewHTML, lines: [767, 780] }
+      file: { path: vuln/main.go, symbol: notePreviewHTML, lines: [815, 828] }
     notes: >
       Reflected input straight into innerHTML - the shape every scanner looks
       for - but routed through DOMPurify.sanitize first, on the line above the
@@ -274,40 +422,95 @@ near_misses:
     symbol: versionInfo
     of: INFO-001
     match:
-      file: { path: vuln/main.go, symbol: versionInfo, lines: [416, 452] }
+      file: { path: vuln/main.go, symbol: versionInfo, lines: [464, 500] }
     notes: "Version endpoint returns only non-sensitive build info."
   - id: NM-IDOR-001
     path: vuln/main.go
     symbol: getPost
     of: IDOR-001
     match:
-      file: { path: vuln/main.go, symbol: getPost, lines: [464, 502] }
+      file: { path: vuln/main.go, symbol: getPost, lines: [512, 550] }
     notes: "Direct post fetch enforces org ownership for non-published posts."
   - id: NM-SQL-001
     path: vuln/main.go
     symbol: searchPosts
     of: SQLI-001
     match:
-      file: { path: vuln/main.go, symbol: searchPosts, lines: [546, 576] }
+      file: { path: vuln/main.go, symbol: searchPosts, lines: [594, 624] }
     notes: "Published-post search of the same shape uses a pgx placeholder."
   - id: NM-RCE-001
     path: vuln/main.go
     symbol: thumbnailSafe
     of: RCE-001
     match:
-      file: { path: vuln/main.go, symbol: thumbnailSafe, lines: [586, 622] }
+      file: { path: vuln/main.go, symbol: thumbnailSafe, lines: [634, 670] }
     notes: "Thumbnail conversion invokes convert with an argument slice (no shell)."
   - id: NM-SSRF-001
     path: vuln/main.go
     symbol: linkPreview
     of: SSRF-001
     match:
-      file: { path: vuln/main.go, symbol: linkPreview, lines: [644, 692] }
+      file: { path: vuln/main.go, symbol: linkPreview, lines: [692, 740] }
     notes: "Link preview blocks internal/loopback/link-local destinations before fetching."
   - id: NM-DOS-001
     path: vuln/main.go
     symbol: importText
     of: DOS-001
     match:
-      file: { path: vuln/main.go, symbol: importText, lines: [700, 719] }
+      file: { path: vuln/main.go, symbol: importText, lines: [748, 767] }
     notes: "Text import is bounded by io.LimitReader."
+  - id: NM-GROUP-ORDER-001
+    path: vuln/workspace.go
+    symbol: orgProfile
+    of: GROUP-ORDER-001
+    route: "GET /api/orgs/{org}/profile"
+    match:
+      http: { method: GET, path: "/api/orgs/{org}/profile" }
+      file: { path: vuln/workspace.go, symbol: orgProfile, lines: [74, 96] }
+    notes: >
+      Registered above the same Use() on purpose: the public workspace profile
+      only returns the name and the count of published posts.
+  - id: NM-TENANT-SRC-001
+    path: vuln/workspace.go
+    symbol: orgMembers
+    of: TENANT-SRC-001
+    route: "GET /api/orgs/{org}/members"
+    match:
+      http: { method: GET, path: "/api/orgs/{org}/members" }
+      file: { path: vuln/workspace.go, symbol: orgMembers, lines: [97, 125] }
+    notes: >
+      Same group, same middleware, but the member list takes the workspace from
+      the path only - there is no second source to disagree with the check.
+  - id: NM-SHARE-001
+    path: vuln/sharing.go
+    symbol: sharePreview
+    of: SHARE-ESCALATE-001
+    route: "GET /api/share/{token}"
+    match:
+      http: { method: GET, path: "/api/share/" }
+      file: { path: vuln/sharing.go, symbol: sharePreview, lines: [73, 102] }
+    notes: >
+      Reads the same share link and reports the permission stored on it; nothing
+      from the request reaches the grant.
+  - id: NM-CART-001
+    path: vuln/billing.go
+    symbol: changeSeats
+    of: CART-COUPON-001
+    route: "PUT /api/billing/cart/seats"
+    match:
+      http: { method: PUT, path: "/api/billing/cart/seats" }
+      file: { path: vuln/billing.go, symbol: changeSeats, lines: [158, 190] }
+    notes: >
+      The sibling cart mutation re-prices through priceCart, which re-checks the
+      coupon against the cart as it now stands and drops it when it no longer fits.
+  - id: NM-EXPORT-001
+    path: vuln/exports.go
+    symbol: exportStatus
+    of: EXPORT-STATE-001
+    route: "GET /api/exports/{id}"
+    match:
+      http: { method: GET, path: "/api/exports/{id}" }
+      file: { path: vuln/exports.go, symbol: exportStatus, lines: [64, 94] }
+    notes: >
+      Polling the same job checks the requester before anything else, in every
+      state.

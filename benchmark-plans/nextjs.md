@@ -147,6 +147,22 @@ and the following bugs were added on top of the original catalog:
   `flow`), `SIGNUP-IDOR-001` (CWE-639, any draft's email+code by sequential id,
   `flow`). Near-miss: rate-limited constant-response `/api/signup/resend`, and
   the CSPRNG `newInviteToken` beside the clock-derived code.
+- **Business-logic pack** (tagged `logic:`/`actors:`/`steps:`). Adds a workspace
+  model (`Membership` with `pending`/`active` seats, `POST /api/session/org` to
+  switch the session's org, a `sessionVersion` per user) and a maker-checker
+  post workflow (`draft → in_review → approved → published`):
+  - `BOLA-WRITE-001` (CWE-639) - `PATCH /api/comments/{id}` updates by id alone.
+    Near-miss: author-scoped `DELETE` on the same path.
+  - `ROLE-CEIL-001` (CWE-269) - editors manage roles with no ceiling, so they
+    mint admins. Near-miss: the invite role cap in `POST /api/invites`.
+  - `STALE-PRIV-001` (CWE-613) - `getIdentity` never compares `sessionVersion`, so
+    a demoted user's old session keeps the old role. `flow`, 2 actors.
+  - `MEMBERSHIP-STATE-001` (CWE-863) - a pending join request is enough to switch
+    into the workspace; the correct org-scoped draft list then leaks. `flow`.
+    Near-miss: `GET /api/me/orgs` lists active seats only.
+  - `APPROVAL-BYPASS-001` (CWE-841) - the editor's autosave **Server Action**
+    rewrites an approved post without dropping it to draft, then publish. `flow`,
+    2 actors, 5 steps. Near-miss: `PATCH /api/posts/{id}` resets to draft.
 
 ## Ground truth & scoring
 

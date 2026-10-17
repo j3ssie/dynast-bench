@@ -4,7 +4,7 @@
 > data. Built to benchmark DAST/SAST/LLM security tools. Never deploy publicly.
 
 **TaskFlow** - a tiny multi-tenant task/blog app (Next.js 15 App Router +
-TypeScript + Prisma/Postgres + Redis sessions + Mailpit) with **33 planted,
+TypeScript + Prisma/Postgres + Redis sessions + Mailpit) with **40 planted,
 documented vulnerabilities** and a machine-checkable ground truth. See the
 design catalog in [`../../benchmark-plans/nextjs.md`](../../benchmark-plans/nextjs.md).
 
@@ -34,16 +34,16 @@ doesn't trip the dev-mode type-checker.
 
 ```bash
 make up          # build + start vuln/ on http://127.0.0.1:13311 (waits for health)
-make verify      # run all 33 PoCs; expect ALL exploitable
+make verify      # run all 40 PoCs; expect ALL exploitable
 make safe        # switch to the patched twin (stops vuln - shared host port)
-make verify-safe # run all 33 PoCs; expect ALL fixed
+make verify-safe # run all 40 PoCs; expect ALL fixed
 make validate    # the whole loop automatically: vuln→all pass, safe→all fixed
 make diff        # ground-truth diff (vuln vs safe)
 make reset       # fresh seeded state
 ```
 
 `make validate` is the money target - it proves the ground truth end to end.
-**Status: validated - 33/33 exploitable on `vuln/`, 33/33 fixed on `safe/`.**
+**Status: validated - 40/40 exploitable on `vuln/`, 40/40 fixed on `safe/`.**
 
 Three PoCs (`domxss_001`, `postmsg_001`, and the credential harvest in
 `creds_js_001`/`session_001`'s cousins) drive a **real headless browser** from a
@@ -67,7 +67,7 @@ docker run --rm -p 127.0.0.1:13311:3000 vuln-nextjs
 
 Inside the image the compose service names (`postgres`, `redis`, `mailpit`) are
 aliased to `127.0.0.1`, so the app config, env values, and **every PoC are
-identical** to the compose topology - validated 33/33 exploitable in solo mode.
+identical** to the compose topology - validated 40/40 exploitable in solo mode.
 
 ## Discovery tiers
 
@@ -79,16 +79,16 @@ only gates *finding* it.
 | tier | count | reach it by |
 |------|-------|-------------|
 | `static-html` | 6 | request-only crawl/fuzz: it's in `/` HTML or a conventional path |
-| `js-static` | 4 | reading a bundle as text (grep the JS) |
-| `js-runtime` | 14 | modelling the route registry / fetching a lazy chunk |
-| `interaction` | 5 | driving the UI - a click, a submit, a browser event |
-| `flow` | 4 | reaching one state of the multi-step signup |
+| `js-static` | 5 | reading a bundle as text (grep the JS) |
+| `js-runtime` | 16 | modelling the route registry / fetching a lazy chunk |
+| `interaction` | 6 | driving the UI - a click, a submit, a browser event |
+| `flow` | 7 | reaching one state of a multi-step flow (signup, review, workspace switch) |
 
 `dynast-bench score` reports **recall by discovery tier**, so "found everything
 at `static-html`, nothing past it" reads as a fact about the tool's crawler
 rather than an unexplained low F1.
 
-## What's planted (33 bugs + 13 near-misses)
+## What's planted (40 bugs + 19 near-misses)
 
 Full metadata (CWE, OWASP, severity, taint distance, reachability, discovery
 tier, PoC path) is in
@@ -129,6 +129,11 @@ tier, PoC path) is in
 | SIGNUP-MASSASSIGN-001 | overpost `role`/`orgSlug` at signup step 3 | 915 | flow | `api/signup/profile` |
 | SIGNUP-STEPSKIP-001 | complete signup without verifying (step-skip) | 841 | flow | `api/signup/complete` |
 | SIGNUP-IDOR-001 | any draft (email + code) readable by sequential id | 639 | flow | `api/signup/draft/[id]` |
+| BOLA-WRITE-001 | cross-tenant write: edit any comment by id | 639 | js-runtime | `api/comments/[id]` |
+| ROLE-CEIL-001 | editors grant roles with no ceiling → mint admins | 269 | js-runtime | `api/org/members/[id]/role` |
+| STALE-PRIV-001 | session keeps its role after a demotion | 613 | flow | `src/lib/session.ts` |
+| MEMBERSHIP-STATE-001 | a pending join request switches you into the workspace | 863 | flow | `api/session/org` |
+| APPROVAL-BYPASS-001 | autosave Server Action edits after approval, then publish | 841 | flow | `posts/[id]/edit/actions.ts` |
 
 ### The hidden endpoint
 
@@ -152,6 +157,33 @@ A fifth, `SIGNUP-IDOR-001`, reads any in-progress draft - email **and**
 verification code - by counting through the sequential draft ids. The
 rate-limited, constant-response `/api/signup/resend` is the near-miss for the
 enumeration.
+
+### The business-logic pack
+
+Five bugs where no single request looks wrong. Each carries `logic:`
+(`authz-missing | authz-wrong | state | invariant | binding`), `actors:` (sessions
+the exploit needs) and `steps:` in the answer key, and `dynast-bench score` breaks
+recall out by logic class and by sessions needed.
+
+| id | logic | actors | steps | the chain |
+|----|-------|-------:|------:|-----------|
+| BOLA-WRITE-001 | authz-missing | 2 | 2 | editor comments on an Acme post → user2 (Globex) PATCHes it |
+| ROLE-CEIL-001 | authz-wrong | 1 | 1 | editor POSTs `{"role":"admin"}` for anyone, themselves included |
+| MEMBERSHIP-STATE-001 | state | 1 | 3 | ask to join Globex → switch into it while pending → `GET /api/posts?status=draft` |
+| STALE-PRIV-001 | state | 2 | 3 | editor signs in → admin demotes them → the old session still manages roles |
+| APPROVAL-BYPASS-001 | invariant | 2 | 5 | draft → submit → editor approves → autosave new text (Server Action) → publish |
+
+The near-misses are the same shapes done right, each at its own route:
+`DELETE /api/comments/{id}` is author-scoped, `POST /api/invites` caps the invited
+role, `GET /api/me/orgs` lists only active seats, and `PATCH /api/posts/{id}`
+drops an edited post back to draft. The autosave action has no URL of its own:
+it is a `POST /posts/{id}/edit` carrying a `Next-Action` id from the editor's
+client chunk, which the PoC harvests the way a browser would.
+
+The workspace model behind it: `Membership(userId, orgId, role, status)` with an
+active row per seed user in their home org, `POST /api/orgs/{slug}/join-requests`
+to ask, an admin-only approve, and `POST /api/session/org` to switch the session's
+org. Posts move `draft → in_review → approved → published`.
 
 ### The client-side exposure cluster
 
@@ -189,7 +221,9 @@ rate limited), and `newInviteToken` (CSPRNG beside the clock-derived code).
   removes the injected key, purely so the long-lived server isn't left broken
   for later scans; the vulnerable `deepMerge` sink is unchanged.
 - **RACE-001** needs fresh seed state (`make reset`), and **BILLING-001** restores
-  the seat limit after itself, so PoC ordering doesn't matter.
+  the seat limit after itself, so PoC ordering doesn't matter. The business-logic
+  PoCs restore every role they change, delete the comment/post they create, and
+  withdraw the join request they file.
 - **DOMXSS-001** and **POSTMSG-001** are proven by an actual fired `alert()` in a
   headless browser - reflection alone never produces a dialog. Their payloads
   live in the URL fragment / a `postMessage`, so no server response ever contains

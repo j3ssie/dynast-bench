@@ -432,16 +432,15 @@ describe.each(apps)("%s surface", (app) => {
   /**
    * The perfect-trace tests above restate the catalog, so they pass however the
    * catalog spells a path - including in framework syntax no client would ever
-   * send. `/uploads/avatars/{name:path}` templates to `/uploads/avatars/{id}`,
-   * which only matches id-LOOKING segments, so a real `user1.png` never lands
-   * and the operation is uncatchable forever. Check the spelling independently.
+   * send. `/uploads/avatars/{name:path}` is a converter TYPE, not a segment
+   * shape: the catalog states it as a glob instead. Check the spelling
+   * independently.
    */
   test("no cataloged path uses framework syntax a real request cannot produce", () => {
     if (!surface) return;
     for (const op of surface.operations) {
-      // Bare placeholders (`{id}`, `:id`, `<id>`) are fine - templatePath folds
-      // both sides. A TYPED converter is not: `{name:path}` folds to `{id}`,
-      // which then only matches id-looking segments, never a filename.
+      // Bare placeholders (`{id}`, `:id`, `<id>`) are fine - each matches any one
+      // concrete segment. A TYPED converter is not: its type is framework syntax.
       if (!op.path) continue;
       expect(op.path, `${op.id}: typed converter - use a * glob instead`).not.toMatch(
         /\{[^}]*:[^}]*\}/,

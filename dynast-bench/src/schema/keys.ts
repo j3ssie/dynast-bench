@@ -5,7 +5,11 @@
  * Three rules learned from the 18 answer keys:
  *
  *  1. Concrete ids get templated. A scanner hits /api/posts/7; the key says
- *     /api/posts/{id}.
+ *     /api/posts/{id}. And a placeholder the KEY writes (`{org}`, `{token}`,
+ *     `:slug`) stands for any one concrete segment, so /api/orgs/globex/drafts
+ *     reaches /api/orgs/{org}/drafts - an id-shaped guess on the tool's side
+ *     cannot recognise a slug or a share token, but the key already says the
+ *     segment is a parameter. See `pathMatch`.
  *  2. Case and trailing slashes are NEVER folded in the strict pass. The
  *     weirdproxy app plants /admin/ and /ADMIN as *distinct* bugs, so folding
  *     them would merge two different findings. A loose pass exists, and every
@@ -21,6 +25,14 @@ export interface HttpKey {
   query: Record<string, string>;
   /** parameter names carrying no value - the injectable ones */
   params: string[];
+  /**
+   * Request headers the bug is reached THROUGH, lowercased (a header name is
+   * case-insensitive, RFC 9110 §5.1). Answer-key side only: a finding on the
+   * route that never names the header is a different claim about that route -
+   * "admin list readable by any user" is not "a spoofed x-middleware-subrequest
+   * skips the gate". See `httpHit` in match.ts.
+   */
+  headers?: string[];
   /**
    * Host port, when the anchor named one. Only set for sidecar routes (a bug on
    * Jenkins/phpMyAdmin rather than on the app under test), where it is the whole
@@ -87,28 +99,111 @@ export const pathKeyLoose = (path: string): string => {
 };
 
 /**
+ * How a found path lined up with an answer-key path:
+ *
+ *   exact   segment for segment after templating (`/api/posts/7` vs `/api/posts/{id}`),
+ *           or through a `*` / `**` glob the key wrote
+ *   param   only because a placeholder the KEY wrote stood in for a concrete
+ *           segment that does not look like an id (`globex` for `{org}`)
+ *
+ * The two are kept apart because they are not equally precise: a near-miss anchored
+ * on the literal `/api/orgs/globex/drafts` must outrank a bug anchored on
+ * `/api/orgs/{org}/drafts` for a finding at that literal path (`match.ts` weighs it).
+ */
+export type PathMatch = "exact" | "param";
+
+/**
  * Compare a ground-truth path against a found one. Answer keys sometimes carry a
  * glob ("/_next/static/chunks/*.js.map"), so `*` matches within a segment and
- * `**` across segments.
+ * `**` across segments. A placeholder segment in the key (`{org}`, `:slug`,
+ * `<token>`, `[id]`) matches any one non-empty segment of the found path.
  */
-export function pathGlobMatches(gtPath: string, foundPath: string, loose = false): boolean {
+export function pathMatch(gtPath: string, foundPath: string, loose = false): PathMatch | null {
   const key = loose ? pathKeyLoose : pathKeyStrict;
   const want = key(gtPath);
   const got = key(foundPath);
-  if (!want.includes("*")) return want === got;
-  const rx =
-    "^" +
-    want
-      .split("**")
-      .map((chunk) =>
-        chunk
-          .split("*")
-          .map((lit) => lit.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-          .join("[^/]*"),
-      )
-      .join(".*") +
-    "$";
-  return new RegExp(rx).test(got);
+  if (want.includes("*") ? globRegex(want).test(got) : want === got) return "exact";
+  const anySegment = placeholderRegex(gtPath, loose);
+  return anySegment?.test(got) ? "param" : null;
+}
+
+/** {@link pathMatch} as a yes/no, for callers that do not weigh the two kinds. */
+export function pathGlobMatches(gtPath: string, foundPath: string, loose = false): boolean {
+  return pathMatch(gtPath, foundPath, loose) !== null;
+}
+
+/**
+ * {@link pathMatch} with a router's precedence: a static route beats a parameter.
+ * When `routes` (the app's route table - every anchor in the answer key, plus the
+ * SURFACE catalog when there is one) names the found path exactly, the found path
+ * IS that route, so a placeholder elsewhere does not also claim it.
+ * `/api/posts/search` is the search route, not `/api/posts/{id}` with id=search -
+ * which is how every framework the suite ships resolves it, and the only reading
+ * under which a marker leaked by the search bug cannot be credited to the IDOR.
+ */
+export function routedPathMatch(
+  gtPath: string,
+  foundPath: string,
+  loose: boolean,
+  routes: readonly string[],
+): PathMatch | null {
+  const hit = pathMatch(gtPath, foundPath, loose);
+  if (hit !== "param") return hit;
+  return routes.some((r) => pathMatch(r, foundPath, loose) === "exact") ? null : hit;
+}
+
+/** One key segment (already templated) as regex source: `*` within it, `**` across. */
+const globSource = (pattern: string): string =>
+  pattern
+    .split("**")
+    .map((chunk) =>
+      chunk
+        .split("*")
+        .map((lit) => lit.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("[^/]*"),
+    )
+    .join(".*");
+
+const globRegex = (want: string): RegExp => {
+  const hit = globCache.get(want);
+  if (hit) return hit;
+  const rx = new RegExp("^" + globSource(want) + "$");
+  globCache.set(want, rx);
+  return rx;
+};
+const globCache = new Map<string, RegExp>();
+
+/**
+ * The key path with every placeholder segment opened up to "any one segment", or
+ * null when the key writes no placeholder. Built from the RAW key path, not the
+ * templated one: templating also folds a literal `7` to `{id}`, and a literal in
+ * the key is a claim about that segment, not a parameter. Every other segment goes
+ * through the same templating (and, in the loose pass, the same case and trailing
+ * slash folding) the found path does. Memoized like `templatePath`.
+ */
+function placeholderRegex(gtPath: string, loose: boolean): RegExp | null {
+  const cacheKey = (loose ? "L" : "S") + gtPath;
+  const hit = placeholderCache.get(cacheKey);
+  if (hit !== undefined) return hit;
+  const out = computePlaceholderRegex(gtPath, loose);
+  placeholderCache.set(cacheKey, out);
+  return out;
+}
+
+const placeholderCache = new Map<string, RegExp | null>();
+
+function computePlaceholderRegex(gtPath: string, loose: boolean): RegExp | null {
+  let path = gtPath;
+  if (loose && path.length > 1 && path.endsWith("/")) path = path.slice(0, -1);
+  const trailing = path.length > 1 && path.endsWith("/");
+  const segs = (trailing ? path.slice(0, -1) : path).split("/");
+  if (!segs.some((seg) => PLACEHOLDER_RE.test(seg))) return null;
+  const parts = segs.map((seg) => {
+    if (PLACEHOLDER_RE.test(seg)) return "[^/]+";
+    const t = templateSegment(seg);
+    return globSource(loose ? t.toLowerCase() : t);
+  });
+  return new RegExp("^" + parts.join("/") + (trailing ? "/" : "") + "$");
 }
 
 const METHODS = new Set([
@@ -173,7 +268,8 @@ export function httpKeyFromUrl(url: string, method?: unknown): HttpKey {
  *   "GET /api/posts/search?q="                          -> GET /api/posts/search, param q
  *   "POST /api/settings/import"                         -> POST /api/settings/import
  *   "GET /posts/{id}"                                   -> GET /posts/{id}
- *   "GET /api/admin/users (header: x-...)"              -> parenthetical dropped
+ *   "GET /api/admin/users (header: x-...)"              -> required header x-...
+ *   "GET /api/reports/admin-summary (Bearer)"           -> other parentheticals dropped
  *   "GET /wp-admin/admin-ajax.php?action=bench_upload"  -> required query pair
  *   "POST /graphql { __schema }"                        -> POST /graphql
  *   "WS /ws token"                                      -> WS /ws
@@ -191,6 +287,10 @@ export function parseRoute(route: string): { http: HttpKey | null; net: NetKey |
       net: { host: net[1]!, port: Number(net[2]), proto: net[3]!.toLowerCase() },
     };
   }
+
+  // a "(header: a, b)" parenthetical names the request headers the bug is
+  // reached through; every other trailing parenthetical is prose
+  const headers = routeHeaders(raw);
 
   // drop trailing parentheticals and brace/prose annotations
   let s = raw.replace(/\s*\([^)]*\)\s*$/g, "").trim();
@@ -213,7 +313,7 @@ export function parseRoute(route: string): { http: HttpKey | null; net: NetKey |
 
   // an absolute sidecar URL ("http://127.0.0.1:13313") carries its own port
   const abs = target.match(/^[a-z][a-z0-9+.-]*:\/\/\S+/i);
-  if (abs) return { http: httpKeyFromUrl(abs[0], method), net: null };
+  if (abs) return { http: withHeaders(httpKeyFromUrl(abs[0], method), headers), net: null };
 
   // "/ws token", "/api/schema/ and /api/docs/" -> take the first path-looking token
   const tokens = target.split(/\s+/).filter(Boolean);
@@ -223,16 +323,54 @@ export function parseRoute(route: string): { http: HttpKey | null; net: NetKey |
   const key = httpKeyFromUrl(first, method);
   // a second path in the same route string ("/api/schema/ and /api/docs/") is
   // recorded as an alternate by the caller if it wants it; the primary wins here
-  return { http: key, net: null };
+  return { http: withHeaders(key, headers), net: null };
+}
+
+/**
+ * The header names a route's "(header: a, b)" parenthetical declares, lowercased.
+ * Anchored on the literal `header:` / `headers:` label the answer keys write, so
+ * prose parentheticals ("(Bearer)", "(twice)") never become requirements.
+ */
+export function routeHeaders(route: string): string[] {
+  const m = (route ?? "").match(/\(\s*headers?\s*:\s*([^)]*)\)\s*$/i);
+  if (!m) return [];
+  return [...new Set(m[1]!.split(/[\s,]+/).map((h) => h.trim().toLowerCase()).filter(Boolean))];
+}
+
+const withHeaders = (key: HttpKey, headers: string[]): HttpKey =>
+  headers.length ? { ...key, headers } : key;
+
+/**
+ * An `http_alt` entry: a bare path ("/api/docs/"), or a path pinned to its own
+ * verb ("POST /api/posts/{id}/publish"). The pinned form is for a multi-step
+ * bug whose later step is a different request - inheriting the primary verb
+ * there anchors a request the app answers with 405.
+ */
+export function splitAlt(alt: string): { method: string | null; path: string } {
+  const m = alt.trim().match(/^([A-Za-z]+)\s+(\/\S*)$/);
+  if (m && METHODS.has(m[1]!.toUpperCase())) return { method: m[1]!.toUpperCase(), path: m[2]! };
+  return { method: null, path: alt.trim() };
+}
+
+/**
+ * Every path in a route string, with the verb written right in front of it when
+ * there is one: "GET /a then POST /b" -> [{GET, /a}, {POST, /b}].
+ */
+export function routeSteps(route: string): { method: string | null; path: string }[] {
+  const tokens = (route ?? "").replace(/\s*\([^)]*\)\s*/g, " ").split(/[\s,]+/).filter(Boolean);
+  const out: { method: string | null; path: string }[] = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]!;
+    if (!t.startsWith("/")) continue;
+    const prev = tokens[i - 1]?.toUpperCase();
+    out.push({ method: prev && METHODS.has(prev) ? prev : null, path: t.replace(/[.,;]+$/, "") });
+  }
+  return out;
 }
 
 /** Every path-looking token in a route string, for multi-path routes. */
 export function routePaths(route: string): string[] {
-  return (route ?? "")
-    .replace(/\s*\([^)]*\)\s*/g, " ")
-    .split(/[\s,]+/)
-    .filter((t) => t.startsWith("/"))
-    .map((t) => t.replace(/[.,;]+$/, ""));
+  return routeSteps(route).map((s) => s.path);
 }
 
 // ---------------------------------------------------------------- file keys ---

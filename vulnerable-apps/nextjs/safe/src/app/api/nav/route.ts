@@ -21,6 +21,7 @@ const PUBLIC_ITEMS = [
 const USER_ITEMS = [
   { label: "Search", href: "/posts/search" },
   { label: "Profile", href: "/profile" },
+  { label: "Workspaces", href: "/orgs" },
   { label: "Connected apps", href: "/integrations" },
 ];
 

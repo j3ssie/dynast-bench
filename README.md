@@ -15,8 +15,8 @@ patched twin.
 
 ## The apps at a glance
 
-**19 apps · 549 planted vulnerabilities · 146 near-misses · 546 runnable PoCs ·
-594 cataloged endpoints.** Every app boots on `127.0.0.1:13311`, ships a
+**19 apps · 559 planted vulnerabilities · 155 near-misses · 556 runnable PoCs ·
+634 cataloged endpoints.** Every app boots on `127.0.0.1:13311`, ships a
 `vuln/`+`safe/` twin pair and a single-image `--solo` build. `dynast-bench list`
 prints this table live; `dynast-bench surface <app>` prints its endpoint catalog.
 
@@ -24,7 +24,7 @@ prints this table live; `dynast-bench surface <app>` prints its endpoint catalog
 |-----|-------|-----------|------:|----------:|------|
 | [aspnet](vulnerable-apps/aspnet) | C# / ASP.NET Core Razor Pages | SQL Server | 28 | 12 | [plan](benchmark-plans/aspnet.md) |
 | [fastapi](vulnerable-apps/fastapi) | Python / FastAPI + Jinja2 | Postgres | 26 | 5 | [plan](benchmark-plans/fastapi.md) |
-| [gin](vulnerable-apps/gin) | Go / Gin | Postgres | 12 | 7 | [readme](vulnerable-apps/gin/README.md) |
+| [gin](vulnerable-apps/gin) | Go / Gin | Postgres | 17 | 12 | [readme](vulnerable-apps/gin/README.md) |
 | [golang](vulnerable-apps/golang) | Go / chi | Postgres | 26 | 4 | [plan](benchmark-plans/golang.md) |
 | [graphql](vulnerable-apps/graphql) | Node / GraphQL 16 API-only | Postgres | 31 | 6 | [plan](benchmark-plans/graphql.md) |
 | [jsp](vulnerable-apps/jsp) | Java / JSP + Servlets (Tomcat) | Postgres | 28 | 6 | [plan](benchmark-plans/jsp.md) |
@@ -33,7 +33,7 @@ prints this table live; `dynast-bench surface <app>` prints its endpoint catalog
 | [llmchat](vulnerable-apps/llmchat) | Python / FastAPI + LangChain RAG | Postgres+pgvector | 30 | 9 | [plan](benchmark-plans/llmchat.md) |
 | [nestjs](vulnerable-apps/nestjs) | Node / NestJS + Handlebars | Postgres | 23 | 6 | [plan](benchmark-plans/nestjs.md) |
 | [network](vulnerable-apps/network) | Simulated multi-host network range | mixed fleet | 32 | 5 | [plan](benchmark-plans/network.md) |
-| [nextjs](vulnerable-apps/nextjs) | Node / Next.js 15 **(reference impl)** | Postgres | 35 | 15 | [plan](benchmark-plans/nextjs.md) |
+| [nextjs](vulnerable-apps/nextjs) | Node / Next.js 15 **(reference impl)** | Postgres | 40 | 19 | [plan](benchmark-plans/nextjs.md) |
 | [php](vulnerable-apps/php) | PHP / procedural LAMP | MySQL | 21 | 5 | [plan](benchmark-plans/php.md) |
 | [rails](vulnerable-apps/rails) | Ruby / Rails 7.2 | Postgres | 26 | 6 | [plan](benchmark-plans/rails.md) |
 | [springboot](vulnerable-apps/springboot) | Java / Spring Boot + Thymeleaf | Postgres | 30 | 4 | [plan](benchmark-plans/springboot.md) |
@@ -429,13 +429,19 @@ make reset   # fresh state
 
 ## Status
 
-- **19 apps carry a complete answer key**: 549 planted vulnerabilities, 146
-  near-misses, 546 PoCs, and a `Dockerfile.standalone` each (`--solo`).
+- **19 apps carry a complete answer key**: 559 planted vulnerabilities, 155
+  near-misses, 556 PoCs, and a `Dockerfile.standalone` each (`--solo`).
   `dynast-bench list` prints the live table.
 - **`nextjs` is the reference implementation** - built and validated end to end
-  (35 vulns + 15 near-misses). `make validate APP=nextjs` proves every PoC
+  (40 vulns + 19 near-misses). `make validate APP=nextjs` proves every PoC
   exploitable on `vuln/` and fixed on `safe/`; `make solo APP=nextjs` runs it from
   one image. Copy its patterns.
+- **Business-logic pack** in `nextjs` and `gin` (5 bugs each: write-side BOLA,
+  role ceilings, stale sessions, pending-membership switch, maker-checker bypass;
+  route-group ordering, tenant-id source confusion, share-link escalation, coupon
+  re-validation, state-dependent ownership). Tagged `logic:`/`actors:`/`steps:`, so
+  a score reports recall by logic class and by how many sessions a bug needs; `run`
+  hands the tool the seed accounts so multi-session bugs are testable at all.
 - **`dynast-bench` CLI - built**: runs, verifies, scores and cleans any app, in
   compose or single-image mode, with `--json` for harnesses.
 - **The scorer - built** (`dynast-bench/src/`): scanner output → normalized findings

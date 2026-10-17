@@ -102,6 +102,56 @@ operations:
     discovery: static-html
     reachability: pre-auth
     vulns: [XSS-DOMPURIFY-001]
+  - id: http.api-orgs-id-drafts.get
+    kind: http
+    method: GET
+    path: "/api/orgs/{org}/drafts"
+    discovery: static-html
+    reachability: pre-auth
+    vulns: [GROUP-ORDER-001]
+  - id: http.api-orgs-id-posts.get
+    kind: http
+    method: GET
+    path: "/api/orgs/{org}/posts"
+    params: [org_id]
+    discovery: static-html
+    reachability: user
+    vulns: [TENANT-SRC-001]
+  - id: http.api-share-id-redeem.post
+    kind: http
+    method: POST
+    path: "/api/share/{token}/redeem"
+    discovery: static-html
+    reachability: user
+    vulns: [SHARE-ESCALATE-001]
+  - id: http.api-shared-posts-id.put
+    kind: http
+    method: PUT
+    path: "/api/shared/posts/{id}"
+    discovery: static-html
+    reachability: user
+    vulns: [SHARE-ESCALATE-001]
+  - id: http.api-billing-cart-plan.put
+    kind: http
+    method: PUT
+    path: "/api/billing/cart/plan"
+    discovery: static-html
+    reachability: admin
+    vulns: [CART-COUPON-001]
+  - id: http.api-billing-checkout.post
+    kind: http
+    method: POST
+    path: "/api/billing/checkout"
+    discovery: static-html
+    reachability: admin
+    vulns: [CART-COUPON-001]
+  - id: http.api-exports-id-download.get
+    kind: http
+    method: GET
+    path: "/api/exports/{id}/download"
+    discovery: static-html
+    reachability: user
+    vulns: [EXPORT-STATE-001]
   - id: http.root.get
     kind: http
     method: GET
@@ -165,3 +215,101 @@ operations:
     discovery: static-html
     reachability: pre-auth
     notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-posts-id-share.post
+    kind: http
+    method: POST
+    path: "/api/posts/:id/share"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-share-token.get
+    kind: http
+    method: GET
+    path: "/api/share/:token"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-share-token.delete
+    kind: http
+    method: DELETE
+    path: "/api/share/:token"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-shared-posts-id.get
+    kind: http
+    method: GET
+    path: "/api/shared/posts/:id"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-billing-cart.get
+    kind: http
+    method: GET
+    path: "/api/billing/cart"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-billing-cart.post
+    kind: http
+    method: POST
+    path: "/api/billing/cart"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-billing-cart-coupon.post
+    kind: http
+    method: POST
+    path: "/api/billing/cart/coupon"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-billing-cart-seats.put
+    kind: http
+    method: PUT
+    path: "/api/billing/cart/seats"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-billing-cancel.post
+    kind: http
+    method: POST
+    path: "/api/billing/cancel"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-exports.post
+    kind: http
+    method: POST
+    path: "/api/exports"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-exports-id.get
+    kind: http
+    method: GET
+    path: "/api/exports/:id"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-exports-id.delete
+    kind: http
+    method: DELETE
+    path: "/api/exports/:id"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from main.go - REVIEW"
+  - id: http.api-orgs-org-profile.get
+    kind: http
+    method: GET
+    path: "/api/orgs/:org/profile"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from workspace.go - REVIEW"
+  - id: http.api-orgs-org-members.get
+    kind: http
+    method: GET
+    path: "/api/orgs/:org/members"
+    discovery: static-html
+    reachability: pre-auth
+    notes: "benign? derived from workspace.go - REVIEW"

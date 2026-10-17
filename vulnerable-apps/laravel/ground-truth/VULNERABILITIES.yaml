@@ -81,7 +81,7 @@ vulnerabilities:
     near_miss: NM-XSS-001
     match:
       http: { method: POST, path: "/posts/{id}/comments" }
-      http_alt: ["/posts/{id}"]
+      http_alt: ["GET /posts/{id}"]
       file: { path: vuln/resources/views/post_show.blade.php, symbol: "post_show.blade.php {!! $c->body !!}", lines: [13, 25] }
     poc: ground-truth/verify/xss_stored_001.sh
     notes: "Stored comment body rendered unescaped; the post title beside it uses the escaping {{ }}."
@@ -338,7 +338,7 @@ vulnerabilities:
     near_miss: null
     match:
       http: { path: "/", port: 13312 }
-      file: { path: vuln/docker-compose.yml, symbol: "phpmyadmin service", lines: [22, 60] }
+      file: { path: vuln/docker-compose.yml, symbol: "phpmyadmin service", lines: [27, 77] }
     poc: ground-truth/verify/phpmyadmin_001.sh
     notes: "phpMyAdmin published on localhost with bench/bench DB credentials in vuln compose."
   - id: RESET-001

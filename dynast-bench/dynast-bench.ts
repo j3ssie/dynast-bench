@@ -41,6 +41,20 @@ import { scoreApp } from "./src/scorer/score.ts";
 const VERSION = pkg.version;
 const DEFAULT_HEALTH_PATH = "/api/_verify/health";
 const VERIFY_TOKEN = "benchsecret";
+
+/**
+ * The shared seed every app carries (CLAUDE.md "Shared domain + seed"): the
+ * accounts a tester is handed, not something a scanner has to discover.
+ * Access-control and business-logic bugs need at least two of them at once -
+ * an attacker and the victim, approver or admin on the other side - so `run`
+ * exports them. They are not the answer key.
+ */
+const SEED_ACCOUNTS = [
+  { email: "admin@bench.local", password: "Admin123!", role: "admin", org: "acme" },
+  { email: "editor@bench.local", password: "Editor123!", role: "editor", org: "acme" },
+  { email: "user1@bench.local", password: "User123!", role: "user", org: "acme" },
+  { email: "user2@bench.local", password: "User123!", role: "user", org: "globex" },
+];
 const HEALTH_TIMEOUT_S = 300; // cold builds (aspnet/springboot/jsp) are slow
 
 /**
@@ -3130,9 +3144,11 @@ async function cmdScore(args: Args) {
   ];
 
   // Coverage rides along when the tool supplied an endpoint list AND the app has
-  // a catalog. Either missing means no track, never a zero.
+  // a catalog. Either missing means no track, never a zero. The catalog is loaded
+  // whenever the app has one: it is also the route table the finding matcher
+  // resolves placeholders against.
   const endpointsPath = flagStr(args, "endpoints");
-  const surface = endpointsPath ? loadSurface(app, { required: true }) : null;
+  const surface = loadSurface(app, { required: !!endpointsPath });
   const reported = endpointsPath ? readEndpoints(endpointsPath, app, "vuln") : null;
 
   const report = scoreApp({
@@ -3608,7 +3624,8 @@ async function cmdRun(args: Args) {
 
   step(`running: ${c.dim(args.passthrough.join(" "))}`);
   // The command under `run` is the thing being measured, so by default it gets
-  // target metadata and nothing else. Handing it the answer key or the harness
+  // target metadata and the seed accounts (a tester's starting kit) and nothing
+  // else. Handing it the answer key or the harness
   // token would let a scanner read the expected findings, or ask /api/_verify/*
   // for the seeded ids instead of discovering them - either way the score stops
   // meaning what it claims to mean.
@@ -3619,6 +3636,7 @@ async function cmdRun(args: Args) {
     DYNAST_BENCH_VARIANT: variant,
     DYNAST_BENCH_TARGET: started.target,
     DYNAST_BENCH_HEALTH: started.health,
+    DYNAST_BENCH_ACCOUNTS: JSON.stringify(SEED_ACCOUNTS),
   };
   if (trusted) {
     env.DYNAST_BENCH_GROUND_TRUTH = app!.groundTruth;
@@ -3939,7 +3957,8 @@ ${c.bold("BENCHMARK")}
   validate <app>           twin loop: vuln all-exploitable → safe all-fixed
   stress <app>             hold up under a crawl, then return to idle
                            [--duration S] [--concurrency N] [--recover S]
-  run <app> -- <cmd...>    start, run <cmd> with $TARGET set, stop afterwards
+  run <app> -- <cmd...>    start, run <cmd> with $TARGET (and the seed accounts in
+                           $DYNAST_BENCH_ACCOUNTS) set, stop afterwards
 
 ${c.bold("SCORE")}
   score <app> <file...>    findings → precision/recall/F1  [--safe f.json] [--full]

@@ -286,8 +286,11 @@ Environment handed to the `run` command:
 | `DYNAST_BENCH_APP` | app name |
 | `DYNAST_BENCH_VARIANT` | `vuln` or `safe` |
 | `DYNAST_BENCH_HEALTH` | full health-check URL |
+| `DYNAST_BENCH_ACCOUNTS` | the shared seed accounts as JSON - `[{email, password, role, org}]` - so a tool can hold an attacker and a victim session at once |
 
 The command under `run` is the thing being measured, so that is all it gets. The
+seed accounts are a tester's starting kit, not the answer key: access-control and
+business-logic bugs need two sessions to test at all. The
 answer key and the harness token are held back unless you pass `--trusted`:
 
 | Variable (`--trusted` only) | Value |
@@ -455,7 +458,11 @@ Rules for whatever emits this:
 1. **One finding per distinct vulnerability**, not per payload. Ten SQLi payloads
    on `q` are one finding; extra ones are counted as noise, not punished.
 2. **Concrete URLs, not templates.** Report `/api/posts/7`; the scorer normalizes
-   identifier segments to `{id}` before comparing.
+   identifier segments to `{id}` before comparing, and a placeholder the answer
+   key writes (`{org}`, `{token}`) matches any one concrete segment -
+   `/api/orgs/globex/drafts` reaches `/api/orgs/{org}/drafts` - unless the app
+   routes that exact path statically (`/api/posts/search` is never
+   `/api/posts/{id}`).
 3. **`run.variant` is mandatory in spirit.** A scan of the patched twin that does
    not say `"safe"` has every finding scored as a true positive.
 4. **Put the marker in `evidence.markers`.** `GLOBEX-CONFIDENTIAL-MARKER-7f3a` in a
@@ -475,7 +482,7 @@ pay out twice and a good pairing is not lost to a greedy first choice.
 | Tier | Fires when |
 |------|-----------|
 | `proof` | a seed marker the answer key names appears in the finding's evidence, and no anchor contradicts it |
-| `route` | path (templated) + required query pairs + param + port + verb line up |
+| `route` | path (templated) + required query pairs + required headers + param + port + verb line up, and the finding makes a claim the bug's CWE family accepts (below) |
 | `net` | host + port + proto line up, and the port was reported **open** |
 | `api` | the GraphQL op / WS transport+event+channel / LLM tool+channel line up |
 | `source` | the file matches and either the symbol matches or the line sits in the bug's own range (±2) |
@@ -488,7 +495,22 @@ CWE handling, which is the part that decides whether a match is allowed at all:
 - **generic parent** (`CWE-20`, `CWE-707`, …) → a quarter
 - **unrelated** → *not a match*. A positive claim that is wrong is a false positive.
 - **absent** → still matched if the anchor is precise, at zero credit. Silence is
-  not a wrong answer; plenty of DAST tools map CWEs poorly.
+  not a wrong answer; plenty of DAST tools map CWEs poorly. A route is not
+  precise about *which* bug, though - one login handler can take default
+  credentials, trust a client-sent tenant and mint static cookies - so at the
+  `route` tier the claim comes from the finding's own title and tags (the same
+  keyword table the adapters use, `src/normalize/guess.ts`). A named claim of
+  another family is a wrong answer; no nameable claim at all is **unclassified**:
+  never a true positive, listed under `unclassified`, and left out of precision.
+  The `source` tier (a line or symbol inside the bug's own range) and `proof`
+  need no claim.
+
+A bug reached through a request header declares it in its route,
+`"GET /api/admin/users (header: x-middleware-subrequest)"`, which `derive-match`
+turns into `match.http.headers`. A route match then also needs the finding to name
+that header - as its `param`, or in its title, tags, `evidence.request` or
+`evidence.note` - because the same route without it is a different claim (an
+ordinary access-control finding, not the middleware bypass).
 
 ### What comes out
 
@@ -496,7 +518,8 @@ Every metric is `0.0`–`1.0`. The arrow is which direction is good:
 
 ```
 ↑ precision        tp / (tp + fp)      of what was reported, how much was real
-                                       (duplicates and closed-port reports excluded)
+                                       (duplicates, unclassified and closed-port
+                                       reports excluded)
 ↑ recall           tp / planted bugs   of what was planted, how much was found
 ↑ f1               2PR / (P + R)       harmonic mean - only high when both are
 ↑ recall_reachable tp / bugs reachable over http or net (source-only bugs excluded)
@@ -516,6 +539,15 @@ Plus recall broken out by `difficulty`, `severity`, `reachability`, `taint`, CWE
 CWE family - all four dimensions are already in every answer key - and the
 app-specific splits (`by_injection_channel`, `by_tool`, `by_documented`,
 `by_segment`, `by_transport`) wherever a key carries those fields.
+
+Business-logic bugs carry `logic:` / `actors:` / `steps:` (nextjs and gin tag
+theirs), and the report adds **recall by logic class** (`authz-missing`,
+`authz-wrong`, `state`, `invariant`, `binding`) and **recall by sessions needed**
+(`1 actor`, `2 actors`) - plus `by_steps` (`single request` / `multi-step`) under
+`--full`. These are computed over the tagged entries only. A multi-step bug
+anchors on the step its fix changes; the step where the impact shows is a
+verb-pinned alternate (`http_alt: ["POST /api/billing/checkout"]`), so reporting
+either is correct and a wrong verb is only a weak match.
 
 ### Recall by discovery tier
 
@@ -622,7 +654,9 @@ measured" and "reached nothing" must not render the same way.
 
 The same normalization the finding matcher uses, plus one rule of its own:
 
-- Concrete ids template onto the catalog (`/api/posts/7` → `/api/posts/{id}`).
+- Concrete ids template onto the catalog (`/api/posts/7` → `/api/posts/{id}`),
+  and a catalog placeholder matches any one segment the catalog does not list
+  as a static route of its own.
 - Method matters. A catalog entry with no `method:` is reached by any verb; a
   report with no method against a pinned verb is credited as a **loose** hit and
   counted in `loose_hits`.

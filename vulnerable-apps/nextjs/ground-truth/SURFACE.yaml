@@ -112,6 +112,14 @@ operations:
     discovery: js-static
     reachability: pre-auth
     vulns: [SECRET-002, CREDS-BUNDLE-001, POSTMSG-003]
+  - id: http.api-integrations-sync.post
+    kind: http
+    method: POST
+    path: "/api/integrations/sync"
+    discovery: js-static
+    reachability: pre-auth
+    vulns: [CREDS-BUNDLE-001]
+    notes: "benign? derived from /api/integrations/sync/route.ts - REVIEW"
   - id: http.login.get
     kind: http
     method: GET
@@ -218,6 +226,47 @@ operations:
     discovery: flow
     reachability: pre-auth
     vulns: [SIGNUP-IDOR-001]
+  - id: http.api-comments-id.patch
+    kind: http
+    method: PATCH
+    path: "/api/comments/{id}"
+    discovery: js-runtime
+    reachability: user
+    vulns: [BOLA-WRITE-001]
+  - id: http.api-org-members-id-role.post
+    kind: http
+    method: POST
+    path: "/api/org/members/{id}/role"
+    discovery: js-runtime
+    reachability: user
+    vulns: [ROLE-CEIL-001, STALE-PRIV-001]
+  - id: http.api-session-org.post
+    kind: http
+    method: POST
+    path: "/api/session/org"
+    discovery: flow
+    reachability: user
+    vulns: [MEMBERSHIP-STATE-001]
+  - id: http.api-posts.get
+    kind: http
+    method: GET
+    path: "/api/posts"
+    discovery: flow
+    reachability: user
+    vulns: [MEMBERSHIP-STATE-001]
+  - id: http.posts-id-edit.post
+    kind: http
+    method: POST
+    path: "/posts/{id}/edit"
+    discovery: flow
+    reachability: user
+    vulns: [APPROVAL-BYPASS-001]
+  - id: http.posts-id-edit.get
+    kind: http
+    method: GET
+    path: "/posts/{id}/edit"
+    discovery: flow
+    notes: "benign? derived from /posts/[id]/edit/page.tsx - REVIEW"
   - id: http.signup.get
     kind: http
     method: GET
@@ -230,18 +279,68 @@ operations:
     path: "/admin/users"
     discovery: js-runtime
     notes: "only appears in the /api/nav response"
+  - id: http.orgs.get
+    kind: http
+    method: GET
+    path: "/orgs"
+    discovery: js-runtime
+    notes: "only appears in the /api/nav response, signed in"
   - id: http.api-comments.post
     kind: http
     method: POST
     path: "/api/comments"
     discovery: js-runtime
     notes: "in the lib/routes.ts registry"
+  - id: http.api-comments-id.delete
+    kind: http
+    method: DELETE
+    path: "/api/comments/{id}"
+    discovery: js-runtime
+    notes: "benign? derived from /api/comments/[id]/route.ts - REVIEW"
   - id: http.api-preview-internal.get
     kind: http
     method: GET
     path: "/api/preview-internal"
     discovery: js-runtime
     notes: "NM-FETCH endpoint, unlinked sibling of /api/preview"
+  - id: http.api-posts.post
+    kind: http
+    method: POST
+    path: "/api/posts"
+    discovery: js-runtime
+    notes: "in the lib/routes.ts registry (New draft on /posts)"
+  - id: http.api-posts-id-submit.post
+    kind: http
+    method: POST
+    path: "/api/posts/{id}/submit"
+    discovery: flow
+    notes: "editor button shown only while the post is a draft"
+  - id: http.api-posts-id-approve.post
+    kind: http
+    method: POST
+    path: "/api/posts/{id}/approve"
+    discovery: flow
+    notes: "editor button shown only while the post is in review"
+  - id: http.api-posts-id-publish.post
+    kind: http
+    method: POST
+    path: "/api/posts/{id}/publish"
+    discovery: flow
+    reachability: user
+    vulns: [APPROVAL-BYPASS-001]
+    notes: "benign? derived from /api/posts/[id]/publish/route.ts - REVIEW"
+  - id: http.api-posts-id.patch
+    kind: http
+    method: PATCH
+    path: "/api/posts/{id}"
+    discovery: js-runtime
+    notes: "in the lib/routes.ts registry"
+  - id: http.api-posts-id.delete
+    kind: http
+    method: DELETE
+    path: "/api/posts/{id}"
+    discovery: js-runtime
+    notes: "in the lib/routes.ts registry"
   - id: http.api-auth-logout.post
     kind: http
     method: POST
@@ -254,20 +353,42 @@ operations:
     path: "/api/signup/resend"
     discovery: flow
     notes: "only reachable mid-signup"
+  - id: http.api-orgs-id-join-requests.post
+    kind: http
+    method: POST
+    path: "/api/orgs/{id}/join-requests"
+    discovery: interaction
+    notes: "the Ask to join form on /orgs"
+  - id: http.api-orgs-id-join-requests.delete
+    kind: http
+    method: DELETE
+    path: "/api/orgs/{id}/join-requests"
+    discovery: js-runtime
+    notes: "in the lib/routes.ts registry"
+  - id: http.api-orgs-id-join-requests.get
+    kind: http
+    method: GET
+    path: "/api/orgs/{id}/join-requests"
+    discovery: js-runtime
+    notes: "in the lib/routes.ts registry"
+  - id: http.api-orgs-id-join-requests-id-approve.post
+    kind: http
+    method: POST
+    path: "/api/orgs/{id}/join-requests/{id}/approve"
+    discovery: js-runtime
+    notes: "in the lib/routes.ts registry"
   - id: http.api-integrations-token.get
     kind: http
     method: GET
     path: "/api/integrations/token"
     discovery: js-static
     notes: "benign? derived from /api/integrations/token/route.ts - REVIEW"
-  - id: http.api-integrations-sync.post
+  - id: http.api-me-orgs.get
     kind: http
-    method: POST
-    path: "/api/integrations/sync"
-    discovery: js-static
-    reachability: pre-auth
-    vulns: [CREDS-BUNDLE-001]
-    notes: "benign? derived from /api/integrations/sync/route.ts - REVIEW"
+    method: GET
+    path: "/api/me/orgs"
+    discovery: js-runtime
+    notes: "fetched as api(\"myOrgs\") by /orgs"
   - id: http.api-users-me.get
     kind: http
     method: GET

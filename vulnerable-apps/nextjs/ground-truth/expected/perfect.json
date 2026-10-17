@@ -113,7 +113,7 @@
         },
         "file": {
           "path": "vuln/src/app/api/posts/[id]/route.ts",
-          "line": 8,
+          "line": 48,
           "symbol": "GET"
         }
       },
@@ -198,7 +198,7 @@
         },
         "file": {
           "path": "vuln/src/app/posts/[id]/page.tsx",
-          "line": 18,
+          "line": 19,
           "symbol": "PostPage"
         }
       },
@@ -406,7 +406,7 @@
         },
         "file": {
           "path": "vuln/src/app/layout.tsx",
-          "line": 12,
+          "line": 13,
           "symbol": "RootLayout"
         }
       },
@@ -466,7 +466,7 @@
         },
         "file": {
           "path": "vuln/src/app/api/invites/route.ts",
-          "line": 8,
+          "line": 16,
           "symbol": "POST"
         }
       },
@@ -568,7 +568,7 @@
         "file": {
           "path": "vuln/src/lib/session.ts",
           "symbol": "newSessionId",
-          "line": 8
+          "line": 13
         }
       },
       "exploited": true
@@ -729,6 +729,111 @@
           "path": "vuln/src/app/integrations/page.tsx",
           "symbol": "onWidgetMessage",
           "line": 21
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-36",
+      "title": "BOLA-WRITE-001",
+      "cwe": "CWE-639",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "PATCH",
+          "url": "http://127.0.0.1:13311/api/comments/{id}",
+          "path": "/api/comments/{id}"
+        },
+        "file": {
+          "path": "vuln/src/app/api/comments/[id]/route.ts",
+          "line": 20,
+          "symbol": "PATCH"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-37",
+      "title": "ROLE-CEIL-001",
+      "cwe": "CWE-269",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/org/members/{id}/role",
+          "path": "/api/org/members/{id}/role"
+        },
+        "file": {
+          "path": "vuln/src/app/api/org/members/[id]/role/route.ts",
+          "line": 27,
+          "symbol": "POST"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-38",
+      "title": "STALE-PRIV-001",
+      "cwe": "CWE-613",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/org/members/{id}/role",
+          "path": "/api/org/members/{id}/role"
+        },
+        "file": {
+          "path": "vuln/src/lib/session.ts",
+          "line": 55,
+          "symbol": "getIdentity"
+        }
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-39",
+      "title": "MEMBERSHIP-STATE-001",
+      "cwe": "CWE-863",
+      "severity": "high",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/api/session/org",
+          "path": "/api/session/org"
+        },
+        "file": {
+          "path": "vuln/src/app/api/session/org/route.ts",
+          "line": 17,
+          "symbol": "POST"
+        }
+      },
+      "evidence": {
+        "markers": [
+          "GLOBEX-CONFIDENTIAL-MARKER-7f3a"
+        ]
+      },
+      "exploited": true
+    },
+    {
+      "id": "ref-40",
+      "title": "APPROVAL-BYPASS-001",
+      "cwe": "CWE-841",
+      "severity": "medium",
+      "confidence": "certain",
+      "location": {
+        "http": {
+          "method": "POST",
+          "url": "http://127.0.0.1:13311/posts/{id}/edit",
+          "path": "/posts/{id}/edit"
+        },
+        "file": {
+          "path": "vuln/src/app/posts/[id]/edit/actions.ts",
+          "line": 18,
+          "symbol": "autosaveDraft"
         }
       },
       "exploited": true
