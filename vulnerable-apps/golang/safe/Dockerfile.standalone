@@ -1,8 +1,16 @@
+# The build context with its answer-key comments blanked out
+# (dynast-bench/tools/annotations/strip.mjs). Every COPY of app files below
+# reads from this stage, never from the raw context.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS dynast-src
+COPY --from=dynast-annotations strip.mjs /opt/dynast/strip.mjs
+COPY . /src
+RUN node /opt/dynast/strip.mjs /src
+
 FROM golang:1.23-bookworm AS build
 WORKDIR /src
-COPY go.mod go.sum* ./
+COPY --from=dynast-src /src/go.mod /src/go.sum* ./
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build go mod download
-COPY . .
+COPY --from=dynast-src /src/ .
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build go build -o /out/golang-app .
 
 FROM debian:bookworm
@@ -11,8 +19,8 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build /out/golang-app /app/golang-app
-COPY entrypoint.standalone.sh /app/entrypoint.standalone.sh
-COPY internal-sink.mjs /app/internal-sink.mjs
+COPY --from=dynast-src /src/entrypoint.standalone.sh /app/entrypoint.standalone.sh
+COPY --from=dynast-src /src/internal-sink.mjs /app/internal-sink.mjs
 RUN chmod +x /app/entrypoint.standalone.sh
 EXPOSE 3000
 HEALTHCHECK --interval=10s --timeout=5s --retries=30 --start-period=90s \

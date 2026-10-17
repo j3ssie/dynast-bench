@@ -386,6 +386,13 @@ function repoRoot(): string {
 
 const ROOT = init(repoRoot);
 const APPS_DIR = join(ROOT, "vulnerable-apps");
+/**
+ * The named build context every app Dockerfile copies the annotation stripper
+ * from (`COPY --from=dynast-annotations`). Compose files declare it under
+ * `additional_contexts`; a plain `docker build` has to pass it, or the build
+ * fails rather than bake the answer-key comments into the image.
+ */
+const ANNOTATIONS_CONTEXT = `dynast-annotations=${join(ROOT, "dynast-bench", "tools", "annotations")}`;
 
 /**
  * Read the `ports:` publishes out of a compose file, remembering which service
@@ -1593,7 +1600,16 @@ async function startApp(
       const img = soloName(app.name, variant);
       if (opts.build) {
         const build = await docker(
-          ["build", "-f", `${variant}/Dockerfile.standalone`, "-t", img, variant],
+          [
+            "build",
+            "--build-context",
+            ANNOTATIONS_CONTEXT,
+            "-f",
+            `${variant}/Dockerfile.standalone`,
+            "-t",
+            img,
+            variant,
+          ],
           { cwd: app.dir, stream: !quiet },
         );
         if (build.code !== 0) die(`docker build failed for ${app.name}/${variant}`);
@@ -3988,7 +4004,7 @@ ${c.bold("SCORE")}
                            compared against  [--ids] [--full]
   schema                   print the findings/v1 finding format score reads  [--json]
   diff <app>               the vuln↔safe delta, cross-checked against the answer key
-  check [app...|--all]     CI gate: schema · anchors · diff scope · PoCs · binds
+  check [app...|--all]     CI gate: schema · anchors · diff scope · PoCs · binds · labels
 
 ${c.bold("FLAGS")}
   --variant vuln|safe      which twin to use (default: vuln)

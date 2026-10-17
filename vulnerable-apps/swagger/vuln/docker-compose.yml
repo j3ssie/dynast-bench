@@ -9,7 +9,7 @@ services:
     mem_limit: 1g
     cpus: 2.0
     pids_limit: 1024
-    build: ./
+    build: { context: ./, additional_contexts: { dynast-annotations: ../../../dynast-bench/tools/annotations } }
     ports: ["127.0.0.1:${DYNAST_PORT:-13311}:3000"]
     environment:
       DATABASE_URL: postgresql+psycopg://bench:bench@postgres:5432/bench
@@ -77,5 +77,5 @@ services:
     mem_limit: 512m
     cpus: 1.0
     pids_limit: 512
-    build: ./partner
+    build: { context: ./partner, additional_contexts: { dynast-annotations: ../../../dynast-bench/tools/annotations } }
     expose: ["9099"]

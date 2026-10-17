@@ -9,7 +9,7 @@ services:
     mem_limit: 1g
     cpus: 2.0
     pids_limit: 1024
-    build: .
+    build: { context: ., additional_contexts: { dynast-annotations: ../../../dynast-bench/tools/annotations } }
     environment:
       VARIANT: safe
       BENCH_VERIFY_TOKEN: benchsecret

@@ -10,7 +10,8 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "allowJs": true
   },
   "include": ["dynast-bench.ts", "src/**/*.ts", "test/**/*.ts"]
 }

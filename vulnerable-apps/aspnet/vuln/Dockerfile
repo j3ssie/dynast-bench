@@ -1,8 +1,16 @@
+# The build context with its answer-key comments blanked out
+# (dynast-bench/tools/annotations/strip.mjs). Every COPY of app files below
+# reads from this stage, never from the raw context.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS dynast-src
+COPY --from=dynast-annotations strip.mjs /opt/dynast/strip.mjs
+COPY . /src
+RUN node /opt/dynast/strip.mjs /src
+
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
-COPY BenchAspNet.csproj ./
+COPY --from=dynast-src /src/BenchAspNet.csproj ./
 RUN --mount=type=cache,target=/root/.nuget/packages dotnet restore
-COPY . ./
+COPY --from=dynast-src /src/ ./
 RUN --mount=type=cache,target=/root/.nuget/packages dotnet publish -c Release -o /out --no-restore
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*

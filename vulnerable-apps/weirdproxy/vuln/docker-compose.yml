@@ -9,7 +9,7 @@ services:
     mem_limit: 512m
     cpus: 1.0
     pids_limit: 512
-    build: ./origin
+    build: { context: ./origin, additional_contexts: { dynast-annotations: ../../../dynast-bench/tools/annotations } }
     # internal only — the proxies are the security boundary; never published.
     expose: ["9000"]
 
@@ -22,7 +22,7 @@ services:
     mem_limit: 1g
     cpus: 2.0
     pids_limit: 1024
-    build: ./nginx
+    build: { context: ./nginx, additional_contexts: { dynast-annotations: ../../../dynast-bench/tools/annotations } }
     ports: ["127.0.0.1:${DYNAST_PORT:-13311}:80"]
     depends_on:
       origin: { condition: service_started }
@@ -42,7 +42,7 @@ services:
     mem_limit: 512m
     cpus: 1.0
     pids_limit: 512
-    build: ./apache
+    build: { context: ./apache, additional_contexts: { dynast-annotations: ../../../dynast-bench/tools/annotations } }
     ports: ["127.0.0.1:${DYNAST_PORT_APACHE_80:-13312}:80"]
     depends_on:
       origin: { condition: service_started }
@@ -56,7 +56,7 @@ services:
     mem_limit: 512m
     cpus: 1.0
     pids_limit: 512
-    build: ./traefik
+    build: { context: ./traefik, additional_contexts: { dynast-annotations: ../../../dynast-bench/tools/annotations } }
     ports: ["127.0.0.1:${DYNAST_PORT_TRAEFIK_80:-13313}:80"]
     depends_on:
       origin: { condition: service_started }

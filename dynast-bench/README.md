@@ -83,7 +83,7 @@ SCORE
   surface <app...>         every cataloged operation — the checklist a crawl gets
                            compared against  [--ids] [--full]
   diff <app>               the vuln↔safe delta, cross-checked against the answer key
-  check [app...|--all]     CI gate: schema · anchors · diff scope · PoCs · binds
+  check [app...|--all]     CI gate: schema · anchors · diff scope · PoCs · binds · labels
 ```
 
 Aliases: `ls`/`apps` → `list`, `up` → `start`, `down` → `stop`, `ps` → `status`,
@@ -776,5 +776,6 @@ dynast-bench/
 ├── src/check/              # the benchmark invariants (CI gate)
 ├── src/{repo,twin-diff}.ts # app enumeration · the twin delta
 ├── tools/derive-match.ts   # regenerate the answer keys' match: anchors
+├── tools/annotations/      # strip.mjs: blanks answer-key comments in every image build
 └── test/                   # bun test: unit + per-app invariants + golden fixtures
 ```

@@ -18,6 +18,7 @@ import { parseGroundTruthFile } from "../schema/ground-truth.ts";
 import { parseSurfaceFile } from "../schema/surface.ts";
 import type { GroundTruth } from "../schema/types.ts";
 import { anchorFingerprint, gtAnchors, isSourceOnly } from "../scorer/anchors.ts";
+import { annotationLeaks, composeIssues, dockerfileIssues, VARIANTS } from "./annotations.ts";
 
 export type IssueLevel = "error" | "warn";
 
@@ -399,6 +400,22 @@ export async function checkApp(target: CheckTarget, run: Differ): Promise<CheckI
         `${variant}/docker-compose.yml`,
         "no ${DYNAST_PORT:-...} publish for the app under test",
       );
+    }
+  }
+
+  // ...and neither may the labels that point at it: every image is built from a
+  // context with its answer-key comments stripped (see ./annotations.ts)
+  for (const variant of VARIANTS) {
+    for (const p of [...dockerfileIssues(target.dir, variant), ...composeIssues(target.dir, variant)]) {
+      add("error", p.at, p.msg);
+    }
+    for (const l of annotationLeaks(target.dir, variant)) {
+      const at = `${variant}/${l.path}:${l.line}`;
+      if (l.known) {
+        add("warn", at, `ships "${l.marker}" outside a comment, where no strip reaches - ${l.known}`);
+      } else {
+        add("error", at, `answer-key label "${l.marker}" survives the image build: ${l.text}`);
+      }
     }
   }
 

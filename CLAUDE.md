@@ -272,6 +272,39 @@ Two anchors in one file are never allowed to overlap, so an ambiguous range is
 emitted as no range at all. It splices text, so comments and formatting survive,
 and re-running is idempotent.
 
+### Labels stay in the repo, never in the image
+
+Those `// VULN <ID>` comments - and every `NM-…`, `CWE-…`, `planted`, `near-miss`,
+`ground-truth` note beside them - are the answer key written into the source. The
+images must not carry them: a planted traversal or LFI reads source off disk, an
+inline `<script>` label reaches every visitor, and a scanner that reads
+`// VULN SQLI-001` has been told the answer. So every Dockerfile, both twins,
+starts with the same stage and copies app files **only** from it:
+
+```dockerfile
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS dynast-src
+COPY --from=dynast-annotations strip.mjs /opt/dynast/strip.mjs
+COPY . /src
+RUN node /opt/dynast/strip.mjs /src
+# ...then every later COPY is `COPY --from=dynast-src /src/<path> <dest>`
+```
+
+`dynast-bench/tools/annotations/strip.mjs` blanks the text of every comment that
+carries a label and keeps the opener, the closer and the line, so line numbers
+(and `match.file.lines`, and source maps) are unchanged. `dynast-annotations` is a
+named build context: compose passes it as
+`build: { context: ., additional_contexts: { dynast-annotations: ../../../dynast-bench/tools/annotations } }`,
+and `make solo` / `start --solo` pass `--build-context`. A bare `docker build`
+without it fails rather than ship the labels. `/*!` banners are left alone -
+wordpress DEP-001 *is* one.
+
+`check` fails on a Dockerfile that copies the raw context, a compose build without
+the context, or any id from the app's answer key that survives the strip (it runs
+the transform over the real build context; nothing is built). A label in served
+behaviour rather than a comment - a markup id, a banner string - cannot be
+stripped; those are listed in `src/check/annotations.ts` `SHIPPED_LABELS` and
+reported as warnings until renamed.
+
 Then confirm the key is scoreable:
 
 ```bash
@@ -609,7 +642,8 @@ fallback.
    near-miss when natural.
 5. `cp -r vuln/* safe/` then fix ONLY the bug lines in `safe/`. Keep the diff minimal.
 6. Add `Dockerfile.standalone` + `entrypoint.standalone.sh` + `internal-sink.mjs`
-   (copy nextjs, adapt).
+   (copy nextjs, adapt). Keep the `dynast-src` stage at the top of every
+   Dockerfile and copy app files only from it (see "Labels stay in the repo").
 7. `make validate APP=<app>` (vuln all-exploitable → safe all-fixed) and
    `make solo APP=<app>` (single image, PoCs still exploitable). Both must be green.
 8. `bun dynast-bench/tools/derive-surface.ts <app> --write`, then review the
@@ -720,7 +754,8 @@ fallback.
 - Don't fix bugs in `vuln/`. Don't sanitize/parameterize/authorize in `vuln/`.
 - Don't let `safe/` diverge from `vuln/` beyond the fixed lines.
 - Don't bake `ground-truth/` into any image, and don't reference the answer key
-  from app code.
+  from app code. Don't `COPY` from the raw build context either - only from the
+  `dynast-src` stage, which strips the answer-key comments.
 - Don't bind ports to `0.0.0.0`. 127.0.0.1 only.
 - Don't hardcode a host port in a compose file - publishes are
   `${DYNAST_PORT*:-133xx}` so the CLI can relocate them (see "Host ports").

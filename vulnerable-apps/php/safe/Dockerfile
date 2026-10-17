@@ -1,3 +1,11 @@
+# The build context with its answer-key comments blanked out
+# (dynast-bench/tools/annotations/strip.mjs). Every COPY of app files below
+# reads from this stage, never from the raw context.
+FROM --platform=$BUILDPLATFORM node:22-bookworm-slim AS dynast-src
+COPY --from=dynast-annotations strip.mjs /opt/dynast/strip.mjs
+COPY . /src
+RUN node /opt/dynast/strip.mjs /src
+
 FROM php:8.3-apache
 
 RUN apt-get update \
@@ -5,11 +13,11 @@ RUN apt-get update \
  && docker-php-ext-install pdo pdo_mysql mysqli \
  && rm -rf /var/lib/apt/lists/*
 
-COPY app/public/ /var/www/html/
-COPY app/inc/ /var/www/inc/
-COPY app/seed.php /var/www/seed.php
-COPY php.ini /usr/local/etc/php/conf.d/bench.ini
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --from=dynast-src /src/app/public/ /var/www/html/
+COPY --from=dynast-src /src/app/inc/ /var/www/inc/
+COPY --from=dynast-src /src/app/seed.php /var/www/seed.php
+COPY --from=dynast-src /src/php.ini /usr/local/etc/php/conf.d/bench.ini
+COPY --from=dynast-src /src/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN mkdir -p /var/www/html/uploads /var/www/html/downloads \
  && chown -R www-data:www-data /var/www/html/uploads /var/www/html/downloads \
  && chmod +x /usr/local/bin/entrypoint.sh

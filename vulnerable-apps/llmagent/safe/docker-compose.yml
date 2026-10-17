@@ -9,7 +9,7 @@ services:
     mem_limit: 2g
     cpus: 2.0
     pids_limit: 1024
-    build: ./
+    build: { context: ./, additional_contexts: { dynast-annotations: ../../../dynast-bench/tools/annotations } }
     ports: ["127.0.0.1:${DYNAST_PORT:-13311}:3000"]
     environment:
       PORT: "3000"
